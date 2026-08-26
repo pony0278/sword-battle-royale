@@ -1,0 +1,96 @@
+export const SHIELD_PARRY_EXCHANGE_STATE_KEYS = Object.freeze([
+  'previousShieldLeadSurface',
+  'firstContact',
+  'latestContact',
+  'latestCombatResult',
+  'latestCombatUpdate',
+  'latestFinePlan',
+  'latestFineTracking',
+  'latestPredictiveAnalysis',
+  'latestReachableInterceptTarget',
+  'latestInterceptDriveReport',
+  'interceptDriveTrace',
+  'latestVisualOwnershipBaseline',
+  'visualOwnershipTrace',
+  'latestPredictiveReport',
+  'latestPredictiveHandoff',
+  'latestShieldLeadMotion',
+  'latestLeadHandoff',
+  'directOldB3Diagnostic',
+  'latestParryInput',
+  'latestParryOpportunity',
+  'latestParryConfirmation',
+  'frozenAttackerContactPose',
+  'canonicalAttackerOldB3Pose',
+  'canonicalAttackerOldB3WorldSilhouette',
+  'step3AContactTransfer',
+  'latestGripConstraintReport',
+  'latestLiveSurfaceAtContact',
+  'step3AReleaseBlend',
+  'visibleOldB3Peak',
+  'latchedDefenderDeflectReleaseGate',
+  'latestParryWhiff',
+  'whiffProbeFrames',
+  'closestWhiffApproach',
+  'outsideActiveContact',
+  'latestInputSignal',
+  'parryPromptHold',
+  'parryPromptHoldSequence',
+]);
+
+function createResetSnapshot() {
+  return {
+    previousShieldLeadSurface: null,
+    firstContact: null,
+    latestContact: null,
+    latestCombatResult: null,
+    latestCombatUpdate: null,
+    latestFinePlan: null,
+    latestFineTracking: null,
+    latestPredictiveAnalysis: null,
+    latestReachableInterceptTarget: null,
+    latestInterceptDriveReport: null,
+    interceptDriveTrace: [],
+    latestVisualOwnershipBaseline: null,
+    visualOwnershipTrace: [],
+    latestPredictiveReport: null,
+    latestPredictiveHandoff: null,
+    latestShieldLeadMotion: null,
+    latestLeadHandoff: null,
+    directOldB3Diagnostic: null,
+    latestParryInput: null,
+    latestParryOpportunity: null,
+    latestParryConfirmation: null,
+    frozenAttackerContactPose: null,
+    canonicalAttackerOldB3Pose: null,
+    canonicalAttackerOldB3WorldSilhouette: null,
+    step3AContactTransfer: null,
+    latestGripConstraintReport: null,
+    latestLiveSurfaceAtContact: null,
+    step3AReleaseBlend: null,
+    visibleOldB3Peak: null,
+    latchedDefenderDeflectReleaseGate: null,
+    latestParryWhiff: null,
+    whiffProbeFrames: 0,
+    closestWhiffApproach: null,
+    outsideActiveContact: null,
+    latestInputSignal: null,
+    parryPromptHold: null,
+    parryPromptHoldSequence: null,
+  };
+}
+
+export function createShieldParryExchangeState() {
+  return createResetSnapshot();
+}
+
+export function resetShieldParryExchangeState(state, {
+  previousShieldLeadSurface = null,
+} = {}) {
+  if (!state || typeof state !== 'object') {
+    throw new TypeError('resetShieldParryExchangeState requires a mutable state object');
+  }
+  Object.assign(state, createResetSnapshot());
+  state.previousShieldLeadSurface = previousShieldLeadSurface;
+  return state;
+}

@@ -1,0 +1,4 @@
+# G2 Skyrim Guard probe: keep proprietary/raw authoring inputs and unreviewed converted GLBs local.
+tools/skyrim-hkx-bridge/work/
+assets/skyrim/guard/converted/*.glb
+!assets/skyrim/guard/converted/shd_blockidle.source.glb

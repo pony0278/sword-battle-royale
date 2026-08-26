@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>G4.3B.5R.1 Rhythm-Triggered Active Parry</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}
+    body{display:grid;grid-template-columns:minmax(0,1fr) 440px;overflow:hidden}main{position:relative;min-width:0;min-height:0}canvas{width:100%;height:100%;display:block;touch-action:none}
+    .hud{position:absolute;left:16px;top:16px;min-width:460px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.5 ui-monospace,monospace;pointer-events:none}
+    .legend{position:absolute;left:16px;bottom:16px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:8px 10px;font-size:12px;pointer-events:none}
+    aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:19px;margin:0 0 6px}h2{font-size:13px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}
+    button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:9px 11px;margin:3px;cursor:pointer}button:hover{background:#22314c}button.active{border-color:#75e6c2;background:#18352f}.row{display:flex;flex-wrap:wrap}.note{color:#9eb0c8;font-size:12px}.good{color:#7ef0ad}.bad{color:#ff8c8c}.warn{color:#ffd27a}
+    .metric{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:8px 0;padding:10px;border:1px solid #243147;border-radius:8px;background:#080d14}.metric b{color:#ddecff}.toggle{display:flex;align-items:center;gap:8px;margin:10px 0}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px;max-height:320px;overflow:auto}
+    @media(max-width:900px){html,body{height:auto;min-height:100%;overflow:auto}body{display:block;min-height:100vh}main{height:58vh;min-height:360px;border-bottom:1px solid #26354d}aside{overflow:visible;border-left:0;border-top:1px solid #26354d;padding:16px}.hud{left:10px;right:10px;top:10px;min-width:0;font-size:11px}.legend{left:10px;right:10px;bottom:10px;font-size:11px}.row{gap:2px}button{flex:1 1 30%;min-width:92px;min-height:44px;margin:2px;padding:10px 8px}.metric{font-size:12px}pre{max-height:45vh}}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <main>
+    <canvas id="canvas"></canvas>
+    <div class="hud">
+      <b>G4.3B.5R.1 · Rhythm-Triggered Active Parry</b>
+      <div id="hudAttack">Attack: loading…</div>
+      <div id="hudThreat">Threat: —</div>
+      <div id="hudParry">Parry: —</div>
+      <div id="hudContact">Contact: —</div>
+      <div id="hudOutcome">Outcome: —</div>
+      <div id="hudRecoil">Recoil: —</div>
+    </div>
+    <div class="legend">Green = geometry-guided intercept target · Red = authoritative contact · CLAMPED may still Parry; no red contact = WHIFF</div>
+  </main>
+  <aside>
+    <h1>Rhythm-Triggered Active Parry</h1>
+    <div class="note">B.5R.1 把「出手時機」與「接不接得到」拆開。Parry 由攻擊動作自己的 canonical Time-To-Contact 觸發，所以 LEFT / RIGHT / TOP 都一定會在節拍點主動出手；幾何預測只決定手臂往哪裡追。超過 18cm 仍會做完整 Parry，只是追到上限後若沒有真實接觸就顯示 PARRY WHIFF。</div>
+
+    <h2>Attack direction</h2>
+    <div class="row"><button data-attack="top">TOP</button><button data-attack="right" class="active">RIGHT</button><button data-attack="left">LEFT</button></div>
+
+    <h2>Defense rhythm simulation</h2>
+    <div class="row"><button data-mode="block">BLOCK</button><button data-mode="parry" class="active">PARRY</button><button data-mode="perfect">PERFECT</button></div>
+    <div class="metric">
+      <span>PARRY trigger</span><b>canonical TTC ≈ 135 ms</b>
+      <span>PERFECT trigger</span><b>canonical TTC ≈ 65 ms</b>
+      <span>Trigger authority</span><b>attack timeline only</b>
+      <span>Geometry authority</span><b>tracking target only</b>
+      <span>Parry tracking envelope</span><b>max 0.18 m</b>
+      <span>Parry arm speed</span><b>1.6 m/s</b>
+      <span>Out of reach</span><b>still animates · clamp</b>
+      <span>Authoritative result</span><b>real swept contact only</b>
+    </div>
+    <label class="toggle"><input id="autoRepeat" type="checkbox"> Auto repeat</label>
+    <label class="toggle"><input id="showSurface" type="checkbox" checked> Show Buckler parry surface</label>
+
+    <h2>Expected causality</h2>
+    <div class="metric">
+      <span>1</span><b>Attack canonical TTC counts down</b>
+      <span>2</span><b>Rhythm trigger fires regardless of reach</b>
+      <span>3</span><b>Defender starts active Parry</b>
+      <span>4</span><b>Geometry guides arm toward intercept</b>
+      <span>5</span><b>18cm envelope clamps if needed</b>
+      <span>6A</span><b>Real contact → Parry / Perfect</b>
+      <span>6B</span><b>No contact → PARRY WHIFF</b>
+      <span>7</span><b>Attacker recoil only after real contact</b>
+    </div>
+
+    <h2>Views</h2>
+    <div class="row"><button data-view="three">3/4</button><button data-view="side">Side</button><button data-view="attacker">Attacker</button><button data-view="contact">Contact</button></div>
+
+    <h2>Verification</h2>
+    <div id="status" class="warn">Loading G4.3B.5R.1…</div>
+    <pre id="report">Not run.</pre>
+  </aside>
+  <script type="module" src="./predictive-intercept-parry-lab.js"></script>
+</body>
+</html>

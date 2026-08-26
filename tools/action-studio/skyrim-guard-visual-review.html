@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>G2.4.1 · Skyrim Guard Canonical Playback Verification</title>
+  <style>
+    :root { color-scheme:dark; font-family:Inter,system-ui,sans-serif; background:#090c11; color:#edf2fb; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; display:grid; grid-template-rows:auto 1fr; }
+    header { padding:15px 18px; border-bottom:1px solid #293140; display:flex; justify-content:space-between; align-items:center; gap:16px; }
+    h1 { margin:0; font-size:20px; } header p { margin:4px 0 0; color:#94a0b5; font-size:12px; }
+    header a { color:#dce7ff; text-decoration:none; border:1px solid #39445a; padding:8px 10px; border-radius:8px; }
+    main { min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 410px; }
+    .stage { position:relative; min-height:560px; background:radial-gradient(circle at 50% 35%,#222b39 0,#0d1219 58%,#07090d 100%); }
+    canvas { display:block; width:100%; height:100%; }
+    .hud { position:absolute; top:16px; left:16px; pointer-events:none; display:grid; gap:4px; }
+    .hud b { font-size:17px; letter-spacing:.04em; }.hud span { color:#a0adbf; font-size:12px; }
+    aside { overflow:auto; padding:14px; border-left:1px solid #293140; background:#0e131b; }
+    .panel { border:1px solid #2a3342; border-radius:12px; padding:13px; margin-bottom:11px; background:#141a23; }
+    .panel h2 { margin:0 0 10px; font-size:13px; letter-spacing:.07em; text-transform:uppercase; }
+    button,input { background:#0b1017; color:#eff5ff; border:1px solid #3a475d; border-radius:8px; padding:9px; }
+    button { cursor:pointer; font-weight:700; } button.primary { background:#243758; border-color:#5272aa; }
+    button.on { outline:1px solid #8db3ff; background:#263c62; }
+    .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:7px; }.grid.three { grid-template-columns:repeat(3,1fr); }.grid.four { grid-template-columns:repeat(4,1fr); }
+    .status { margin-top:9px; padding:9px; border-radius:8px; background:#0b1017; color:#b8c5d8; font-size:12px; line-height:1.5; }.status.error { color:#ff9d9d; }
+    .row { display:grid; grid-template-columns:145px 1fr; gap:8px; padding:6px 0; border-bottom:1px solid #252d39; font-size:12px; }.row span:first-child { color:#8f9caf; }
+    .rating { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; padding:9px 0; border-bottom:1px solid #252d39; }
+    .rating b { display:block; font-size:12px; }.rating small { display:block; color:#8f9caf; line-height:1.35; margin-top:3px; }
+    .rating-controls { display:flex; gap:4px; }.rating-controls button { width:31px; height:30px; padding:0; font-size:12px; }
+    .decision { font-weight:800; font-size:17px; letter-spacing:.04em; }.good { color:#9ce8b0; }.warning { color:#ffd38a; }.bad { color:#ff9d9d; }.pending { color:#aab6c8; }
+    .hint { color:#98a6ba; font-size:12px; line-height:1.5; }
+    #sourceFile { display:none; }
+    @media(max-width:920px){ main{grid-template-columns:1fr} aside{border-left:0;border-top:1px solid #293140}.stage{min-height:55vh} }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+<header>
+  <div><h1>G2.4.1 · Canonical GLB Visual Playback Verification</h1><p>Real shd_blockidle.source.glb · Action Studio Blockman · full-stream in-place verification</p></div>
+  <a href="./">← Action Studio</a>
+</header>
+<main>
+  <section class="stage">
+    <canvas id="reviewCanvas"></canvas>
+    <div class="hud"><b id="hudClip">SKYRIM_GUARD/shd_blockidle</b><span id="hudMode">waiting for canonical source GLB</span></div>
+  </section>
+  <aside>
+    <section class="panel">
+      <h2>Canonical Source</h2>
+      <div class="grid">
+        <button id="chooseCanonical" class="primary">Load canonical GLB</button>
+        <button id="chooseSource">Import alternate GLB</button>
+      </div>
+      <input id="sourceFile" type="file" accept=".glb,model/gltf-binary">
+      <div class="grid" style="margin-top:7px">
+        <button id="previewOnce">▶ Once</button><button id="previewLoop">↻ Loop</button>
+        <button id="freezeStart">▮ Start</button><button id="freezeEnd">▮ End</button>
+      </div>
+      <input id="sampleTime" type="range" min="0" max="1" step="0.001" value="0" style="width:100%;margin-top:8px">
+      <div id="reviewStatus" class="status">Load the repository canonical GLB directly, or import an alternate self-contained source GLB. G2.4.1 checks the real retargeted runtime, not only source structure.</div>
+    </section>
+
+    <section class="panel">
+      <h2>Full-stream In-place Stability</h2>
+      <button id="measureStability">Measure every retarget frame</button>
+      <div class="row"><span>Root max / limit</span><output id="stabilityRootMetric">—</output></div>
+      <div class="row"><span>Hips max / limit</span><output id="stabilityHipsMetric">—</output></div>
+      <div class="row"><span>Hips step / limit</span><output id="stabilityStepMetric">—</output></div>
+      <div class="row"><span>Samples</span><output id="stabilityFramesMetric">—</output></div>
+      <div class="row"><span>Stability result</span><output id="stabilityMetricResult">—</output></div>
+      <p class="hint">This samples the actual target rig with <code>inPlace:true</code> across the complete clip. It catches a character that flies away mid-clip even if it returns to the start at the end.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Camera</h2>
+      <div class="grid four"><button data-view="front">Front</button><button data-view="three">3/4</button><button data-view="side">Side</button><button data-view="back">Back</button></div>
+      <p class="hint">Drag the stage to orbit. Review silhouette with the actual procedural longsword mounted on HAND_R.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Automatic Loop Seam</h2>
+      <button id="measureLoop">Measure start ↔ end seam</button>
+      <div class="row"><span>Rotation max</span><output id="rotationMetric">—</output></div>
+      <div class="row"><span>Root translation</span><output id="rootMetric">—</output></div>
+      <div class="row"><span>Pelvis translation</span><output id="pelvisMetric">—</output></div>
+      <div class="row"><span>Metric result</span><output id="loopMetricResult">—</output></div>
+    </section>
+
+    <section class="panel">
+      <h2>Visual Gates</h2>
+      <div id="reviewItems"></div>
+      <div class="row"><span>Decision</span><output id="decisionValue" class="decision pending">PENDING</output></div>
+      <p class="hint">✓ = pass · ~ = usable with local correction · × = source motion should be rejected. Motion stability can pass while pose fidelity still needs correction.</p>
+    </section>
+  </aside>
+</main>
+<script type="module" src="./skyrim-guard-visual-review.js"></script>
+</body>
+</html>

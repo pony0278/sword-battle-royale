@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Step 3A · Live Shield → Sword → Wrist-Grip Constraint</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}
+    body{display:grid;grid-template-columns:minmax(0,1fr) 430px;overflow:hidden}main{position:relative;min-width:0;min-height:0}canvas{width:100%;height:100%;display:block}
+    aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:19px;margin:0 0 6px}h2{font-size:13px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}
+    button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:9px 11px;margin:3px;cursor:pointer}button.active{border-color:#75e6c2;background:#18352f}button.input-flash{outline:3px solid #ffe17a;background:#594713}button.retry-attention{outline:2px solid #ff9f68;background:#542b25}.row{display:flex;flex-wrap:wrap}.note{color:#9eb0c8;font-size:12px}
+    .hud{position:absolute;left:16px;top:16px;min-width:660px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.5 ui-monospace,monospace;pointer-events:none}.legend{position:absolute;left:16px;bottom:16px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:8px 10px;font-size:12px}
+    .parry-cue{position:absolute;left:50%;top:38%;width:min(760px,90%);transform:translate(-50%,-50%);padding:16px 22px;border:2px solid #53647d;border-radius:14px;background:#07101aee;text-align:center;pointer-events:none;box-shadow:0 10px 40px #000a}.parry-cue span{display:block;color:#9eb0c8;font:700 11px/1.2 system-ui,sans-serif;letter-spacing:.16em}.parry-cue strong{display:block;margin:6px 0 5px;font:900 clamp(22px,4vw,45px)/1 system-ui,sans-serif}.parry-cue small{display:block;color:#c4d2e5;font:600 12px/1.45 ui-monospace,monospace;white-space:normal}.parry-cue.used small{text-align:left}.parry-cue.ready{border-color:#f7e56f;background:#42360bea;box-shadow:0 0 35px #f7d84b88}.parry-cue.ready strong{color:#fff18a;animation:parryPulse .45s ease-in-out infinite alternate}.parry-cue.armed,.parry-cue.confirmed{border-color:#62e8ad;background:#0d382cea}.parry-cue.armed strong,.parry-cue.confirmed strong{color:#7ef0ad}.parry-cue.used,.parry-cue.late{border-color:#ff7e74;background:#411b1bea}.parry-cue.used strong,.parry-cue.late strong{color:#ff9b91}.parry-cue.wait strong,.parry-cue.geometry strong{color:#ffd27a}.parry-cue.idle{opacity:.72}@keyframes parryPulse{from{transform:scale(1)}to{transform:scale(1.045)}}
+    .metric{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:8px 0;padding:10px;border:1px solid #243147;border-radius:8px;background:#080d14}.metric b{color:#ddecff}.toggle{display:flex;align-items:center;gap:8px;margin:10px 0}.debug-range{display:grid;grid-template-columns:1fr auto;gap:3px 10px;margin:10px 0}.debug-range input{grid-column:1/-1;width:100%}.debug-range output{color:#7ef0ad;font:700 12px ui-monospace,monospace}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px;max-height:330px;overflow:auto}.good{color:#7ef0ad}.warn{color:#ffd27a}.bad{color:#ff8c8c}
+    @media(max-width:900px){html,body{height:auto;min-height:100%;overflow:auto}body{display:block}main{height:58vh;min-height:360px}.hud{left:10px;right:10px;top:10px;min-width:0;font-size:10px}aside{border-left:0;border-top:1px solid #26354d}button{flex:1 1 30%;min-height:44px}}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <main>
+    <canvas id="canvas" tabindex="0"></canvas>
+    <div id="parryCue" class="parry-cue wait"><span>BEST PARRY TIMING · R18I5</span><strong id="parryCueMain">LOADING…</strong><small id="parryCueDetail">等待即時 attack gate</small></div>
+    <div class="hud">
+      <b>Step 3A · Live Shield → Sword → Arm → OLD B3 · BUILD R18I5 TOP/RIGHT</b>
+      <div id="hudAttack">Attack commitment / TTC: loading…</div>
+      <div id="hudInput">Input capture: click the scene, then press F</div>
+      <div id="hudContact">REAL Sword × Shield: —</div>
+      <div id="hudCoupling">Parry gate: —</div>
+      <div id="hudShield">Shield reach: —</div>
+      <div id="hudWeapon">Shield → Sword → Hand: —</div>
+      <div id="hudSeparation">Step 3A isolation: —</div>
+      <div id="hudLineClearance">LINE CLEAR: waiting</div>
+      <div id="hudRecoil">OLD B3 recoil: —</div>
+      <div id="hudDiagnostic">STEP 3A diagnostic: —</div>
+    </div>
+    <div class="legend">Cyan = shield target · yellow = sword contact · red = original attack axis · green/orange = current sword axis PASS/FAIL · purple = wrist→hilt line</div>
+  </main>
+  <aside>
+    <h1>Step 3A · Live Shield → Sword → Wrist-Grip</h1>
+    <div class="note">保留已確認的手動 Parry gate。真實 Sword × Shield swept contact 先建立 ParryImpact、保存精確接觸姿勢並選定一次歷史 OLD B3 的 25° Parried ReactionDefinition；接觸期間由盾劍約束維持 upperarm.r → lowerarm.r → wrist.r → hand／hilt，並以最終世界空間劍柄量測做 bounded residual correction。DEFLECT_IMPULSE marker 會鎖存；TOP／RIGHT 優先以 7/7 通過後釋放，若呈現品質仍差少量，有效的真實 Parry 也會走 fail-safe 28ms continuity bridge，不能永久卡住 OLD B3。OLD B3 從 elapsed 0 開始，power frame 至少保持 72ms，並以最終骨架的世界空間頭、肩與髖位置驗證後仰。LEFT release 仍暫緩，獨立 shoulder／clavicle helper維持關閉。</div>
+
+    <h2>Attack direction</h2>
+    <div class="row"><button data-attack="top">TOP</button><button data-attack="right" class="active">RIGHT</button><button data-attack="left">LEFT</button></div>
+
+    <h2>Defense</h2>
+    <div class="row"><button data-mode="block">BLOCK</button><button data-mode="parry" class="active">PARRY</button></div>
+
+    <h2>Manual Parry input</h2>
+    <div class="note">攻擊開始後觀察 HUD 的 committed / TTC；在 committed YES 且 TTC 約 60–180ms 時按下按鈕或 F 鍵。每次攻擊只能嘗試一次，太早或太晚都要重開下一次攻擊。</div>
+    <div class="row"><button id="parryNow">PARRY NOW (F)</button><button id="retryAttack">RETRY ATTACK</button></div>
+
+    <h2>Step 1 · isolate OLD B3</h2>
+    <div class="note">保留上一階段的直接診斷鈕；它會略過所有第二步 gate 與真實碰撞，只用來重查 B3。</div>
+    <div class="row"><button id="forceOldB3">FORCE OLD B3</button></div>
+
+    <div class="metric">
+      <span>Parry types</span><b>one · no Perfect</b>
+      <span>Input authority</span><b>manual PARRY NOW</b>
+      <span>Attack commitment</span><b>authored movementStartSeconds</b>
+      <span>Valid TTC</span><b>60–180 ms</b>
+      <span>Shield tracking correction</span><b>clamp ≤ 0.18 m</b>
+      <span>Predictive geometry</span><b>geometry-guided shield motion clamped to 18cm · unreachable linear target may fall back to measured current sweep · guidance · cannot veto input</b><span>Target continuity</span><b>previous post-tracking shield → primary relative drive → recapture rotated shield → bounded residual drive → real contact</b>
+      <span>Success authority</span><b>real swept Sword × Shield contact</b>
+      <span>Invalid / no input</span><b>falls back to BLOCK</b>
+      <span>Motion authority</span><b>current world shield surface · every frame</b><span>Early low stance</span><b>predicted future sword point ≤ 180ms starts posture only; once engaged, hold until real contact or attack reset</b>
+      <span>Preset motion curve</span><b>none</b>
+      <span>After success</span><b>ParryImpact selects one 25° OLD B3 plan · contact holds presentation at 0ms · latched DEFLECT_IMPULSE + TOP/RIGHT 7/7, or confirmed-Parry fail-safe, starts a 28ms continuity bridge; canonical arm → torso → legs OLD B3 runs from elapsed 0</b>
+      <span>Physical arm chain</span><b>during contact: bounded upperarm.r → lowerarm.r → wrist.r → hand / socket / hilt · after DEFLECT_IMPULSE: contact correction fades to zero before visible OLD B3 arm sweep · separate shoulder/clavicle helper off · LEFT release deferred</b>
+      <span>LINE CLEAR gates</span><b>sword axis ≥ 7° · hilt offline ≥ 2.5cm · wrist→grip ≥ 7°</b>
+    </div>
+
+    <label class="toggle"><input id="autoRepeat" type="checkbox"> Auto repeat attack (Parry input stays manual)</label>
+    <label class="toggle"><input id="slowReview" type="checkbox" checked> Pre-contact Parry review: 0.12× + hold prompt 1.5s (Block + Step 3A + direct OLD B3 stay 1.00×)</label>
+    <label class="toggle"><input id="showSurface" type="checkbox" checked> Show shield parry surface</label>
+
+    <section id="stanceDebugPanel" hidden>
+      <h2>DEBUG MODE · LOW STANCE</h2>
+      <div class="note">只調整程序化預測、姿態深度與速度；不改 Parry 輸入或真實碰撞成功權限。變更後按 APPLY + RETRY 測下一次攻擊。</div>
+      <label class="debug-range" for="debugLeadMs"><span>Predict lead window</span><output id="debugLeadMsValue">180ms</output><input id="debugLeadMs" type="range" min="60" max="400" step="10" value="180"></label>
+      <label class="debug-range" for="debugMaxCrouchCm"><span>Maximum crouch</span><output id="debugMaxCrouchCmValue">4.5cm</output><input id="debugMaxCrouchCm" type="range" min="1" max="8" step="0.1" value="4.5"></label>
+      <label class="debug-range" for="debugCrouchSpeed"><span>Crouch speed</span><output id="debugCrouchSpeedValue">1.05m/s</output><input id="debugCrouchSpeed" type="range" min="0.2" max="3" step="0.05" value="1.05"></label>
+      <label class="debug-range" for="debugEdgeCm"><span>Outside-edge activation</span><output id="debugEdgeCmValue">1.0cm</output><input id="debugEdgeCm" type="range" min="0.2" max="3" step="0.1" value="1"></label>
+      <label class="debug-range" for="debugPlaneCm"><span>Predicted plane tolerance</span><output id="debugPlaneCmValue">1.2cm</output><input id="debugPlaneCm" type="range" min="0.2" max="5" step="0.1" value="1.2"></label>
+      <label class="debug-range" for="debugLowGapCm"><span>Minimum gap below shield</span><output id="debugLowGapCmValue">0.8cm</output><input id="debugLowGapCm" type="range" min="0" max="5" step="0.1" value="0.8"></label>
+      <label class="debug-range" for="debugDownRatio"><span>Minimum downward ratio</span><output id="debugDownRatioValue">0.75</output><input id="debugDownRatio" type="range" min="0.2" max="1" step="0.05" value="0.75"></label>
+      <label class="debug-range" for="debugKneeBandCm"><span>Knee-line vertical band</span><output id="debugKneeBandCmValue">16cm</output><input id="debugKneeBandCm" type="range" min="5" max="30" step="1" value="16"></label>
+      <label class="debug-range" for="debugArmAttemptCm"><span>Arm-attempt gate</span><output id="debugArmAttemptCmValue">0.5cm</output><input id="debugArmAttemptCm" type="range" min="0" max="2" step="0.1" value="0.5"></label>
+      <div id="debugProfileSummary" class="note">Debug profile loading…</div>
+      <div class="row"><button id="debugApplyRetry">APPLY + RETRY</button><button id="debugResetDefaults">RESET R18I5 DEFAULTS</button></div>
+    </section>
+
+    <h2>Expected causality</h2>
+    <div class="metric"><span>1</span><b>Attack crosses authored commitment marker</b><span>2</span><b>TTC enters 60–180ms window</b><span>3</span><b>PARRY NOW stays visible for review</b><span>4</span><b>Player presses F and defender starts the Parry action</b><span>5</span><b>Select a reachable intercept: linear prediction or surface-relative measured edge correction, clamped to 18cm</b><span>6</span><b>Recapture the rotated shield and persistent arm carry; wrist.l solves the shield plane, then chest/spine may extend a saturated arm; predicted knee-line/low-gap threats recruit the planted stance before contact · no step and no authored crouch curve</b><span>7</span><b>Real swept Sword × Shield contact creates ParryImpact, freezes the exact attacker contact pose and selects one OLD B3 definition without advancing its visible presentation</b><span>8</span><b>During live contact, bounded upperarm.r, lowerarm.r and wrist.r correction keeps the sword coupled to the moving shield; final hilt clearance is corrected in a closed loop</b><span>9</span><b>Latched DEFLECT_IMPULSE and TOP / RIGHT 7/7 authorize normal release; a confirmed real Parry has a fail-safe release instead of an infinite hold</b><span>10</span><b>A 28ms continuity bridge returns the constrained arm to the canonical OLD contact base</b><span>11</span><b>The selected OLD B3 starts from elapsed 0 with full arm → torso → legs authority; it is never hidden underneath the contact solver</b></div>
+
+    <h2>What to check</h2>
+    <div class="metric"><span>Too early</span><b>REJECTED · no automatic later success</b><span>Valid timing</span><b>ARMED, then only succeeds on visible contact</b><span>Too late</span><b>REJECTED / BLOCK</b><span>No PARRY NOW</span><b>BLOCK</b><span>Success</span><b>ParryImpact selects OLD B3 · final hilt clearance receives bounded residual correction · DEFLECT_IMPULSE is latched · 7/7 uses the normal 28ms bridge; confirmed real Parry uses the same bridge as a fail-safe and cannot remain frozen · canonical OLD B3 starts visibly from elapsed 0</b><span>Performance acceptance</span><b>Verification report ≤ 60,000 characters · trace stores compact scalar frames only</b><span>Failure diagnostic</span><b>failed gate + actual / required value · terminal state shown separately</b><span>Whiff category</span><b>outside shield edge / missed shield plane / outside active window</b><span>Whiff distances</span><b>blade % · final plane/edge gap · persistent arm tracking · residual edge/plane · arm edge before→after · wrist/torso · threat zone + blade/rim/knee heights · lowgap/kdist · early stance · crouch/hips · foot drift</b><span>LEFT intercept target</span><b>MEASURED SWEEP preserves world direction + 1.2cm inset; R18I compares the measured sword point with the predicted future sword point, starts the planted knee-line/low-gap stance up to 180ms early, then holds it through the last residual gap until real contact or reset; measured geometry remains preferred whenever active · no authored curve · real contact still required · LEFT contact-correction release intentionally deferred</b><span>Contact location</span><b>blade percentage + BASE/MID/TIP · shield radial position + FACE/RIM</b><span>Direction check</span><b>RIGHT / LEFT must deflect in opposite directions</b><span>R18I defender allowed</span><b>defender wrist.l · chest · spine · hips · upper/lower legs · foot orientation correction</b><span>R18I attacker allowed</span><b>contact correction owns the held pose only; after DEFLECT_IMPULSE the complete 25° OLD B3 runs from reaction elapsed 0</b><span>Must remain still</span><b>both roots X/Z · both foot world positions (no step) on defender · attacker shoulder correction</b></div>
+
+    <h2>Free inspection camera</h2>
+    <div class="metric"><span>Orbit</span><b>left drag</b><span>Pan</span><b>right / middle / Shift+left drag</b><span>Zoom</span><b>mouse wheel</b><span>Move focus</span><b>W A S D · Q down · E up</b><span>Quick reset</span><b>3/4 · Side · Contact</b></div>
+    <h2>Views · quick reset</h2><div class="row"><button data-view="three">3/4</button><button data-view="side">Side</button><button data-view="contact">Contact</button></div>
+    <h2>Verification</h2><div id="status" class="warn">Loading…</div><pre id="report">Not run.</pre>
+  </aside>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-closed-loop-old-b3-r18i5"></script>
+</body>
+</html>

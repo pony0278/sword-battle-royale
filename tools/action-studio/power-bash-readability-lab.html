@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>G3.6.3 D Production Power Parry Review</title>
+  <style>
+    :root{color-scheme:dark}*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#07101a;color:#e8f0fb;font:14px/1.45 Inter,system-ui,sans-serif}body{padding:18px}main{max-width:1700px;margin:auto}.head{display:flex;gap:18px;justify-content:space-between;align-items:flex-start;margin-bottom:12px}.eyebrow{margin:0;color:#74d8ff;font:700 11px/1.2 ui-monospace,monospace;letter-spacing:.14em}.head h1{margin:4px 0 6px;font-size:24px}.note{margin:0;max-width:1040px;color:#9fb2c9}.good{color:#7ef0ad}.bad{color:#ff8c8c}.stage{position:relative;border:1px solid #26364e;border-radius:12px;overflow:hidden;background:#09111d;height:610px}.stage canvas{display:block;width:100%;height:100%;cursor:grab}.stage canvas:active{cursor:grabbing}.legend{position:absolute;left:14px;top:14px;padding:10px 12px;border-radius:8px;background:#07101acc;border:1px solid #2b3d57;font:12px/1.45 ui-monospace,monospace;color:#b7c8dd}.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}.controls button{border:1px solid #31435e;background:#101b2a;color:#e8f0fb;padding:8px 11px;border-radius:7px;cursor:pointer}.controls button.primary{background:#123a52;border-color:#2e8cb8}.controls input[type=range]{width:min(520px,45vw)}#progressLabel{color:#9fb2c9;font:12px ui-monospace,monospace}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.card{border:1px solid #26364e;background:#0b1522;border-radius:10px;padding:12px}.card b{display:block;font-size:16px;margin-bottom:2px}.card small{display:block;color:#7fdcff;margin-bottom:8px}.card.recommended{border-color:#3a7d67;background:#0b1919}.card.recommended small{color:#8cf3c7}.row{font:12px/1.55 ui-monospace,monospace;color:#bdcbe0}.row strong{color:#fff;font-weight:600}.why{margin-top:12px;border:1px solid #4f3941;background:#1a1116;border-radius:10px;padding:12px}.why b{color:#ffb3bd}.report{margin-top:12px}pre{white-space:pre-wrap;max-height:420px;overflow:auto;background:#07101a;border:1px solid #26364e;border-radius:10px;padding:12px;font:11px/1.45 ui-monospace,monospace;color:#aebfd4}.foot{margin-top:8px;color:#8195ad;font-size:12px}@media(max-width:1100px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:700px){.cards{grid-template-columns:1fr}.stage{height:470px}.head{display:block}.controls input[type=range]{width:100%}}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+  <main>
+    <div class="head">
+      <div>
+        <p class="eyebrow">G3.6.3 · D PROMOTED TO PRODUCTION POWER PARRY</p>
+        <h1>Full Power Bash Readability A/B/C/D</h1>
+        <p class="note">D keeps C's strong <b>0.08→0.55s @0.95×</b> Power Bash unchanged, then continues through the original Skyrim <b>0.55→clip end @1.00×</b> recovery tail. The goal is C's force with A's natural reset. D is now the production Parry / Perfect Parry body motion; A/B/C remain historical comparison references.</p>
+      </div>
+      <div id="status">Loading…</div>
+    </div>
+
+    <section class="stage">
+      <canvas id="canvas"></canvas>
+      <div class="legend">A · Full Source<br>B · Former G3.6<br>C · Extended Candidate<br>D · Extended + Full Recovery<br><br>CAMERA · Left drag orbit · Wheel zoom · Right drag pan</div>
+    </section>
+
+    <div class="controls">
+      <button id="play" class="primary">❚❚ Pause</button>
+      <button id="reset">Reset Motion</button>
+      <button id="resetCamera">Reset Camera</button>
+      <button data-view="three">Three-quarter</button>
+      <button data-view="front">Front</button>
+      <button data-view="side">Side</button>
+      <button data-view="back">Back</button>
+      <input id="progress" type="range" min="0" max="1" step="0.001" value="0.5" aria-label="Normalized candidate timeline progress">
+      <span id="progressLabel">independent real-time playback</span>
+    </div>
+
+    <section class="cards">
+      <article class="card" data-candidate="full-source">
+        <b>A — Full Source</b><small>complete source · 0.50× slow motion</small>
+        <div class="row"><strong>Window</strong> · <span data-role="window">—</span></div>
+        <div class="row"><strong>Screen time</strong> · <span data-role="duration">—</span></div>
+        <div class="row"><strong>Motion</strong> · <span data-role="motion">—</span></div>
+        <div class="row"><strong>Now</strong> · <span data-role="source">—</span></div>
+      </article>
+      <article class="card" data-candidate="current-g36">
+        <b>B — Former G3.6</b><small>historical short production trim · Power segment only</small>
+        <div class="row"><strong>Window</strong> · <span data-role="window">—</span></div>
+        <div class="row"><strong>Screen time</strong> · <span data-role="duration">—</span></div>
+        <div class="row"><strong>Motion</strong> · <span data-role="motion">—</span></div>
+        <div class="row"><strong>Now</strong> · <span data-role="source">—</span></div>
+      </article>
+      <article class="card" data-candidate="extended">
+        <b>C — Extended Candidate</b><small>strong Power Bash · 0.08→0.55s · 0.95× · no recovery tail</small>
+        <div class="row"><strong>Window</strong> · <span data-role="window">—</span></div>
+        <div class="row"><strong>Screen time</strong> · <span data-role="duration">—</span></div>
+        <div class="row"><strong>Motion</strong> · <span data-role="motion">—</span></div>
+        <div class="row"><strong>Now</strong> · <span data-role="source">—</span></div>
+      </article>
+      <article class="card recommended" data-candidate="extended-full-recovery">
+        <b>D — Production G3.6.3</b><small>approved C Power 0.95× → authored recovery tail 1.00×</small>
+        <div class="row"><strong>Window</strong> · <span data-role="window">—</span></div>
+        <div class="row"><strong>Screen time</strong> · <span data-role="duration">—</span></div>
+        <div class="row"><strong>Motion</strong> · <span data-role="motion">—</span></div>
+        <div class="row"><strong>Now</strong> · <span data-role="source">—</span></div>
+      </article>
+    </section>
+
+    <section class="why">
+      <b>Why D was promoted</b>
+      <div>C already has the desired force but stops before the authored reset. D changes nothing in C's Power phase and appends only the original Skyrim recovery from 0.55s through clip end. D passed that acceptance: it preserves C's force and restores A-like authored recovery, so G3.6.3 promotes it to production.</div>
+    </section>
+
+    <details class="report">
+      <summary>Probe JSON report</summary>
+      <pre id="report">Not run.</pre>
+    </details>
+    <div class="foot">G3.6.3 production review; A/B/C are retained as history. Camera: left-drag orbit · wheel zoom · right-drag pan. Presets: ?view=three|front|side|back. Static review: ?progress=0.25, 0.50, 0.75, 1.00.</div>
+  </main>
+  <script type="module" src="./power-bash-readability-lab.js"></script>
+</body>
+</html>
