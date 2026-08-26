@@ -2,6 +2,9 @@ import {
   evaluateSweptContactTemporalEligibility,
 } from '../../../src/combat/swept-contact-temporal-eligibility.js';
 import { createParryRootDisplacementRuntime } from '../../../src/combat/parry-root-displacement.js';
+import { createParryArmFlingRuntime } from '../../../src/combat/parry-arm-fling.js';
+import { diagnosticIncomingVelocity } from './direct-old-b3-diagnostic.js';
+import { createParriedTorsoWorldLeanRuntime } from '../../../src/combat/parried-torso-world-lean.js';
 
 const WEAPON_ARM_RELEASE_BONES = Object.freeze(['upperarm.r', 'lowerarm.r', 'wrist.r', 'hand.r', 'handslot.r']);
 
@@ -45,6 +48,56 @@ export function createShieldParryContactHandoffController({
   } = services;
   const attackerRootDisplacement = createParryRootDisplacementRuntime({ rig: attacker?.rig });
   const defenderRootDisplacement = createParryRootDisplacementRuntime({ rig: defender?.rig });
+  // THREE is the lab page's classic-script global; these two runtimes write
+  // bone quaternions and need its quaternion math.
+  const attackerArmFling = createParryArmFlingRuntime(globalThis.THREE, { rig: attacker?.rig });
+  const attackerTorsoLean = createParriedTorsoWorldLeanRuntime(globalThis.THREE, { rig: attacker?.rig });
+  // Peak shield-surface velocity while the contact is live: the defender's
+  // own parry sweep is the excitation the release impulse is built from.
+  let previousShieldSurfaceCenter = null;
+  let peakShieldSweepVelocity = null;
+  let previousHandWorld = null;
+  let latestHandVelocity = null;
+
+  function trackShieldSweepVelocity(deltaSeconds) {
+    const surface = buckler?.getWorldParrySurface?.();
+    const center = surface?.center;
+    if (!center || !(deltaSeconds > 1e-6)) { previousShieldSurfaceCenter = center || null; return; }
+    if (previousShieldSurfaceCenter) {
+      const velocity = {
+        x: (center.x - previousShieldSurfaceCenter.x) / deltaSeconds,
+        y: (center.y - previousShieldSurfaceCenter.y) / deltaSeconds,
+        z: (center.z - previousShieldSurfaceCenter.z) / deltaSeconds,
+      };
+      const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
+      const peakSpeed = peakShieldSweepVelocity
+        ? Math.hypot(peakShieldSweepVelocity.x, peakShieldSweepVelocity.y, peakShieldSweepVelocity.z)
+        : 0;
+      if (speed > peakSpeed && speed < 20) peakShieldSweepVelocity = velocity;
+    }
+    previousShieldSurfaceCenter = center;
+    const handBone = attacker?.rig?.bones?.['hand.r'];
+    const THREE_ = globalThis.THREE;
+    if (handBone?.getWorldPosition && THREE_?.Vector3) {
+      const world = handBone.getWorldPosition(new THREE_.Vector3());
+      if (previousHandWorld) {
+        const velocity = {
+          x: (world.x - previousHandWorld.x) / deltaSeconds,
+          y: (world.y - previousHandWorld.y) / deltaSeconds,
+          z: (world.z - previousHandWorld.z) / deltaSeconds,
+        };
+        // Peak, not latest: by the release frame the constraint has parked
+        // the hand against the shield, so the last-frame velocity is noise.
+        // The peak is the shield sweep actually driving the hand.
+        const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
+        const peak = latestHandVelocity
+          ? Math.hypot(latestHandVelocity.x, latestHandVelocity.y, latestHandVelocity.z)
+          : 0;
+        if (speed > peak && speed < 20) latestHandVelocity = velocity;
+      }
+      previousHandWorld = { x: world.x, y: world.y, z: world.z };
+    }
+  }
   const {
     captureCanonicalAttackerOldB3Base,
     captureAttackerWorldSilhouette,
@@ -150,9 +203,26 @@ export function createShieldParryContactHandoffController({
     // Displacement is armed here, never earlier: while the swept probe is live
     // it owns parry success, and moving either root would move the geometry it
     // measures. The defender is pushed the opposite way by the same impulse.
-    const backwardDirection = handoff.couplingReport?.attackDirection
-      ? exchangeState.latestCombatResult?.attackerReaction?.plan?.body?.direction
-      : null;
+    //
+    // Backward is the actor axis, not the recoil plan's body direction: that
+    // vector is deflect-shaped and for a TOP exchange points diagonally
+    // (measured live: x-dominant), which sent the root displacement sideways
+    // and gave the world-lean servo a frame where the contact pose read as
+    // -38 degrees. Hips-to-hips is what "away from the opponent" means.
+    const backwardDirection = (() => {
+      const THREE_ = globalThis.THREE;
+      const attackerHips = attacker?.rig?.bones?.hips;
+      const defenderHips = defender?.rig?.bones?.hips;
+      if (THREE_?.Vector3 && attackerHips?.getWorldPosition && defenderHips?.getWorldPosition) {
+        const a = attackerHips.getWorldPosition(new THREE_.Vector3());
+        const d = defenderHips.getWorldPosition(new THREE_.Vector3());
+        const x = a.x - d.x;
+        const z = a.z - d.z;
+        const m = Math.hypot(x, z);
+        if (m > 1e-6) return { x: x / m, y: 0, z: z / m };
+      }
+      return exchangeState.latestCombatResult?.attackerReaction?.plan?.body?.direction || null;
+    })();
     const attackerDisplacement = attackerRootDisplacement.start({
       role: 'attacker',
       backwardDirection,
@@ -169,6 +239,76 @@ export function createShieldParryContactHandoffController({
           momentum: 1,
         })
       : null;
+
+    // Same gate as the root displacement: the swept probe owned the exchange
+    // until here, so the fling and the world-lean servo may only exist after
+    // DEFLECT_IMPULSE. The impulse is built from what was actually measured:
+    // impact contact point + surface normal, the sword's incoming velocity,
+    // and the defender's peak shield sweep.
+    // The combat result's own outcome string selects the profile; the modules
+    // fall back to the ordinary parry profile for anything unrecognized.
+    const flingOutcome = exchangeState.latestCombatResult?.outcome;
+    // The lab's review clock makes frame-derived velocities unreliable (a
+    // rewind spans one delta and reads as tens of m/s), so every measured
+    // velocity is sanity-bounded and the incoming falls back to the authored
+    // attack speed for the selected direction -- the same mapping the Step 1
+    // diagnostic drives the verified OLD B3 with.
+    const saneVelocity = (velocity, capMetersPerSecond) => {
+      if (!velocity) return null;
+      const speed = Math.hypot(velocity.x || 0, velocity.y || 0, velocity.z || 0);
+      return speed > 0.05 && speed <= capMetersPerSecond ? velocity : null;
+    };
+    const armFlingPlan = attackerArmFling.start({
+      outcome: flingOutcome,
+      contactPoint: exchangeState.firstContact?.point,
+      surfaceNormal: handoff.surfaceAtContact?.normal
+        || buckler?.getWorldParrySurface?.()?.normal,
+      normalSideHint: backwardDirection,
+      incomingVelocity: saneVelocity(exchangeState.firstContact?.incomingVelocity, 12)
+        || diagnosticIncomingVelocity(selectedDirection),
+      shieldSweepVelocity: saneVelocity(peakShieldSweepVelocity, 6),
+      handOrigin: (() => {
+        const THREE_ = globalThis.THREE;
+        const handBone = attacker?.rig?.bones?.['hand.r'];
+        if (!THREE_?.Vector3 || !handBone?.getWorldPosition) return null;
+        const world = handBone.getWorldPosition(new THREE_.Vector3());
+        return { x: world.x, y: world.y, z: world.z };
+      })(),
+      handReleaseVelocity: saneVelocity(latestHandVelocity, 6),
+      momentum: 1,
+    });
+    const torsoLeanPlan = backwardDirection
+      ? attackerTorsoLean.start({ outcome: flingOutcome, backwardDirection })
+      : null;
+    exchangeState.latestArmFling = armFlingPlan?.accepted === true
+      ? Object.freeze({
+          outcome: flingOutcome,
+          impulseMagnitudeNs: armFlingPlan.impulseMagnitudeNs,
+          impulse: armFlingPlan.impulse,
+          carryDirection: armFlingPlan.carryDirection,
+          measuredClosingSpeed: armFlingPlan.measuredClosingSpeed,
+          shoulderAxis: armFlingPlan.joints.shoulder.axis,
+          shoulderInitialVelocityRadPerSecond:
+            armFlingPlan.joints.shoulder.initialVelocityRadPerSecond,
+          incomingUsed: armFlingPlan.incomingUsed,
+          normalUsed: armFlingPlan.normalUsed,
+          debugInputs: Object.freeze({
+            selectedDirection: selectedDirection || 'UNDEFINED',
+            contactPoint: exchangeState.firstContact?.point || null,
+            surfaceNormal: handoff.surfaceAtContact?.normal || null,
+            incomingVelocity: exchangeState.firstContact?.incomingVelocity || null,
+            shieldSweepVelocity: peakShieldSweepVelocity,
+            handReleaseVelocity: latestHandVelocity,
+          }),
+          startsAfterDeflectImpulse: true,
+        })
+      : Object.freeze({ accepted: false, reason: armFlingPlan?.reason || 'not-planned' });
+    exchangeState.latestTorsoLean = torsoLeanPlan?.accepted === true
+      ? Object.freeze({
+          baseLeanDegrees: torsoLeanPlan.baseLeanDegrees,
+          targetBackwardLeanDegrees: torsoLeanPlan.targetBackwardLeanDegrees,
+        })
+      : Object.freeze({ accepted: false, reason: torsoLeanPlan?.reason || 'not-planned' });
 
     exchangeState.latestRootDisplacement = Object.freeze({
       attacker: attackerDisplacement?.accepted === true
@@ -434,6 +574,7 @@ export function createShieldParryContactHandoffController({
     if (!handledCombat) return Object.freeze({ handledCombat: false, liveConstraintNeedsUpdate: false });
 
     if (ownsLiveContact()) {
+      trackShieldSweepVelocity(deltaSeconds);
       exchangeState.latestCombatUpdate = combat.update(deltaSeconds, {
         camera,
         attackerRecoilChannels: TWO_ACTOR_PARRY_REACTION_CHANNELS.LIVE_CONTACT_BODY,
@@ -473,6 +614,18 @@ export function createShieldParryContactHandoffController({
         });
       }
       if (exchangeState.step3AReleaseBlend) exchangeState.step3AReleaseBlend.elapsedMs += deltaMs;
+      // Writers after the presentation, in dependency order: the world-lean
+      // servo re-measures and corrects the torso (moving the shoulder), the
+      // arm fling then rewrites the arm bones from its own release-time base
+      // (replacing, not stacking on, the presentation's arm aim), and the
+      // root displacement translates last.
+      const recoilWeights = combat.snapshot.attackerRecoil?.sample?.weights || null;
+      attackerTorsoLean.advance(deltaMs);
+      exchangeState.latestTorsoLeanReport = attackerTorsoLean.apply({
+        torsoWeight: recoilWeights?.torsoWeight ?? 1,
+      });
+      attackerArmFling.advance(deltaMs);
+      exchangeState.latestArmFlingReport = attackerArmFling.apply();
       // One clock, two writers: the attacker root is safe to write here because
       // guardRuntime only rebuilds the defender.
       attackerRootDisplacement.advance(deltaMs);
@@ -480,7 +633,12 @@ export function createShieldParryContactHandoffController({
       exchangeState.latestAttackerRootDisplacement = attackerRootDisplacement.apply();
       if (exchangeState.latestCombatUpdate?.justCompleted) {
         // The clock above stops with the exchange, so settle both roots back
-        // onto their base rather than leaving a residual offset standing.
+        // onto their base rather than leaving a residual offset standing. The
+        // arm and torso are different: the recovery blend captures the rig as
+        // its source pose, so they release ownership without rewinding and the
+        // recovery stands the attacker up from the flung silhouette.
+        attackerArmFling.releaseOwnership();
+        attackerTorsoLean.releaseOwnership();
         resetRootDisplacement();
         exchangeState.latestAttackerRootDisplacement = null;
         exchangeState.latestDefenderRootDisplacement = null;
@@ -525,6 +683,12 @@ export function createShieldParryContactHandoffController({
   function resetRootDisplacement() {
     attackerRootDisplacement.reset();
     defenderRootDisplacement.reset();
+    attackerArmFling.releaseOwnership();
+    attackerTorsoLean.releaseOwnership();
+    previousShieldSurfaceCenter = null;
+    peakShieldSweepVelocity = null;
+    previousHandWorld = null;
+    latestHandVelocity = null;
     return null;
   }
 

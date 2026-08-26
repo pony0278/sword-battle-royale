@@ -49,6 +49,10 @@ export function createShieldParryDebugApi({
     get latestRootDisplacement() { return getExchangeState().latestRootDisplacement; },
     get latestAttackerRootDisplacement() { return getExchangeState().latestAttackerRootDisplacement; },
     get latestDefenderRootDisplacement() { return getExchangeState().latestDefenderRootDisplacement; },
+    get latestArmFling() { return getExchangeState().latestArmFling; },
+    get latestArmFlingReport() { return getExchangeState().latestArmFlingReport; },
+    get latestTorsoLean() { return getExchangeState().latestTorsoLean; },
+    get latestTorsoLeanReport() { return getExchangeState().latestTorsoLeanReport; },
     get activeParryInterceptDiagnosis() {
       return buildActiveParryInterceptDiagnosis({
         attackSnapshot: runtimes.attackRuntime.snapshot,
