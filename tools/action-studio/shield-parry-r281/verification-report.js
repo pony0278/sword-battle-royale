@@ -92,8 +92,10 @@ export function buildShieldParryVerificationReport(context) {
       releaseStartPresentationMs:
         exchangeState.step3AContactTransfer?.oldB3ReleaseStartPresentationMs ?? null,
       continuityBridgeMs: exchangeState.step3AContactTransfer?.continuityBridgeMs ?? null,
-      visibleOldB3StartsAtDeflectImpulse:
-        exchangeState.step3AContactTransfer?.visibleOldB3StartsAtDeflectImpulse === true,
+      visibleOldB3BodyStartedAtImpact:
+        exchangeState.step3AContactTransfer?.visibleOldB3BodyStartedAtImpact === true,
+      weaponArmJoinsOldB3AtDeflectImpulse:
+        exchangeState.step3AContactTransfer?.weaponArmJoinsOldB3AtDeflectImpulse === true,
       continuationStartedAtPresentationMs:
         exchangeState.step3AContactTransfer?.continuationStartedAtPresentationMs ?? null,
       continuationStartedAtImpactClockMs:
@@ -192,19 +194,21 @@ export function buildShieldParryVerificationReport(context) {
           && attackerReaction.sourceBurst?.activation === 'deflect-impulse'
           && attackerReaction.sourceBurst?.powerFrame?.startsAtDeflectImpulse === true
           && attackerReaction.silhouette?.backwardPitchDegrees >= 25
-          && attackerReaction.channelPolicy?.contactConstraintRunsBeforeVisibleReaction === true
+          && attackerReaction.channelPolicy?.contactConstraintRunsBeforeVisibleReaction === false
           && attackerReaction.channelPolicy?.separateBalanceBreakRuntime === false
         : true,
-      contactOwnsFinalPoseBeforeVisibleOldB3: ownsLiveContact
-        ? combatSnapshot.attackerRecoil?.appliedChannels?.torso === false
+      contactOwnsWeaponArmWhileOldB3BodyRuns: ownsLiveContact
+        ? combatSnapshot.attackerRecoil?.appliedChannels?.torso === true
+          && combatSnapshot.attackerRecoil?.appliedChannels?.legs === true
           && combatSnapshot.attackerRecoil?.appliedChannels?.weaponArm === false
-          && exchangeState.latestGripConstraintReport?.reactionIntentAppliedBeforeConstraint === false
+          && exchangeState.latestGripConstraintReport?.reactionIntentAppliedBeforeConstraint === true
         : true,
-      b3PresentationParkedAtOriginDuringLiveContact: ownsLiveContact
+      b3BodyClockRunsToImpulsePeakDuringLiveContact: ownsLiveContact
         ? combatSnapshot.attackerRecoil?.phaseClock?.phaseLatch
             === liveContactPhaseLatch
-          && combatSnapshot.attackerRecoil?.phaseClock?.latchPointMs === 0
-          && combatSnapshot.attackerRecoil?.phaseClock?.elapsedMs === 0
+          && combatSnapshot.attackerRecoil?.phaseClock?.latchPointMs > 0
+          && combatSnapshot.attackerRecoil?.phaseClock?.elapsedMs
+            <= combatSnapshot.attackerRecoil.phaseClock.latchPointMs + 1e-6
         : true,
       weaponArmRemainsContactConstrainedDuringStep3A: ownsLiveContact
         ? exchangeState.step3AContactTransfer?.weaponArmContactConstrained === true
@@ -228,11 +232,13 @@ export function buildShieldParryVerificationReport(context) {
       oldB3WeaponArmReleasedOnlyAfterDefenderDeflectMarker: exchangeState.step3AContactTransfer?.releasedToOldB3
         ? exchangeState.step3AContactTransfer.defenderReleaseGate?.passed === true
         : true,
-      deflectImpulseStartsOldB3FromZeroWithoutBodyRestart: exchangeState.step3AContactTransfer?.handoffConsumedByOldB3
+      deflectImpulseContinuesRunningOldB3WithoutBodyRestart: exchangeState.step3AContactTransfer?.handoffConsumedByOldB3
         ? exchangeState.step3AContactTransfer.bodyRestartedAtRelease === false
           && exchangeState.step3AContactTransfer.continuationPlanIdentityPreserved === true
           && exchangeState.step3AContactTransfer.continuationElapsedPreserved === true
-          && exchangeState.step3AContactTransfer.continuationStartedAtPresentationMs === 0
+          && exchangeState.step3AContactTransfer.continuationStartedAtPresentationMs >= 0
+          && exchangeState.step3AContactTransfer.continuationStartedAtPresentationMs
+            <= (exchangeState.step3AContactTransfer.oldB3ReleaseStartPresentationMs ?? Infinity) + 1e-6
           && exchangeState.step3AContactTransfer.continuityBridgeMs === 28
           && exchangeState.step3AContactTransfer.defenderReleaseGate?.passed === true
         : true,

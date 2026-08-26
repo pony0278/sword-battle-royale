@@ -139,13 +139,13 @@ test('R18I selects the exaggerated OLD B3 plan at impact for deflect activation 
   assert.equal(reaction.timeline.releaseRestartsBody, false);
   assert.equal(
     reaction.channelPolicy.atImpact,
-    'contact-pose-held-while-reaction-definition-is-selected',
+    'old-b3-body-runs-from-impact-while-contact-owns-weapon-arm',
   );
   assert.equal(
     reaction.channelPolicy.atDeflectImpulse,
-    'canonical-full-body-old-b3-from-elapsed-zero',
+    'weapon-arm-joins-running-old-b3-at-its-live-elapsed-time',
   );
-  assert.equal(reaction.channelPolicy.contactConstraintRunsBeforeVisibleReaction, true);
+  assert.equal(reaction.channelPolicy.contactConstraintRunsBeforeVisibleReaction, false);
   assert.deepEqual(reaction.channelPolicy.contactCorrectionBones, ['upperarm.r', 'lowerarm.r', 'wrist.r']);
   assert.equal(reaction.channelPolicy.separateBalanceBreakRuntime, false);
 });

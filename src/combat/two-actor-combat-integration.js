@@ -9,7 +9,7 @@ import {
   ATTACKER_RECOIL_PRESENTATION_PHASE_LATCHES,
   createAttackerRecoilPresentationRuntime,
 } from './attacker-recoil-presentation.js?v=g43b5r281-closed-loop-old-b3-r18i5';
-import { buildParriedReactionDefinition } from './parried-reaction-definition.js?v=g43b5r281-closed-loop-old-b3-r18i5';
+import { buildParriedReactionDefinition } from './parried-reaction-definition.js?v=g43b5r281-step3b-body-fusion-r18o';
 
 export const TWO_ACTOR_COMBAT_INTEGRATION_STAGE = 'G4.3B.4';
 export const TWO_ACTOR_PARRY_SYNC_STAGE = 'G4.3B.5';
@@ -45,6 +45,9 @@ export const TWO_ACTOR_PARRY_REACTION_CHANNELS = Object.freeze({
 
 export const TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES = Object.freeze({
   LIVE_CONTACT: ATTACKER_RECOIL_PRESENTATION_PHASE_LATCHES.CONTACT_ORIGIN,
+  // Step 3B fusion: the body clock runs from impact and parks at the authored
+  // impulse peak until the defender's DEFLECT_IMPULSE releases the weapon arm.
+  LIVE_CONTACT_IMPULSE_PEAK: ATTACKER_RECOIL_PRESENTATION_PHASE_LATCHES.IMPULSE_PEAK,
 });
 
 export const TWO_ACTOR_PARRY_SYNC_PROFILE = Object.freeze({
@@ -113,11 +116,13 @@ export function buildParryImpactReactionEvent(input = {}) {
     }),
     attacker: freeze({
       reactionDefinitionSelectedAtImpact: true,
-      bodyReactionStartsAtImpact: false,
+      bodyReactionStartsAtImpact: true,
       weaponArmReactionIntentStartsAtImpact: false,
-      visibleOldB3StartsAtDeflectImpulse: true,
-      weaponArmOwnershipAtImpact: 'live-contact-constraint-before-deflect-impulse',
-      weaponArmOwnershipAfterRelease: 'canonical-old-b3-from-zero-after-continuity-bridge',
+      visibleOldB3StartsAtDeflectImpulse: false,
+      visibleOldB3BodyStartsAtImpact: true,
+      weaponArmJoinsOldB3AtDeflectImpulse: true,
+      weaponArmOwnershipAtImpact: 'live-contact-constraint-while-old-b3-body-runs',
+      weaponArmOwnershipAfterRelease: 'old-b3-weapon-arm-joins-running-body-after-continuity-bridge',
       reactionDefinitionId: attackerReaction?.id || null,
       reactionPlanBackwardPitchDegrees: attackerReaction?.silhouette?.backwardPitchDegrees ?? null,
       reactionImpulsePeakMs: attackerReaction?.timeline?.impulsePeakMs ?? null,

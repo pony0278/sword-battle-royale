@@ -148,12 +148,14 @@ test('R18I resolves Parry by selecting OLD B3 while live contact owns the frozen
   assert.equal(result.parryImpactEvent.stage, TWO_ACTOR_PARRY_IMPACT_REACTION_STAGE);
   assert.equal(result.parryImpactEvent.impactId, `parry-impact:${active.sequence}`);
   assert.equal(result.parryImpactEvent.attacker.reactionDefinitionSelectedAtImpact, true);
-  assert.equal(result.parryImpactEvent.attacker.bodyReactionStartsAtImpact, false);
+  assert.equal(result.parryImpactEvent.attacker.bodyReactionStartsAtImpact, true);
   assert.equal(result.parryImpactEvent.attacker.weaponArmReactionIntentStartsAtImpact, false);
-  assert.equal(result.parryImpactEvent.attacker.visibleOldB3StartsAtDeflectImpulse, true);
+  assert.equal(result.parryImpactEvent.attacker.visibleOldB3StartsAtDeflectImpulse, false);
+  assert.equal(result.parryImpactEvent.attacker.visibleOldB3BodyStartsAtImpact, true);
+  assert.equal(result.parryImpactEvent.attacker.weaponArmJoinsOldB3AtDeflectImpulse, true);
   assert.equal(
     result.parryImpactEvent.attacker.weaponArmOwnershipAtImpact,
-    'live-contact-constraint-before-deflect-impulse',
+    'live-contact-constraint-while-old-b3-body-runs',
   );
   assert.equal(result.parryImpactEvent.attacker.reactionDefinitionId, result.attackerReaction.id);
   assert.ok(result.parryImpactEvent.attacker.reactionPlanBackwardPitchDegrees >= 25);

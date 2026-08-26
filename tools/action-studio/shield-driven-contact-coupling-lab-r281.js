@@ -28,7 +28,7 @@ import {
   TWO_ACTOR_PARRY_REACTION_CHANNELS,
   TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES,
   createTwoActorCombatIntegration,
-} from '../../src/combat/two-actor-combat-integration.js?v=g43b5r281-closed-loop-old-b3-r18i5';
+} from '../../src/combat/two-actor-combat-integration.js?v=g43b5r281-step3b-body-fusion-r18o';
 import {
   LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE,
   publishPostCouplingRecoilStaggerHandoff,
@@ -558,7 +558,7 @@ function buildReport(combatSnapshot = combat.snapshot) {
     debugMode: DEBUG_MODE,
     debugStanceProfile,
     recentCompactTraceFrames: RECENT_COMPACT_TRACE_FRAMES,
-    liveContactPhaseLatch: TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES.LIVE_CONTACT,
+    liveContactPhaseLatch: TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES.LIVE_CONTACT_IMPULSE_PEAK,
   });
   const publication = serializeVerificationReport({
     report,

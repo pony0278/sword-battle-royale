@@ -2,6 +2,8 @@ import {
   evaluateSweptContactTemporalEligibility,
 } from '../../../src/combat/swept-contact-temporal-eligibility.js';
 
+const WEAPON_ARM_RELEASE_BONES = Object.freeze(['upperarm.r', 'lowerarm.r', 'wrist.r', 'hand.r', 'handslot.r']);
+
 export function createShieldParryContactHandoffController({
   exchangeState,
   buckler,
@@ -124,13 +126,19 @@ export function createShieldParryContactHandoffController({
       return Object.freeze({ ...handoff, accepted: false, reason: 'old-b3-handoff-publish-failed' });
     }
 
+    const contactBasePose = exchangeState.frozenAttackerContactPose
+      || exchangeState.canonicalAttackerOldB3Pose;
+    const releaseSourcePose = { ...contactBasePose };
+    for (const armBone of WEAPON_ARM_RELEASE_BONES) {
+      if (visibleReleasePose[armBone]) releaseSourcePose[armBone] = visibleReleasePose[armBone];
+    }
     exchangeState.step3AReleaseBlend = {
       elapsedMs: 0,
       durationMs: handoff.releaseBlendMs,
       sample: sampleLiveParryOldB3ReleaseBlend(0, handoff.releaseBlendMs),
-      sourcePose: visibleReleasePose,
-      targetPose: exchangeState.canonicalAttackerOldB3Pose || exchangeState.frozenAttackerContactPose,
-      authority: 'full-rig-live-contact-pose-to-canonical-interruption-pose',
+      sourcePose: Object.freeze(releaseSourcePose),
+      targetPose: contactBasePose,
+      authority: 'weapon-arm-contact-pose-fades-into-contact-base-while-old-b3-body-keeps-running',
     };
     exchangeState.step3AContactTransfer = Object.freeze({
       ...exchangeState.step3AContactTransfer,
@@ -139,11 +147,12 @@ export function createShieldParryContactHandoffController({
       defenderReleaseGate,
       handoffPublished: true,
       handoffConsumedByOldB3: false,
-      b3BodyClockStartedAtImpact: false,
+      b3BodyClockStartedAtImpact: true,
       oldB3ReleaseStartPresentationMs:
         combat.snapshot.attackerRecoil?.phaseClock?.latchPointMs ?? null,
       continuityBridgeMs: handoff.releaseBlendMs,
-      visibleOldB3StartsAtDeflectImpulse: true,
+      visibleOldB3BodyStartedAtImpact: true,
+      weaponArmJoinsOldB3AtDeflectImpulse: true,
       oldB3AppliedBodyChainPitchAtReleaseDegrees: appliedBodyChainPitchAtReleaseDegrees,
       continuationStartedAtPresentationMs: null,
       continuationStartedAtImpactClockMs: null,
@@ -295,7 +304,7 @@ export function createShieldParryContactHandoffController({
         surfaceAtContact,
         shieldLeadMotion: exchangeState.latestShieldLeadMotion,
         attackDirection: selectedDirection,
-        reactionIntentActiveAtImpact: false,
+        reactionIntentActiveAtImpact: true,
       });
       exchangeState.latestLeadHandoff = Object.freeze({
         stage: COMMITTED_PARRY_CONTACT_GATE_STAGE,
@@ -310,7 +319,7 @@ export function createShieldParryContactHandoffController({
         propagatedBones: Object.freeze(['hand.r', 'handslot.r']),
         elbowPropagationActive: selectedDirection === 'top' || selectedDirection === 'right',
         shoulderPropagationActive: false,
-        b3BodyClockStartedAtImpact: false,
+        b3BodyClockStartedAtImpact: true,
         oldB3ReleaseStartPresentationMs: null,
         attackerReactionDefinitionId: exchangeState.latestCombatResult.attackerReaction?.id || null,
         oldB3PlanBackwardPitchDegrees:
@@ -329,7 +338,7 @@ export function createShieldParryContactHandoffController({
         weaponArmContactConstrained: true,
         contactBasePoseAuthority: 'authoritative-impact-rig-snapshot',
         noPresetMotionCurve: true,
-        authority: 'confirmed-impact-selects-old-b3-contact-holds-until-deflect-impulse',
+        authority: 'confirmed-impact-starts-old-b3-body-while-contact-owns-weapon-arm-until-deflect-impulse',
       });
       exchangeState.step3AContactTransfer = Object.freeze({
         accepted: exchangeState.latestGripConstraintReport.accepted === true,
@@ -340,7 +349,7 @@ export function createShieldParryContactHandoffController({
         modifiedBone: exchangeState.latestGripConstraintReport.modifiedBone || null,
         proximalAssistBone: exchangeState.latestGripConstraintReport.proximalAssistBone || null,
         propagatedBones: exchangeState.latestGripConstraintReport.propagatedBones || null,
-        b3BodyClockStartedAtImpact: false,
+        b3BodyClockStartedAtImpact: true,
         attackerReactionDefinitionId: exchangeState.latestCombatResult.attackerReaction?.id || null,
         oldB3PlanBackwardPitchDegrees:
           exchangeState.latestCombatResult.attackerReaction?.silhouette?.backwardPitchDegrees ?? null,
@@ -359,7 +368,7 @@ export function createShieldParryContactHandoffController({
       residualStanceReachRuntime.reset();
       publishStatus({
         text: exchangeState.step3AContactTransfer.accepted
-          ? 'STEP 3A ACTIVE · ParryImpact selected OLD B3 · live shield owns contact until DEFLECT_IMPULSE · then 28ms bridge → canonical OLD B3 from 0ms'
+          ? 'STEP 3B ACTIVE · OLD B3 body runs from impact · live shield owns the weapon arm until DEFLECT_IMPULSE · then a 28ms bridge joins the arm to the running OLD B3'
           : `STEP 3A FAIL · ${exchangeState.step3AContactTransfer.reason || 'live grip contact constraint rejected'}`,
         className: exchangeState.step3AContactTransfer.accepted ? 'good' : 'bad',
       });
@@ -385,8 +394,8 @@ export function createShieldParryContactHandoffController({
     if (ownsLiveContact()) {
       exchangeState.latestCombatUpdate = combat.update(deltaSeconds, {
         camera,
-        attackerRecoilChannels: TWO_ACTOR_PARRY_REACTION_CHANNELS.LIVE_CONTACT_HOLD,
-        attackerRecoilPhaseLatch: TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES.LIVE_CONTACT,
+        attackerRecoilChannels: TWO_ACTOR_PARRY_REACTION_CHANNELS.LIVE_CONTACT_BODY,
+        attackerRecoilPhaseLatch: TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES.LIVE_CONTACT_IMPULSE_PEAK,
         holdAttackerInterruption: true,
       });
       liveConstraintNeedsUpdate = swordGripConstraint.active;
@@ -413,11 +422,11 @@ export function createShieldParryContactHandoffController({
           bodyRestartedAtRelease: false,
           continuationPlanIdentityPreserved: appliedHandoff?.planIdentityPreserved === true,
           continuationElapsedPreserved: appliedHandoff?.presentationElapsedPreserved === true,
-          visibleOldB3StartedAtDeflectImpulse: true,
-          authority: 'deflect-impulse-continuity-bridge-to-canonical-old-b3-from-zero',
+          weaponArmJoinedOldB3AtDeflectImpulse: true,
+          authority: 'deflect-impulse-continuity-bridge-weapon-arm-joins-running-old-b3',
         });
         publishStatus({
-          text: `OLD B3 STARTED · ${selectedDirection.toUpperCase()} DEFLECT_IMPULSE released contact · ${exchangeState.step3AReleaseBlend?.durationMs ?? 28}ms continuity bridge · canonical OLD B3 from ${phaseClock?.previousElapsedMs?.toFixed(0) ?? '0'}ms`,
+          text: `OLD B3 ARM JOINED · ${selectedDirection.toUpperCase()} DEFLECT_IMPULSE released the weapon arm · ${exchangeState.step3AReleaseBlend?.durationMs ?? 28}ms continuity bridge · running OLD B3 continues from ${phaseClock?.previousElapsedMs?.toFixed(0) ?? '0'}ms`,
           className: 'good',
         });
       }
@@ -432,7 +441,7 @@ export function createShieldParryContactHandoffController({
     const wasHolding = exchangeState.latestGripConstraintReport?.holding === true;
     exchangeState.latestGripConstraintReport = swordGripConstraint.update(deltaSeconds, {
       surfaceAtFrame: buckler.getWorldParrySurface(),
-      reactionIntentAppliedBeforeConstraint: false,
+      reactionIntentAppliedBeforeConstraint: true,
     });
     updateLiveContactMarkers(exchangeState.latestGripConstraintReport);
     if (!exchangeState.latestGripConstraintReport?.holding) return null;
@@ -444,8 +453,8 @@ export function createShieldParryContactHandoffController({
       const inspectionFallbackUsed = release?.couplingReport?.inspectionFallbackUsed === true;
       const text = release?.accepted
         ? inspectionFallbackUsed
-          ? `PARRY CONFIRMED · ${selectedDirection.toUpperCase()} ${formatInspectionFailureSummary(exchangeState.latestGripConstraintReport)} · DEFLECT_IMPULSE fail-safe release · OLD B3 starts at 0ms`
-          : `LIVE CONTACT VERIFIED · 7/7 PASS · ${selectedDirection.toUpperCase()} DEFLECT_IMPULSE · releasing contact through 28ms bridge · OLD B3 starts at 0ms`
+          ? `PARRY CONFIRMED · ${selectedDirection.toUpperCase()} ${formatInspectionFailureSummary(exchangeState.latestGripConstraintReport)} · DEFLECT_IMPULSE fail-safe release · weapon arm joins the running OLD B3`
+          : `LIVE CONTACT VERIFIED · 7/7 PASS · ${selectedDirection.toUpperCase()} DEFLECT_IMPULSE · releasing the weapon arm through the 28ms bridge into the running OLD B3`
         : waitingForDefenderImpulse
           ? `${passed ? 'LIVE CONTACT VERIFIED · 7/7 PASS' : `PARRY CONFIRMED · ${formatInspectionFailureSummary(exchangeState.latestGripConstraintReport)}`} · waiting for defender DEFLECT ${release.defenderReleaseGate.sourceTimeSeconds.toFixed(3)}s / ${release.defenderReleaseGate.requiredSourceTimeSeconds.toFixed(3)}s`
           : passed

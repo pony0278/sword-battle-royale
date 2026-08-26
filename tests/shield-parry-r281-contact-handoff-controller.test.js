@@ -45,8 +45,8 @@ test('R18M.6 real swept Sword × Shield contact remains the only Parry success a
 });
 
 test('R18M.6 live Sword→Grip ownership holds attacker contact before defender release', () => {
-  assert.match(controller, /attackerRecoilChannels: TWO_ACTOR_PARRY_REACTION_CHANNELS\.LIVE_CONTACT_HOLD/);
-  assert.match(controller, /attackerRecoilPhaseLatch: TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES\.LIVE_CONTACT/);
+  assert.match(controller, /attackerRecoilChannels: TWO_ACTOR_PARRY_REACTION_CHANNELS\.LIVE_CONTACT_BODY/);
+  assert.match(controller, /attackerRecoilPhaseLatch: TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES\.LIVE_CONTACT_IMPULSE_PEAK/);
   assert.match(controller, /holdAttackerInterruption: true/);
   assert.match(controller, /swordGripConstraint\.update\(deltaSeconds/);
   assert.match(controller, /contactConstraintOwnsUntilDeflectImpulse: true/);
@@ -65,12 +65,12 @@ test('R18M.6 DEFLECT_IMPULSE latch gates release and confirmed Parry fail-safe s
 test('R18M.6 release preserves 28ms bridge and canonical OLD B3 continuation from zero', () => {
   assert.match(controller, /durationMs: handoff\.releaseBlendMs/);
   assert.match(controller, /continuityBridgeMs: handoff\.releaseBlendMs/);
-  assert.match(controller, /targetPose: exchangeState\.canonicalAttackerOldB3Pose \|\| exchangeState\.frozenAttackerContactPose/);
+  assert.match(controller, /targetPose: contactBasePose/);
   assert.match(controller, /handoffConsumedByOldB3: true/);
   assert.match(controller, /bodyRestartedAtRelease: false/);
   assert.match(controller, /continuationPlanIdentityPreserved: appliedHandoff\?\.planIdentityPreserved === true/);
   assert.match(controller, /continuationElapsedPreserved: appliedHandoff\?\.presentationElapsedPreserved === true/);
-  assert.match(controller, /deflect-impulse-continuity-bridge-to-canonical-old-b3-from-zero/);
+  assert.match(controller, /deflect-impulse-continuity-bridge-weapon-arm-joins-running-old-b3/);
 });
 
 test('R18M.6 TOP/RIGHT policy remains data-driven and LEFT release stays delegated to handoff authority', () => {
