@@ -140,7 +140,12 @@ fi
 
 # ------------------------------------------------------------------ commit
 cd "$PAGES"
-git add --all
+# --force: the payload carries the source .gitignore, and without this its
+# rules would filter the published site. main tracks files that match those
+# rules (the converted Skyrim GLBs were force-added), so a plain `git add`
+# silently drops them and the site 404s on assets that exist in the repo.
+# gh-pages is a build artifact; source ignore rules have no say over it.
+git add --all --force
 if git diff --cached --quiet; then
   if [[ "$MODE" == "publish" ]]; then
     echo "gh-pages already matches $LABEL; nothing to publish"
