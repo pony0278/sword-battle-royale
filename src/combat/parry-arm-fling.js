@@ -64,6 +64,33 @@ export const PARRY_ARM_FLING_PROFILES = Object.freeze({
     offHandRatio: 0.62,
     authority: 'contact-impulse-flings-the-weapon-arm-until-joint-limits-catch-it',
   }),
+  // A block is not a deflection. The shield holds its line and the blade
+  // rebounds straight back down the surface normal instead of being carried
+  // across the face, so the carry term is zero and the arm bounces to a
+  // short limit rather than being thrown open and hung there.
+  block: Object.freeze({
+    outcome: 'block',
+    restitution: 0.72,
+    friction: 0.35,
+    impulseGain: 0.85,
+    maximumImpulseNs: 8,
+    maximumJointSpeedRadPerSecond: 18,
+    minimumClosingSpeedMetersPerSecond: 3.0,
+    deflectCarryRatio: 0,
+    effectiveHandMassKg: 1.2,
+    jointInertiaKgM2: ARTICULATED_ARM_IMPULSE_DEFAULTS.jointInertiaKgM2,
+    returnStiffnessNmPerRad: Object.freeze({ shoulder: 4.2, elbow: 3.6, wrist: 2.6 }),
+    returnDampingNmsPerRad: Object.freeze({ shoulder: 1.35, elbow: 0.84, wrist: 0.42 }),
+    travelLimitsRad: Object.freeze({
+      shoulder: Object.freeze([-0.10, 0.55]),
+      elbow: Object.freeze([-0.12, 0.48]),
+      wrist: Object.freeze([-0.16, 0.44]),
+    }),
+    limitHoldMs: 90,
+    limitHoldStiffnessScale: 0.5,
+    offHandRatio: 0.22,
+    authority: 'contact-impulse-rebounds-the-weapon-arm-off-a-held-shield',
+  }),
   'perfect-parry': Object.freeze({
     outcome: 'perfect-parry',
     restitution: 0.78,

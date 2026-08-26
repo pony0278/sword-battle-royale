@@ -52,6 +52,8 @@ const EXPECTED_EXCHANGE_KEYS = [
   'latestArmFlingReport',
   'latestTorsoLean',
   'latestTorsoLeanReport',
+  'latestDefenderTorsoLeanReport',
+  'blockReaction',
   'latestParryWhiff',
   'whiffProbeFrames',
   'closestWhiffApproach',

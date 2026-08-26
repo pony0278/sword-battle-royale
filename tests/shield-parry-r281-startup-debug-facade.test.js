@@ -80,6 +80,7 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
     latestDefenderRootDisplacement: 'defender-root',
     latestArmFling: 'arm-fling', latestArmFlingReport: 'arm-fling-report',
     latestTorsoLean: 'torso-lean', latestTorsoLeanReport: 'torso-lean-report',
+    latestDefenderTorsoLeanReport: 'defender-torso-lean-report', blockReaction: 'block-reaction',
   };
   const runtimes = {
     combat: {}, attackRuntime: {}, guardMachine: {}, predictivePresentation: {}, parryGate: {}, freeCamera: {},
@@ -106,7 +107,8 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
     'latestInterceptDriveReport', 'latestVisualOwnershipBaseline', 'visualOwnershipTrace',
     'latestInputSignal', 'latestRootDisplacement', 'latestAttackerRootDisplacement',
     'latestDefenderRootDisplacement', 'latestArmFling', 'latestArmFlingReport',
-    'latestTorsoLean', 'latestTorsoLeanReport', 'activeParryInterceptDiagnosis',
+    'latestTorsoLean', 'latestTorsoLeanReport', 'latestDefenderTorsoLeanReport', 'blockReaction',
+    'activeParryInterceptDiagnosis',
   ]);
   assert.equal(api.startAttack, noop);
   assert.equal(api.combat, runtimes.combat);

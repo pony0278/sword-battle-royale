@@ -53,6 +53,8 @@ export function createShieldParryDebugApi({
     get latestArmFlingReport() { return getExchangeState().latestArmFlingReport; },
     get latestTorsoLean() { return getExchangeState().latestTorsoLean; },
     get latestTorsoLeanReport() { return getExchangeState().latestTorsoLeanReport; },
+    get latestDefenderTorsoLeanReport() { return getExchangeState().latestDefenderTorsoLeanReport; },
+    get blockReaction() { return getExchangeState().blockReaction; },
     get activeParryInterceptDiagnosis() {
       return buildActiveParryInterceptDiagnosis({
         attackSnapshot: runtimes.attackRuntime.snapshot,

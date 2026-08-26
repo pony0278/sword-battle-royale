@@ -91,6 +91,53 @@ function horizontalUnit(value) {
   return Object.freeze({ x: x / length, y: 0, z: z / length });
 }
 
+// A block absorbs the blow instead of redirecting it, so the two actors trade
+// places: the attacker keeps most of its ground while the defender, holding a
+// line rather than sweeping the blade aside, is driven back further than a
+// parrying defender ever is. The stance never gives, so there is no collapse
+// segment, and the whole envelope runs on the block recoil's own 280ms
+// timeline from impact rather than the parry's post-impulse-peak one.
+export const BLOCK_ROOT_DISPLACEMENT_PROFILES = Object.freeze({
+  attacker: Object.freeze({
+    role: 'attacker',
+    peakMeters: 0.07,
+    maximumPeakMeters: 0.11,
+    verticalDropMeters: 0.014,
+    riseMs: 60,
+    holdMs: 70,
+    recoverMs: 60,
+    braceHoldRatio: 0.40,
+    collapseStillnessMs: 0,
+    collapseMs: 0,
+    collapseHoldRatio: 0.40,
+    collapseDropMeters: 0,
+    collapseSettleMs: 90,
+    authority: 'blocked-attacker-rebounds-off-a-held-shield',
+  }),
+  defender: Object.freeze({
+    role: 'defender',
+    peakMeters: 0.09,
+    maximumPeakMeters: 0.13,
+    verticalDropMeters: 0.020,
+    riseMs: 60,
+    holdMs: 70,
+    recoverMs: 60,
+    braceHoldRatio: 0.40,
+    collapseStillnessMs: 0,
+    collapseMs: 0,
+    collapseHoldRatio: 0.40,
+    collapseDropMeters: 0,
+    collapseSettleMs: 90,
+    authority: 'blocking-defender-absorbs-the-blow-it-did-not-redirect',
+  }),
+});
+
+const OUTCOME_PROFILE_SETS = Object.freeze({
+  parry: PARRY_ROOT_DISPLACEMENT_PROFILES,
+  'perfect-parry': PARRY_ROOT_DISPLACEMENT_PROFILES,
+  block: BLOCK_ROOT_DISPLACEMENT_PROFILES,
+});
+
 function rejection(reason, role = null) {
   return Object.freeze({
     stage: PARRY_ROOT_DISPLACEMENT_STAGE,
@@ -102,7 +149,10 @@ function rejection(reason, role = null) {
 
 export function planParryRootDisplacement(input = {}) {
   const role = String(input.role || '').toLowerCase();
-  const base = PARRY_ROOT_DISPLACEMENT_PROFILES[role];
+  const outcome = String(input.outcome || 'parry').toLowerCase();
+  const profiles = OUTCOME_PROFILE_SETS[outcome];
+  if (!profiles) return rejection('unsupported-displacement-outcome', role || null);
+  const base = profiles[role];
   if (!base) return rejection('unsupported-displacement-role', role || null);
 
   const profile = Object.freeze({ ...base, ...(input.profile || {}) });
@@ -133,6 +183,7 @@ export function planParryRootDisplacement(input = {}) {
     stage: PARRY_ROOT_DISPLACEMENT_STAGE,
     accepted: true,
     role,
+    outcome,
     profile,
     direction,
     momentum,

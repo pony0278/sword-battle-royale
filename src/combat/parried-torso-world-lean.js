@@ -19,6 +19,17 @@ export const PARRIED_TORSO_WORLD_LEAN_PROFILES = Object.freeze({
     distribution: Object.freeze({ hips: 0.30, spine: 0.35, chest: 0.35 }),
     authority: 'world-space-backward-lean-enforced-behind-vertical',
   }),
+  // Blocking absorbs rather than redirects: the attacker keeps far more of
+  // its stance than a parried one, so the silhouette only just crosses
+  // vertical instead of being driven behind it.
+  block: Object.freeze({
+    outcome: 'block',
+    targetBackwardLeanDegrees: 7,
+    entryRiseMs: 90,
+    maximumCorrectionDegrees: 30,
+    distribution: Object.freeze({ hips: 0.26, spine: 0.34, chest: 0.40 }),
+    authority: 'world-space-backward-lean-enforced-behind-vertical',
+  }),
   'perfect-parry': Object.freeze({
     outcome: 'perfect-parry',
     targetBackwardLeanDegrees: 21,
@@ -27,6 +38,43 @@ export const PARRIED_TORSO_WORLD_LEAN_PROFILES = Object.freeze({
     distribution: Object.freeze({ hips: 0.30, spine: 0.35, chest: 0.35 }),
     authority: 'world-space-backward-lean-enforced-behind-vertical',
   }),
+});
+
+// The same impulse, read from the other end. A defender that redirected the
+// blow keeps its posture; one that absorbed it gives ground but stays braced,
+// which is why the block defender leans further than the parrying one and
+// still far less than either attacker.
+export const DEFENDER_TORSO_WORLD_LEAN_PROFILES = Object.freeze({
+  parry: Object.freeze({
+    outcome: 'parry',
+    targetBackwardLeanDegrees: 3,
+    entryRiseMs: 120,
+    maximumCorrectionDegrees: 20,
+    distribution: Object.freeze({ hips: 0.30, spine: 0.35, chest: 0.35 }),
+    authority: 'world-space-backward-lean-enforced-behind-vertical',
+  }),
+  block: Object.freeze({
+    outcome: 'block',
+    targetBackwardLeanDegrees: 5,
+    entryRiseMs: 90,
+    maximumCorrectionDegrees: 24,
+    distribution: Object.freeze({ hips: 0.30, spine: 0.35, chest: 0.35 }),
+    authority: 'world-space-backward-lean-enforced-behind-vertical',
+  }),
+  'perfect-parry': Object.freeze({
+    outcome: 'perfect-parry',
+    targetBackwardLeanDegrees: 2,
+    entryRiseMs: 120,
+    maximumCorrectionDegrees: 20,
+    distribution: Object.freeze({ hips: 0.30, spine: 0.35, chest: 0.35 }),
+    authority: 'world-space-backward-lean-enforced-behind-vertical',
+  }),
+});
+
+// (outcome x role) -- the reaction system needs both axes everywhere.
+const ROLE_PROFILE_SETS = Object.freeze({
+  attacker: PARRIED_TORSO_WORLD_LEAN_PROFILES,
+  defender: DEFENDER_TORSO_WORLD_LEAN_PROFILES,
 });
 
 export const PARRIED_TORSO_LEAN_BONES = Object.freeze(['hips', 'spine', 'chest']);
@@ -58,9 +106,10 @@ function rejection(reason) {
 }
 
 export function planParriedTorsoWorldLean(input = {}) {
+  const profiles = ROLE_PROFILE_SETS[String(input.role || 'attacker').toLowerCase()]
+    || PARRIED_TORSO_WORLD_LEAN_PROFILES;
   const profile = {
-    ...(PARRIED_TORSO_WORLD_LEAN_PROFILES[String(input.outcome || '').toLowerCase()]
-      || PARRIED_TORSO_WORLD_LEAN_PROFILES.parry),
+    ...(profiles[String(input.outcome || '').toLowerCase()] || profiles.parry),
     ...(input.profile || {}),
   };
   const backward = horizontalUnit(input.backwardDirection);
@@ -76,6 +125,7 @@ export function planParriedTorsoWorldLean(input = {}) {
     stage: PARRIED_TORSO_WORLD_LEAN_STAGE,
     accepted: true,
     profile,
+    role: String(input.role || 'attacker').toLowerCase(),
     outcome: profile.outcome,
     backward,
     forward,

@@ -52,12 +52,104 @@ export function createShieldParryContactHandoffController({
   // bone quaternions and need its quaternion math.
   const attackerArmFling = createParryArmFlingRuntime(globalThis.THREE, { rig: attacker?.rig });
   const attackerTorsoLean = createParriedTorsoWorldLeanRuntime(globalThis.THREE, { rig: attacker?.rig });
+  // Blocking is absorption, so the defender leans too. Its pose is rebuilt
+  // from the guard clip every frame, so this servo runs after that rebuild.
+  const defenderTorsoLean = createParriedTorsoWorldLeanRuntime(globalThis.THREE, { rig: defender?.rig });
   // Peak shield-surface velocity while the contact is live: the defender's
   // own parry sweep is the excitation the release impulse is built from.
+  let lastDeltaMs = 0;
   let previousShieldSurfaceCenter = null;
   let peakShieldSweepVelocity = null;
   let previousHandWorld = null;
   let latestHandVelocity = null;
+
+  // The actor axis both reactions push along.
+  function actorBackwardDirection() {
+    const THREE_ = globalThis.THREE;
+    const attackerHips = attacker?.rig?.bones?.hips;
+    const defenderHips = defender?.rig?.bones?.hips;
+    if (THREE_?.Vector3 && attackerHips?.getWorldPosition && defenderHips?.getWorldPosition) {
+      const a = attackerHips.getWorldPosition(new THREE_.Vector3());
+      const d = defenderHips.getWorldPosition(new THREE_.Vector3());
+      const x = a.x - d.x;
+      const z = a.z - d.z;
+      const m = Math.hypot(x, z);
+      if (m > 1e-6) return { x: x / m, y: 0, z: z / m };
+    }
+    return exchangeState.latestCombatResult?.attackerReaction?.plan?.body?.direction || null;
+  }
+
+  // Arms the three reaction runtimes for one outcome. Parry calls this at
+  // DEFLECT_IMPULSE, once the swept probe has finished owning the geometry;
+  // block calls it at impact, because a held shield never takes the blade
+  // hostage and there is no release marker to wait for.
+  function armContactReaction({ outcome, backwardDirection, contactPoint, surfaceNormal, incomingVelocity,
+    shieldSweepVelocity, handOrigin, handReleaseVelocity }) {
+    const armFlingPlan = attackerArmFling.start({
+      outcome,
+      contactPoint,
+      surfaceNormal,
+      normalSideHint: backwardDirection,
+      incomingVelocity,
+      shieldSweepVelocity,
+      handOrigin,
+      handReleaseVelocity,
+      momentum: 1,
+    });
+    const torsoLeanPlan = backwardDirection
+      ? attackerTorsoLean.start({ outcome, role: 'attacker', backwardDirection })
+      : null;
+    const defenderTorsoLeanPlan = backwardDirection
+      ? defenderTorsoLean.start({
+          outcome,
+          role: 'defender',
+          backwardDirection: { x: -backwardDirection.x, y: 0, z: -backwardDirection.z },
+        })
+      : null;
+    const attackerDisplacement = attackerRootDisplacement.start({
+      role: 'attacker', outcome, backwardDirection, momentum: 1,
+    });
+    const defenderDisplacement = backwardDirection
+      ? defenderRootDisplacement.start({
+          role: 'defender',
+          outcome,
+          backwardDirection: { x: -backwardDirection.x, y: 0, z: -backwardDirection.z },
+          momentum: 1,
+        })
+      : null;
+
+    exchangeState.latestArmFling = armFlingPlan?.accepted === true
+      ? Object.freeze({
+          outcome,
+          impulseMagnitudeNs: armFlingPlan.impulseMagnitudeNs,
+          impulse: armFlingPlan.impulse,
+          carryDirection: armFlingPlan.carryDirection,
+          shoulderAxis: armFlingPlan.joints.shoulder.axis,
+          shoulderInitialVelocityRadPerSecond: armFlingPlan.joints.shoulder.initialVelocityRadPerSecond,
+          startsAfterDeflectImpulse: outcome !== 'block',
+        })
+      : Object.freeze({ accepted: false, reason: armFlingPlan?.reason || 'not-planned' });
+    exchangeState.latestTorsoLean = torsoLeanPlan?.accepted === true
+      ? Object.freeze({
+          outcome,
+          baseLeanDegrees: torsoLeanPlan.baseLeanDegrees,
+          targetBackwardLeanDegrees: torsoLeanPlan.targetBackwardLeanDegrees,
+          defenderArmed: defenderTorsoLeanPlan?.accepted === true,
+        })
+      : Object.freeze({ accepted: false, reason: torsoLeanPlan?.reason || 'not-planned' });
+    exchangeState.latestRootDisplacement = Object.freeze({
+      outcome,
+      attacker: attackerDisplacement?.accepted === true
+        ? Object.freeze({ peakMeters: attackerDisplacement.peakMeters, durationMs: attackerDisplacement.durationMs })
+        : null,
+      defender: defenderDisplacement?.accepted === true
+        ? Object.freeze({ peakMeters: defenderDisplacement.peakMeters, durationMs: defenderDisplacement.durationMs })
+        : null,
+      startsAfterDeflectImpulse: outcome !== 'block',
+      reason: attackerDisplacement?.accepted === true ? null : attackerDisplacement?.reason || 'not-planned',
+    });
+    return { armFlingPlan, attackerDisplacement };
+  }
 
   function trackShieldSweepVelocity(deltaSeconds) {
     const surface = buckler?.getWorldParrySurface?.();
@@ -133,10 +225,16 @@ export function createShieldParryContactHandoffController({
   function updateDefenderDeflectReleaseGate() {
     // guardRuntime rebuilds the defender pose from its clip every frame, so the
     // defender root has to be re-offset after that rebuild, not before it.
+    if (defenderTorsoLean.active) {
+      defenderTorsoLean.advance(lastDeltaMs);
+      exchangeState.latestDefenderTorsoLeanReport = defenderTorsoLean.apply({
+        torsoWeight: combat.snapshot.attackerRecoil?.sample?.weights?.torsoWeight ?? 1,
+      });
+    }
     exchangeState.latestDefenderRootDisplacement = defenderRootDisplacement.apply();
     // Same repaint rule as the attacker: the defender's line avatar was drawn
     // before this root offset landed.
-    if (defenderRootDisplacement.active) defender?.update?.(0, camera);
+    if (defenderRootDisplacement.active || defenderTorsoLean.active) defender?.update?.(0, camera);
     if (exchangeState.latchedDefenderDeflectReleaseGate) return exchangeState.latchedDefenderDeflectReleaseGate;
     const current = currentDefenderDeflectReleaseGate();
     if (!current.passed) return current;
@@ -203,70 +301,20 @@ export function createShieldParryContactHandoffController({
       targetPose: contactBasePose,
       authority: 'weapon-arm-contact-pose-fades-into-contact-base-while-old-b3-body-keeps-running',
     };
-    // Displacement is armed here, never earlier: while the swept probe is live
-    // it owns parry success, and moving either root would move the geometry it
-    // measures. The defender is pushed the opposite way by the same impulse.
-    //
-    // Backward is the actor axis, not the recoil plan's body direction: that
-    // vector is deflect-shaped and for a TOP exchange points diagonally
-    // (measured live: x-dominant), which sent the root displacement sideways
-    // and gave the world-lean servo a frame where the contact pose read as
-    // -38 degrees. Hips-to-hips is what "away from the opponent" means.
-    const backwardDirection = (() => {
-      const THREE_ = globalThis.THREE;
-      const attackerHips = attacker?.rig?.bones?.hips;
-      const defenderHips = defender?.rig?.bones?.hips;
-      if (THREE_?.Vector3 && attackerHips?.getWorldPosition && defenderHips?.getWorldPosition) {
-        const a = attackerHips.getWorldPosition(new THREE_.Vector3());
-        const d = defenderHips.getWorldPosition(new THREE_.Vector3());
-        const x = a.x - d.x;
-        const z = a.z - d.z;
-        const m = Math.hypot(x, z);
-        if (m > 1e-6) return { x: x / m, y: 0, z: z / m };
-      }
-      return exchangeState.latestCombatResult?.attackerReaction?.plan?.body?.direction || null;
-    })();
-    const attackerDisplacement = attackerRootDisplacement.start({
-      role: 'attacker',
-      backwardDirection,
-      momentum: 1,
-    });
-    const defenderDisplacement = backwardDirection
-      ? defenderRootDisplacement.start({
-          role: 'defender',
-          backwardDirection: {
-            x: -(Number(backwardDirection.x) || 0),
-            y: 0,
-            z: -(Number(backwardDirection.z) || 0),
-          },
-          momentum: 1,
-        })
-      : null;
-
-    // Same gate as the root displacement: the swept probe owned the exchange
-    // until here, so the fling and the world-lean servo may only exist after
-    // DEFLECT_IMPULSE. The impulse is built from what was actually measured:
-    // impact contact point + surface normal, the sword's incoming velocity,
-    // and the defender's peak shield sweep.
-    // The combat result's own outcome string selects the profile; the modules
-    // fall back to the ordinary parry profile for anything unrecognized.
-    const flingOutcome = exchangeState.latestCombatResult?.outcome;
-    // The lab's review clock makes frame-derived velocities unreliable (a
-    // rewind spans one delta and reads as tens of m/s), so every measured
-    // velocity is sanity-bounded and the incoming falls back to the authored
-    // attack speed for the selected direction -- the same mapping the Step 1
-    // diagnostic drives the verified OLD B3 with.
+    // Displacement and the reaction runtimes are armed here, never earlier:
+    // while the swept probe is live it owns parry success, and moving either
+    // root would move the geometry it measures.
+    const backwardDirection = actorBackwardDirection();
     const saneVelocity = (velocity, capMetersPerSecond) => {
       if (!velocity) return null;
       const speed = Math.hypot(velocity.x || 0, velocity.y || 0, velocity.z || 0);
       return speed > 0.05 && speed <= capMetersPerSecond ? velocity : null;
     };
-    const armFlingPlan = attackerArmFling.start({
-      outcome: flingOutcome,
+    const { attackerDisplacement } = armContactReaction({
+      outcome: exchangeState.latestCombatResult?.outcome,
+      backwardDirection,
       contactPoint: exchangeState.firstContact?.point,
-      surfaceNormal: handoff.surfaceAtContact?.normal
-        || buckler?.getWorldParrySurface?.()?.normal,
-      normalSideHint: backwardDirection,
+      surfaceNormal: handoff.surfaceAtContact?.normal || buckler?.getWorldParrySurface?.()?.normal,
       incomingVelocity: saneVelocity(exchangeState.firstContact?.incomingVelocity, 12)
         || diagnosticIncomingVelocity(selectedDirection),
       shieldSweepVelocity: saneVelocity(peakShieldSweepVelocity, 6),
@@ -278,50 +326,6 @@ export function createShieldParryContactHandoffController({
         return { x: world.x, y: world.y, z: world.z };
       })(),
       handReleaseVelocity: saneVelocity(latestHandVelocity, 6),
-      momentum: 1,
-    });
-    const torsoLeanPlan = backwardDirection
-      ? attackerTorsoLean.start({ outcome: flingOutcome, backwardDirection })
-      : null;
-    exchangeState.latestArmFling = armFlingPlan?.accepted === true
-      ? Object.freeze({
-          outcome: flingOutcome,
-          impulseMagnitudeNs: armFlingPlan.impulseMagnitudeNs,
-          impulse: armFlingPlan.impulse,
-          carryDirection: armFlingPlan.carryDirection,
-          measuredClosingSpeed: armFlingPlan.measuredClosingSpeed,
-          shoulderAxis: armFlingPlan.joints.shoulder.axis,
-          shoulderInitialVelocityRadPerSecond:
-            armFlingPlan.joints.shoulder.initialVelocityRadPerSecond,
-          incomingUsed: armFlingPlan.incomingUsed,
-          normalUsed: armFlingPlan.normalUsed,
-          debugInputs: Object.freeze({
-            selectedDirection: selectedDirection || 'UNDEFINED',
-            contactPoint: exchangeState.firstContact?.point || null,
-            surfaceNormal: handoff.surfaceAtContact?.normal || null,
-            incomingVelocity: exchangeState.firstContact?.incomingVelocity || null,
-            shieldSweepVelocity: peakShieldSweepVelocity,
-            handReleaseVelocity: latestHandVelocity,
-          }),
-          startsAfterDeflectImpulse: true,
-        })
-      : Object.freeze({ accepted: false, reason: armFlingPlan?.reason || 'not-planned' });
-    exchangeState.latestTorsoLean = torsoLeanPlan?.accepted === true
-      ? Object.freeze({
-          baseLeanDegrees: torsoLeanPlan.baseLeanDegrees,
-          targetBackwardLeanDegrees: torsoLeanPlan.targetBackwardLeanDegrees,
-        })
-      : Object.freeze({ accepted: false, reason: torsoLeanPlan?.reason || 'not-planned' });
-
-    exchangeState.latestRootDisplacement = Object.freeze({
-      attacker: attackerDisplacement?.accepted === true
-        ? Object.freeze({ peakMeters: attackerDisplacement.peakMeters, durationMs: attackerDisplacement.durationMs })
-        : null,
-      defender: defenderDisplacement?.accepted === true
-        ? Object.freeze({ peakMeters: defenderDisplacement.peakMeters, durationMs: defenderDisplacement.durationMs })
-        : null,
-      startsAfterDeflectImpulse: true,
-      reason: attackerDisplacement?.accepted === true ? null : attackerDisplacement?.reason || 'not-planned',
     });
 
     exchangeState.step3AContactTransfer = Object.freeze({
@@ -557,6 +561,35 @@ export function createShieldParryContactHandoffController({
           : `STEP 3A FAIL · ${exchangeState.step3AContactTransfer.reason || 'live grip contact constraint rejected'}`,
         className: exchangeState.step3AContactTransfer.accepted ? 'good' : 'bad',
       });
+    } else if (outcome === 'block') {
+      // A held shield never takes the blade hostage, so there is no live grip
+      // constraint and no DEFLECT_IMPULSE to wait for: the rebound is the
+      // whole reaction and it starts at impact.
+      exchangeState.latestCombatUpdate = combat.update(0, { camera });
+      attackerSword.update();
+      armContactReaction({
+        outcome: 'block',
+        backwardDirection: actorBackwardDirection(),
+        contactPoint: exchangeState.firstContact?.point,
+        surfaceNormal: surfaceAtContact?.normal,
+        incomingVelocity: diagnosticIncomingVelocity(selectedDirection),
+        shieldSweepVelocity: null,
+        handOrigin: null,
+        handReleaseVelocity: null,
+      });
+      exchangeState.blockReaction = Object.freeze({
+        outcome: 'block',
+        startedAtImpact: true,
+        liveGripConstraint: false,
+        armFlingArmed: exchangeState.latestArmFling?.accepted !== false,
+        attackerRootMeters: exchangeState.latestRootDisplacement?.attacker?.peakMeters ?? null,
+        defenderRootMeters: exchangeState.latestRootDisplacement?.defender?.peakMeters ?? null,
+        authority: 'blocked-rebound-runs-from-impact-with-no-contact-constraint',
+      });
+      publishStatus({
+        text: `BLOCK · ${selectedDirection.toUpperCase()} rebound from impact · no contact constraint · attacker ${((exchangeState.latestRootDisplacement?.attacker?.peakMeters ?? 0) * 100).toFixed(0)}cm back, defender ${((exchangeState.latestRootDisplacement?.defender?.peakMeters ?? 0) * 100).toFixed(0)}cm absorbing`,
+        className: 'good',
+      });
     } else if (selectedMode === 'parry') {
       publishStatus({
         text: `PARRY FAILED → BLOCK · ${exchangeState.latestParryConfirmation?.reason || 'parry gate was not confirmed'}`,
@@ -572,6 +605,7 @@ export function createShieldParryContactHandoffController({
     hasAttackerRecovery,
     beginAttackRecovery,
   }) {
+    lastDeltaMs = deltaMs;
     const handledCombat = combat.active;
     let liveConstraintNeedsUpdate = false;
     if (!handledCombat) return Object.freeze({ handledCombat: false, liveConstraintNeedsUpdate: false });
@@ -650,6 +684,7 @@ export function createShieldParryContactHandoffController({
         // recovery stands the attacker up from the flung silhouette.
         attackerArmFling.releaseOwnership();
         attackerTorsoLean.releaseOwnership();
+        defenderTorsoLean.releaseOwnership();
         resetRootDisplacement();
         exchangeState.latestAttackerRootDisplacement = null;
         exchangeState.latestDefenderRootDisplacement = null;
@@ -696,6 +731,7 @@ export function createShieldParryContactHandoffController({
     defenderRootDisplacement.reset();
     attackerArmFling.releaseOwnership();
     attackerTorsoLean.releaseOwnership();
+    defenderTorsoLean.releaseOwnership();
     previousShieldSurfaceCenter = null;
     peakShieldSweepVelocity = null;
     previousHandWorld = null;
