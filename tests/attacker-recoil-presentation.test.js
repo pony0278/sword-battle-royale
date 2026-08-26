@@ -272,3 +272,80 @@ test('G4.3B.3 exposes body-only ownership while a live contact constraint owns t
     },
   );
 });
+
+const COLLAPSE_OVERRIDES = Object.freeze({
+  impulseEndMs: 112,
+  recoilEndMs: 300,
+  settleEndMs: 470,
+  powerFrameHoldMs: 96,
+  collapseStillnessMs: 34,
+  collapseAccentMs: 104,
+  collapseAccentScale: 1.22,
+});
+
+test('G4.3B.3 leaves the envelope untouched when no collapse accent is authored', () => {
+  const p = plan();
+  const base = ATTACKER_RECOIL_PRESENTATION_PROFILES[p.responseClass];
+  const resolved = sampleAttackerRecoilPresentation(p, 0).profile;
+  assert.equal(resolved.collapseActive, false);
+  assert.equal(resolved.visibleSettleEndMs, base.settleEndMs);
+  assert.equal(
+    sampleAttackerRecoilPresentation(p, base.settleEndMs + 1).phase,
+    ATTACKER_RECOIL_PRESENTATION_PHASES.COMPLETE,
+  );
+  // A scale that does not overshoot is not an accent, so it stays off.
+  const notAnAccent = sampleAttackerRecoilPresentation(p, 0, {
+    ...COLLAPSE_OVERRIDES,
+    collapseAccentScale: 0.9,
+  }).profile;
+  assert.equal(notAnAccent.collapseActive, false);
+});
+
+test('G4.3B.3 holds the recoil completely still before the collapse accent', () => {
+  const p = plan();
+  const profile = sampleAttackerRecoilPresentation(p, 0, COLLAPSE_OVERRIDES).profile;
+  assert.equal(profile.collapseActive, true);
+  assert.equal(profile.visibleRecoilEndMs, 396);
+  assert.equal(profile.collapseStillEndMs, 430);
+  assert.equal(profile.collapseEndMs, 534);
+  assert.equal(profile.visibleSettleEndMs, 704);
+
+  const entry = sampleAttackerRecoilPresentation(p, profile.visibleRecoilEndMs, COLLAPSE_OVERRIDES);
+  const still = sampleAttackerRecoilPresentation(p, profile.collapseStillEndMs, COLLAPSE_OVERRIDES);
+  assert.equal(still.phase, ATTACKER_RECOIL_PRESENTATION_PHASES.COLLAPSE_STILL);
+  assert.equal(still.weights.collapseHeld, true);
+  for (const key of ['armWeight', 'torsoWeight', 'legWeight']) {
+    assert.ok(Math.abs(still.weights[key] - entry.weights[key]) < 1e-9, `${key} must not drift`);
+  }
+  // Long enough to register as a stop at 30fps.
+  assert.ok(profile.collapseStillEndMs - profile.visibleRecoilEndMs >= 30);
+});
+
+test('G4.3B.3 collapse accent overshoots the impulse and outruns it', () => {
+  const p = plan();
+  const profile = sampleAttackerRecoilPresentation(p, 0, COLLAPSE_OVERRIDES).profile;
+  const at = (ms) => sampleAttackerRecoilPresentation(p, ms, COLLAPSE_OVERRIDES);
+
+  const still = at(profile.collapseStillEndMs);
+  const oneFrame = at(profile.collapseStillEndMs + 34);
+  assert.equal(oneFrame.phase, ATTACKER_RECOIL_PRESENTATION_PHASES.COLLAPSE);
+  // Past the authored impulse pose within a single 30fps frame.
+  assert.ok(oneFrame.weights.legWeight > 1);
+  assert.ok(oneFrame.weights.armWeight > 1);
+  assert.ok(Math.abs(oneFrame.pose.chestPitchDegrees) > Math.abs(at(profile.impulseEndMs).pose.chestPitchDegrees));
+
+  // Faster than the impulse rise over the same 30fps step.
+  const impulseStep = at(profile.contactHoldMs + 34).weights.legWeight
+    - at(profile.contactHoldMs).weights.legWeight;
+  const collapseStep = oneFrame.weights.legWeight - still.weights.legWeight;
+  assert.ok(collapseStep > impulseStep, 'the collapse must be the fastest move in the reaction');
+
+  // and it rejoins the settle without a step.
+  const collapseExit = at(profile.collapseEndMs);
+  const settleEntry = at(profile.collapseEndMs + 1);
+  assert.equal(settleEntry.phase, ATTACKER_RECOIL_PRESENTATION_PHASES.SETTLE);
+  for (const key of ['armWeight', 'torsoWeight', 'legWeight']) {
+    assert.ok(Math.abs(settleEntry.weights[key] - collapseExit.weights[key]) < 0.02, key);
+  }
+  assert.equal(at(profile.visibleSettleEndMs + 1).phase, ATTACKER_RECOIL_PRESENTATION_PHASES.COMPLETE);
+});

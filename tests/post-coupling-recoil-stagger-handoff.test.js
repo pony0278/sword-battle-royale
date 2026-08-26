@@ -75,7 +75,12 @@ test('G4.3B.5R.2.7 Parry release bypasses separation and jumps into old Two-Acto
   assert.equal(handoff.profileOverrides.releaseSeparationDistanceMeters, 0);
   assert.equal(handoff.profileOverrides.impulseEndMs, 112);
   assert.equal(handoff.profileOverrides.recoilEndMs, 300);
-  assert.equal(handoff.profileOverrides.settleEndMs, 520);
+  // The settle is short because the reaction ends on the collapse accent
+  // below, not on the recoil decay.
+  assert.equal(handoff.profileOverrides.settleEndMs, 470);
+  assert.equal(handoff.profileOverrides.collapseStillnessMs, 34);
+  assert.equal(handoff.profileOverrides.collapseAccentMs, 104);
+  assert.equal(handoff.profileOverrides.collapseAccentScale, 1.22);
   assert.equal(handoff.timelineIntent.releaseSeparationWindowMs, 0);
   assert.equal(handoff.timelineIntent.b3EntryElapsedMs, 68);
 });
@@ -136,7 +141,7 @@ test('G4.3B.5R.2.7 Perfect is stronger and longer than ordinary Parry', () => {
   assert.ok(perfect.plan.weapon.strength > parry.plan.weapon.strength);
   assert.ok(perfect.plan.weapon.deflectDegrees > parry.plan.weapon.deflectDegrees);
   assert.ok(Math.abs(perfect.plan.body.pitchDegrees) > Math.abs(parry.plan.body.pitchDegrees));
-  assert.equal(perfect.profileOverrides.settleEndMs, 620);
+  assert.equal(perfect.profileOverrides.settleEndMs, 520);
   assert.equal(perfect.timelineIntent.releaseSeparationWindowMs, 0);
 });
 

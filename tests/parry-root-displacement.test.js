@@ -8,6 +8,9 @@ import {
   planParryRootDisplacement,
   sampleParryRootDisplacement,
 } from '../src/combat/parry-root-displacement.js';
+import {
+  TWO_ACTOR_WHOLE_BODY_RECOIL_BURST_PROFILES,
+} from '../src/combat/two-actor-whole-body-recoil-burst.js';
 
 const BACKWARD = Object.freeze({ x: 0.1, y: -0.35, z: 0.95 });
 
@@ -37,7 +40,11 @@ test('R18O.1 plans a horizontal backward displacement and rejects unusable input
   // The vertical component of the incoming direction must not tilt the travel.
   assert.equal(plan.direction.y, 0);
   assert.ok(Math.abs(Math.hypot(plan.direction.x, plan.direction.z) - 1) < 1e-9);
-  assert.equal(plan.durationMs, plan.riseMs + plan.holdMs + plan.recoverMs);
+  assert.equal(
+    plan.durationMs,
+    plan.riseMs + plan.holdMs + plan.recoverMs
+      + plan.collapseStillnessMs + plan.collapseMs + plan.collapseSettleMs,
+  );
 
   assert.equal(planParryRootDisplacement({ role: 'nobody', backwardDirection: BACKWARD }).accepted, false);
   assert.equal(
@@ -68,6 +75,50 @@ test('R18O.1 holds the off-balance peak before recovering to zero', () => {
   for (let ms = 0; ms <= plan.durationMs + 60; ms += 7) {
     assert.ok(at(ms).distanceMeters <= plan.peakMeters + 1e-9);
   }
+});
+
+test('R18O.1 gathers itself, goes still, and only then loses the stance', () => {
+  const plan = planParryRootDisplacement({ role: 'attacker', backwardDirection: BACKWARD });
+  const at = (ms) => sampleParryRootDisplacement(plan, ms);
+
+  // Recovery out of the hold is partial: the collapse needs ground left to take.
+  const braced = at(plan.braceEndMs);
+  assert.equal(braced.phase, 'bracing');
+  assert.ok(Math.abs(braced.distanceMeters - plan.peakMeters * plan.braceHoldRatio) < 1e-9);
+  assert.ok(braced.distanceMeters < plan.peakMeters);
+
+  // A frame of complete stillness, which is what the accent departs from.
+  const stillStart = at(plan.braceEndMs + 1);
+  const stillEnd = at(plan.collapseStillEndMs);
+  assert.equal(stillEnd.phase, 'braced-still');
+  assert.ok(Math.abs(stillEnd.distanceMeters - stillStart.distanceMeters) < 1e-9);
+  assert.ok(Math.abs(stillEnd.offsetMeters.y - stillStart.offsetMeters.y) < 1e-9);
+  assert.ok(plan.collapseStillnessMs >= 30);
+
+  // Then the stance gives: back out again, and down much further than the
+  // brace ever went.
+  const collapsed = at(plan.collapseEndMs);
+  assert.equal(collapsed.phase, 'stance-gives');
+  assert.ok(collapsed.distanceMeters > braced.distanceMeters);
+  assert.ok(collapsed.offsetMeters.y < braced.offsetMeters.y);
+  assert.ok(Math.abs(collapsed.offsetMeters.y) > plan.verticalDropMeters * 2);
+  assert.ok(Math.abs(-collapsed.offsetMeters.y - plan.collapseDropMeters) < 1e-9);
+
+  // Most of the collapse travel lands in its first two 30fps frames.
+  const oneFrameIn = at(plan.collapseStillEndMs + 34);
+  const collapseTravel = collapsed.offsetMeters.y - stillEnd.offsetMeters.y;
+  const firstFrameTravel = oneFrameIn.offsetMeters.y - stillEnd.offsetMeters.y;
+  assert.ok(firstFrameTravel / collapseTravel > 0.55);
+
+  assert.equal(at(plan.durationMs).distanceMeters, 0);
+  assert.equal(Math.abs(at(plan.durationMs).offsetMeters.y), 0);
+});
+
+test('R18O.1 keeps the defender collapse well under the parried attacker', () => {
+  const attacker = PARRY_ROOT_DISPLACEMENT_PROFILES.attacker;
+  const defender = PARRY_ROOT_DISPLACEMENT_PROFILES.defender;
+  assert.ok(defender.collapseDropMeters < attacker.collapseDropMeters / 2);
+  assert.ok(defender.collapseHoldRatio < attacker.collapseHoldRatio);
 });
 
 test('R18O.1 sinks the root slightly while off balance', () => {
@@ -124,4 +175,27 @@ test('R18O.1 refuses to plan without a rig root bone', () => {
   const started = runtime.start({ role: 'attacker', backwardDirection: BACKWARD });
   assert.equal(started.accepted, false);
   assert.equal(started.reason, 'rig-root-bone-unavailable');
+});
+
+
+// The displacement clock starts at DEFLECT_IMPULSE. The recoil presentation
+// clock is latched at its impulse peak for exactly as long as the contact
+// lasts, so DEFLECT_IMPULSE always finds the recoil at impulseEndMs and the
+// two clocks differ by that constant. Retuning either envelope without the
+// other would slide the root sink out of the body collapse it belongs to,
+// which is the failure this locks out.
+test('R18O.1 sits on the recoil timeline it is driven by', () => {
+  const burst = TWO_ACTOR_WHOLE_BODY_RECOIL_BURST_PROFILES.parry;
+  const visibleRecoilEndMs = burst.recoilEndMs + burst.powerFrameHoldMs;
+  const visibleSettleEndMs = visibleRecoilEndMs
+    + burst.collapseStillnessMs + burst.collapseAccentMs
+    + (burst.settleEndMs - burst.recoilEndMs);
+
+  for (const role of ['attacker', 'defender']) {
+    const plan = planParryRootDisplacement({ role, backwardDirection: BACKWARD });
+    assert.equal(plan.braceEndMs, visibleRecoilEndMs - burst.impulseEndMs, `${role} stillness entry`);
+    assert.equal(plan.collapseStillnessMs, burst.collapseStillnessMs, `${role} stillness`);
+    assert.equal(plan.collapseMs, burst.collapseAccentMs, `${role} accent span`);
+    assert.equal(plan.durationMs, visibleSettleEndMs - burst.impulseEndMs, `${role} total`);
+  }
 });

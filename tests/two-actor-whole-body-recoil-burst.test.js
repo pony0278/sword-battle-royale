@@ -133,8 +133,14 @@ test('R18I selects the exaggerated OLD B3 plan at impact for deflect activation 
   assert.ok(reaction.plan.body.pitchDegrees <= -32);
   assert.equal(reaction.profileOverrides.impulseEndMs, 112);
   assert.equal(reaction.profileOverrides.recoilEndMs, 300);
-  assert.equal(reaction.profileOverrides.settleEndMs, 520);
+  assert.equal(reaction.profileOverrides.settleEndMs, 470);
   assert.equal(reaction.profileOverrides.powerFrameHoldMs, 96);
+  assert.equal(reaction.profileOverrides.collapseStillnessMs, 34);
+  assert.equal(reaction.profileOverrides.collapseAccentMs, 104);
+  assert.equal(reaction.profileOverrides.collapseAccentScale, 1.22);
+  // The accent has to sit after the recoil decay, not inside it.
+  assert.equal(reaction.sourceBurst.collapse.entryElapsedMs, 396);
+  assert.equal(reaction.sourceBurst.collapse.peakFollowsStillness, true);
   assert.equal(reaction.profileOverrides.legStrengthScale, 1.95);
   assert.equal(reaction.timeline.releaseRestartsBody, false);
   assert.equal(

@@ -76,6 +76,8 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
     step3AContactTransfer: 'transfer', latestGripConstraintReport: 'grip', latestParryWhiff: 'whiff',
     latestInterceptDriveReport: 'drive', latestVisualOwnershipBaseline: 'visual-baseline',
     visualOwnershipTrace: ['visual-trace'], latestInputSignal: 'signal',
+    latestRootDisplacement: 'root-plan', latestAttackerRootDisplacement: 'attacker-root',
+    latestDefenderRootDisplacement: 'defender-root',
   };
   const runtimes = {
     combat: {}, attackRuntime: {}, guardMachine: {}, predictivePresentation: {}, parryGate: {}, freeCamera: {},
@@ -100,7 +102,8 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
     'latestLeadHandoff', 'latestCombatResult', 'latestParryInput', 'latestParryOpportunity', 'latestContact',
     'latestParryConfirmation', 'step3AContactTransfer', 'latestGripConstraintReport', 'latestParryWhiff',
     'latestInterceptDriveReport', 'latestVisualOwnershipBaseline', 'visualOwnershipTrace',
-    'latestInputSignal', 'activeParryInterceptDiagnosis',
+    'latestInputSignal', 'latestRootDisplacement', 'latestAttackerRootDisplacement',
+    'latestDefenderRootDisplacement', 'activeParryInterceptDiagnosis',
   ]);
   assert.equal(api.startAttack, noop);
   assert.equal(api.combat, runtimes.combat);
@@ -108,6 +111,8 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
   assert.deepEqual(api.debugStanceProfile, { hip: 1 });
   assert.ok(Object.isFrozen(api.debugStanceProfile));
   assert.equal(api.directOldB3Diagnostic, 'direct');
+  assert.equal(api.latestAttackerRootDisplacement, 'attacker-root');
+  assert.equal(api.latestDefenderRootDisplacement, 'defender-root');
   assert.equal(api.latestContact, 'contact');
   assert.equal(api.latestVisualOwnershipBaseline, 'visual-baseline');
   assert.deepEqual(api.visualOwnershipTrace, ['visual-trace']);

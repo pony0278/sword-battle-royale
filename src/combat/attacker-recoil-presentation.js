@@ -11,6 +11,8 @@ export const ATTACKER_RECOIL_PRESENTATION_PHASES = Object.freeze({
   SEPARATION: 'separation',
   IMPULSE: 'impulse',
   RECOIL: 'recoil',
+  COLLAPSE_STILL: 'collapse-still',
+  COLLAPSE: 'collapse',
   SETTLE: 'settle',
   COMPLETE: 'complete',
 });
@@ -64,6 +66,20 @@ export const ATTACKER_RECOIL_PRESENTATION_PROFILES = Object.freeze({
     legStrengthScale: 1,
   }),
 });
+
+// Where the recoil decay ends. The stillness freezes here, the collapse
+// accent departs from here and returns to it, and the settle starts here, so
+// the four segments join without a step.
+const RECOIL_EXIT_WEIGHTS = Object.freeze({
+  arm: 0.78,
+  torso: 0.88,
+  leg: 0.93,
+});
+
+// The accent has to arrive inside a single 30fps frame to read as a snap
+// rather than a slump, so it spends about a third of its span on the attack
+// and the rest returning to the recoil tail.
+const COLLAPSE_ATTACK_RATIO = 0.32;
 
 const RELEASE_SEPARATION_DISTANCE_METERS = Object.freeze({
   'parry-directional-recoil': 0.065,
@@ -144,6 +160,16 @@ function resolveProfile(plan, overrides = {}) {
     800,
   );
   const powerFrameHoldMs = clamp(overrides.powerFrameHoldMs ?? 0, 0, 160);
+  const collapseStillnessMs = clamp(overrides.collapseStillnessMs ?? 0, 0, 90);
+  const collapseAccentMs = clamp(overrides.collapseAccentMs ?? 0, 0, 240);
+  const collapseAccentScale = clamp(overrides.collapseAccentScale ?? 0, 0, 1.6);
+  // Opt-in: a definition that does not author an accent keeps the original
+  // recoil-into-settle envelope exactly.
+  const collapseActive = collapseAccentMs > 0 && collapseAccentScale > 1;
+  const visibleRecoilEndMs = recoilEndMs + powerFrameHoldMs;
+  const collapseStillEndMs = visibleRecoilEndMs + (collapseActive ? collapseStillnessMs : 0);
+  const collapseEndMs = collapseStillEndMs + (collapseActive ? collapseAccentMs : 0);
+  const collapseOffsetMs = collapseEndMs - visibleRecoilEndMs;
   return Object.freeze({
     ...base,
     ...overrides,
@@ -154,9 +180,16 @@ function resolveProfile(plan, overrides = {}) {
     recoilEndMs,
     settleEndMs,
     powerFrameHoldMs,
+    collapseStillnessMs,
+    collapseAccentMs,
+    collapseAccentScale,
+    collapseActive,
     powerFrameEndMs: impulseEndMs + powerFrameHoldMs,
-    visibleRecoilEndMs: recoilEndMs + powerFrameHoldMs,
-    visibleSettleEndMs: settleEndMs + powerFrameHoldMs,
+    visibleRecoilEndMs,
+    collapseStillEndMs,
+    collapseEndMs,
+    collapseOffsetMs,
+    visibleSettleEndMs: settleEndMs + powerFrameHoldMs + collapseOffsetMs,
     armDeflectScale: clamp(overrides.armDeflectScale ?? base.armDeflectScale, 0, 1.5),
     forearmDeflectScale: clamp(overrides.forearmDeflectScale ?? base.forearmDeflectScale, 0, 1.5),
     legStrengthScale: clamp(overrides.legStrengthScale ?? base.legStrengthScale, 0, 2.2),
@@ -214,12 +247,29 @@ export function advanceAttackerRecoilPresentationClock(
   });
 }
 
+// 0 at both ends so the accent leaves the frozen stillness and rejoins the
+// settle without a step, with the peak arriving almost immediately.
+function collapseSurge(t) {
+  const time = clamp01(t);
+  if (time <= COLLAPSE_ATTACK_RATIO) {
+    const attack = clamp01(time / COLLAPSE_ATTACK_RATIO);
+    return 1 - (1 - attack) ** 3;
+  }
+  return 1 - smoothstep01((time - COLLAPSE_ATTACK_RATIO) / (1 - COLLAPSE_ATTACK_RATIO));
+}
+
 function sampleWeights(profile, elapsedMs) {
   const elapsed = Math.max(0, finite(elapsedMs));
   const powerFrameHoldMs = Math.max(0, finite(profile.powerFrameHoldMs));
   const powerFrameEndMs = profile.impulseEndMs + powerFrameHoldMs;
   const visibleRecoilEndMs = profile.recoilEndMs + powerFrameHoldMs;
-  const visibleSettleEndMs = profile.settleEndMs + powerFrameHoldMs;
+  const collapseActive = profile.collapseActive === true;
+  const collapseStillEndMs = visibleRecoilEndMs
+    + (collapseActive ? Math.max(0, finite(profile.collapseStillnessMs)) : 0);
+  const collapseAccentMs = collapseActive ? Math.max(0, finite(profile.collapseAccentMs)) : 0;
+  const collapseEndMs = collapseStillEndMs + collapseAccentMs;
+  const collapseOffsetMs = collapseEndMs - visibleRecoilEndMs;
+  const visibleSettleEndMs = profile.settleEndMs + powerFrameHoldMs + collapseOffsetMs;
   if (elapsed >= visibleSettleEndMs) {
     return Object.freeze({
       phase: ATTACKER_RECOIL_PRESENTATION_PHASES.COMPLETE,
@@ -301,23 +351,54 @@ function sampleWeights(profile, elapsedMs) {
     );
     return Object.freeze({
       phase: ATTACKER_RECOIL_PRESENTATION_PHASES.RECOIL,
-      armWeight: 1 - 0.22 * t,
-      torsoWeight: 1 - 0.12 * t,
-      legWeight: 1 - 0.07 * t,
+      armWeight: 1 - (1 - RECOIL_EXIT_WEIGHTS.arm) * t,
+      torsoWeight: 1 - (1 - RECOIL_EXIT_WEIGHTS.torso) * t,
+      legWeight: 1 - (1 - RECOIL_EXIT_WEIGHTS.leg) * t,
       separationWeight: 0,
       complete: false,
     });
   }
 
-  const authoredElapsed = elapsed - powerFrameHoldMs;
+  // Nothing moves at all. One 30fps frame of it is what makes the accent
+  // below land as a collapse instead of the end of the decay.
+  if (collapseActive && elapsed <= collapseStillEndMs) {
+    return Object.freeze({
+      phase: ATTACKER_RECOIL_PRESENTATION_PHASES.COLLAPSE_STILL,
+      armWeight: RECOIL_EXIT_WEIGHTS.arm,
+      torsoWeight: RECOIL_EXIT_WEIGHTS.torso,
+      legWeight: RECOIL_EXIT_WEIGHTS.leg,
+      separationWeight: 0,
+      collapseHeld: true,
+      complete: false,
+    });
+  }
+
+  // The stance goes. Legs and weapon overshoot the authored impulse pose;
+  // the torso follows a little less so the silhouette drops rather than
+  // simply folding further backward.
+  if (collapseActive && elapsed <= collapseEndMs) {
+    const surge = collapseSurge((elapsed - collapseStillEndMs) / Math.max(1, collapseAccentMs));
+    const peak = profile.collapseAccentScale;
+    return Object.freeze({
+      phase: ATTACKER_RECOIL_PRESENTATION_PHASES.COLLAPSE,
+      armWeight: RECOIL_EXIT_WEIGHTS.arm + (peak - RECOIL_EXIT_WEIGHTS.arm) * surge,
+      torsoWeight: RECOIL_EXIT_WEIGHTS.torso + (peak * 0.92 - RECOIL_EXIT_WEIGHTS.torso) * surge,
+      legWeight: RECOIL_EXIT_WEIGHTS.leg + (peak - RECOIL_EXIT_WEIGHTS.leg) * surge,
+      separationWeight: 0,
+      collapseSurge: surge,
+      complete: false,
+    });
+  }
+
+  const authoredElapsed = elapsed - powerFrameHoldMs - collapseOffsetMs;
   const t = smoothstep01(
     (authoredElapsed - profile.recoilEndMs) / (profile.settleEndMs - profile.recoilEndMs),
   );
   return Object.freeze({
     phase: ATTACKER_RECOIL_PRESENTATION_PHASES.SETTLE,
-    armWeight: 0.78 * (1 - t),
-    torsoWeight: 0.88 * (1 - t),
-    legWeight: 0.93 * (1 - t),
+    armWeight: RECOIL_EXIT_WEIGHTS.arm * (1 - t),
+    torsoWeight: RECOIL_EXIT_WEIGHTS.torso * (1 - t),
+    legWeight: RECOIL_EXIT_WEIGHTS.leg * (1 - t),
     separationWeight: 0,
     complete: false,
   });

@@ -23,7 +23,13 @@ export const TWO_ACTOR_WHOLE_BODY_RECOIL_BURST_PROFILES = Object.freeze({
     powerFrameHoldMs: 96,
     impulseEndMs: 112,
     recoilEndMs: 300,
-    settleEndMs: 520,
+    // The tail is short because the reaction no longer ends on the decay: a
+    // stillness and a late collapse accent run between the recoil and the
+    // settle, and a long settle after them reads as a second, weaker ending.
+    settleEndMs: 470,
+    collapseStillnessMs: 34,
+    collapseAccentMs: 104,
+    collapseAccentScale: 1.22,
   }),
   'perfect-parry': Object.freeze({
     outcome: 'perfect-parry',
@@ -41,7 +47,10 @@ export const TWO_ACTOR_WHOLE_BODY_RECOIL_BURST_PROFILES = Object.freeze({
     powerFrameHoldMs: 112,
     impulseEndMs: 126,
     recoilEndMs: 355,
-    settleEndMs: 620,
+    settleEndMs: 520,
+    collapseStillnessMs: 40,
+    collapseAccentMs: 116,
+    collapseAccentScale: 1.30,
   }),
 });
 
@@ -145,6 +154,23 @@ export function buildTwoActorWholeBodyRecoilBurst(input = {}) {
       settleEndMs: profile.settleEndMs,
       legStrengthScale: profile.legStrengthScale,
       powerFrameHoldMs: profile.powerFrameHoldMs,
+      collapseStillnessMs: profile.collapseStillnessMs,
+      collapseAccentMs: profile.collapseAccentMs,
+      collapseAccentScale: profile.collapseAccentScale,
+    }),
+    // A parried swing does not fail on the impulse alone. The reference
+    // motion holds the thrown-open pose, goes completely still for about one
+    // 30fps frame, and only then loses the stance -- and that late accent is
+    // the largest movement in the whole exchange, larger than the hit that
+    // caused it. Decaying straight from the impulse to rest skips it, which
+    // is what makes an otherwise larger reaction read as controlled.
+    collapse: Object.freeze({
+      stillnessMs: profile.collapseStillnessMs,
+      accentMs: profile.collapseAccentMs,
+      accentScale: profile.collapseAccentScale,
+      entryElapsedMs: profile.recoilEndMs + profile.powerFrameHoldMs,
+      peakFollowsStillness: true,
+      authority: 'stillness-then-late-collapse-outweighs-the-impulse-that-caused-it',
     }),
     powerFrame: Object.freeze({
       entryElapsedMs: initialElapsedMs,
