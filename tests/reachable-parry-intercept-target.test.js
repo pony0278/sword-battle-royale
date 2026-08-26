@@ -55,9 +55,9 @@ test('LEFT-like unreachable prediction falls back to reachable measured sweep ge
   assert.equal(selected.trackingPlan, selected.measuredTrackingPlan);
   assert.equal(selected.trackingPlan.reachable, true);
   assert.equal(selected.trackingPlan.reason, 'measured-sweep-relative-contact-correction');
-  assert.ok(Math.abs(selected.trackingPlan.requiredDistance - 0.046) < 1e-9);
-  assert.ok(Math.abs(selected.trackingPlan.appliedDistance - 0.046) < 1e-9);
-  assert.ok(Math.abs(selected.trackingPlan.correction.x - 0.046) < 1e-9);
+  assert.ok(Math.abs(selected.trackingPlan.requiredDistance - 0.074) < 1e-9);
+  assert.ok(Math.abs(selected.trackingPlan.appliedDistance - 0.074) < 1e-9);
+  assert.ok(Math.abs(selected.trackingPlan.correction.x - 0.074) < 1e-9);
   assert.equal(selected.trackingPlan.correction.y, 0);
   assert.equal(selected.trackingPlan.correction.z, 0);
 });
@@ -105,8 +105,8 @@ test('edge-contact reach stays eligible even when the comfort-radius plan will c
   assert.equal(selected.fallbackApplied, true);
   assert.equal(selected.measuredRadialContactCorrectionMeters, 0.12);
   assert.ok(selected.measuredRequiredDistanceMeters > 0.18);
-  assert.ok(Math.abs(selected.measuredTrackingPlan.requiredDistance - 0.132) < 1e-9);
-  assert.ok(Math.abs(selected.measuredTrackingPlan.correction.x - 0.132) < 1e-9);
+  assert.ok(Math.abs(selected.measuredTrackingPlan.requiredDistance - 0.16) < 1e-9);
+  assert.ok(Math.abs(selected.measuredTrackingPlan.correction.x - 0.16) < 1e-9);
 });
 
 test('measured fallback preserves the surface-relative world direction instead of chasing the far predicted point', () => {
@@ -122,7 +122,7 @@ test('measured fallback preserves the surface-relative world direction instead o
   });
   assert.equal(selected.fallbackApplied, true);
   assert.ok(Math.abs(selected.trackingPlan.correction.x) < 1e-12);
-  assert.ok(Math.abs(selected.trackingPlan.correction.y - 0.046) < 1e-9);
-  assert.ok(Math.abs(selected.trackingPlan.requiredDistance - 0.046) < 1e-9);
+  assert.ok(Math.abs(selected.trackingPlan.correction.y - 0.074) < 1e-9);
+  assert.ok(Math.abs(selected.trackingPlan.requiredDistance - 0.074) < 1e-9);
   assert.notEqual(selected.trackingPlan.requiredDistance, selected.predictedRequiredDistanceMeters);
 });

@@ -3,7 +3,12 @@ export const REACHABLE_PARRY_INTERCEPT_TARGET_STAGE = 'G4.3B.5R.3.3';
 export const REACHABLE_PARRY_INTERCEPT_PROFILE = Object.freeze({
   maxCorrectionMeters: 0.18,
   comfortRadiusRatio: 0.60,
-  contactInsetMeters: 0.012,
+  // Aim the threat 4cm inside the rim, not 1.2cm. Measured on LEFT's
+  // knee-height sweep, a 1.2cm inset spent the whole travel budget arriving
+  // exactly on the rim: the exact swept test then failed by 0.5-3mm on
+  // two of three attempts. Aiming at the face turns rim-grazes into hits
+  // without touching the contact authority.
+  contactInsetMeters: 0.04,
   maxClosestCombinedGapMeters: 0.18,
   maxClosestPlaneGapMeters: 0.08,
 });

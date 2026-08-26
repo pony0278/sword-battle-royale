@@ -14,7 +14,7 @@ function close(actual, expected, epsilon = 1e-9) {
 }
 
 test('G4.2.1 starts Parry presentation before canonical contact for every longsword direction', () => {
-  const expectedContacts = { top: 0.43, right: 0.23, left: 0.30 };
+  const expectedContacts = { top: 0.43, right: 0.23, left: 0.26 };
   for (const [direction, contactSeconds] of Object.entries(expectedContacts)) {
     const profile = getLongswordContactRecoveryProfile(direction);
     assert.equal(profile.stage, LONGSWORD_CONTACT_RECOVERY_STAGE);

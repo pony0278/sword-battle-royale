@@ -12,7 +12,7 @@ import {
 const EXPECTED = Object.freeze({
   top: Object.freeze({ clipId: 'UAL1/Sword_Attack', contactSeconds: 0.43, durationSeconds: 1.533 }),
   right: Object.freeze({ clipId: 'UAL2/Sword_Regular_A', contactSeconds: 0.23, durationSeconds: 0.433 }),
-  left: Object.freeze({ clipId: 'UAL2/Sword_Regular_B', contactSeconds: 0.30, durationSeconds: 0.533 }),
+  left: Object.freeze({ clipId: 'UAL2/Sword_Regular_B', contactSeconds: 0.26, durationSeconds: 0.533 }),
 });
 
 test('G4.1 canonical directional attacks preserve selected clips and contact timing', () => {

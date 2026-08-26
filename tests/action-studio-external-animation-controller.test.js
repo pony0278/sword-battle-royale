@@ -77,11 +77,11 @@ test('canonical longsword directional attacks keep the verified clip and contact
     weapon: 'longsword',
     direction: 'left',
     clipId: 'UAL2/Sword_Regular_B',
-    contactSeconds: 0.30,
+    contactSeconds: 0.26,
   });
   assert.equal(getCanonicalMotionContactSeconds('UAL1/Sword_Attack'), 0.43);
   assert.equal(getCanonicalMotionContactSeconds('UAL2/Sword_Regular_A'), 0.23);
-  assert.equal(getCanonicalMotionContactSeconds('UAL2/Sword_Regular_B'), 0.30);
+  assert.equal(getCanonicalMotionContactSeconds('UAL2/Sword_Regular_B'), 0.26);
   assert.equal(getCanonicalMotionContactSeconds('UAL2/Sword_Regular_C'), null);
 });
 

@@ -17,7 +17,10 @@ export const LONGSWORD_DIRECTIONAL_ATTACKS = Object.freeze({
     weapon: 'longsword',
     direction: 'left',
     clipId: 'UAL2/Sword_Regular_B',
-    contactSeconds: 0.30,
+    // Measured, not assumed: the low sweep crosses the defender's plane at
+    // ~0.25-0.27s; by 0.30 the tip is already in its follow-through behind
+    // the attacker, so the TTC window opened ~50ms late.
+    contactSeconds: 0.26,
   }),
 });
 
