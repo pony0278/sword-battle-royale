@@ -104,7 +104,7 @@ export function buildParriedReactionDefinition(input = {}) {
     silhouette: Object.freeze({
       backwardPitchDegrees: Math.abs(finite(plan.body?.pitchDegrees)),
       minimumChestBackwardDegreesAtPeak: Math.abs(finite(plan.body?.pitchDegrees)) * 0.42,
-      rootMotion: false,
+      rootMotion: true,
     }),
     sourceBurst: burst,
     authority: 'combat-selects-parried-reaction-deflect-impulse-starts-presentation',

@@ -157,7 +157,7 @@ export function buildTwoActorWholeBodyRecoilBurst(input = {}) {
       parentChainFreeArmMotion: true,
       minimumChestBackwardDegreesAtFullTorsoWeight: backwardPitchDegrees * 0.42,
     }),
-    rootMotion: false,
+    rootMotion: true,
     authority: startsAtDeflectImpulse
       ? 'old-two-actor-b3-whole-body-impulse-at-defender-deflect-marker'
       : startsAtParryImpact

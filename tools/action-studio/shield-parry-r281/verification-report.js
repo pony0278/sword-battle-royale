@@ -86,6 +86,11 @@ export function buildShieldParryVerificationReport(context) {
         })
       : null,
     visibleOldB3Peak: exchangeState.visibleOldB3Peak,
+    rootDisplacement: Object.freeze({
+      armed: exchangeState.latestRootDisplacement || null,
+      attacker: exchangeState.latestAttackerRootDisplacement || null,
+      defender: exchangeState.latestDefenderRootDisplacement || null,
+    }),
     oldB3Continuation: Object.freeze({
       handoffPublished: exchangeState.step3AContactTransfer?.handoffPublished === true,
       handoffConsumed: exchangeState.step3AContactTransfer?.handoffConsumedByOldB3 === true,
@@ -209,6 +214,23 @@ export function buildShieldParryVerificationReport(context) {
           && combatSnapshot.attackerRecoil?.phaseClock?.latchPointMs > 0
           && combatSnapshot.attackerRecoil?.phaseClock?.elapsedMs
             <= combatSnapshot.attackerRecoil.phaseClock.latchPointMs + 1e-6
+        : true,
+      // Displacement replaces the old no-step rule. It must stay off while the
+      // swept probe owns success, and stay inside the authored travel after it.
+      rootDisplacementOnlyAfterDeflectImpulse: ownsLiveContact
+        ? !exchangeState.latestAttackerRootDisplacement
+          && !exchangeState.latestDefenderRootDisplacement
+        : true,
+      rootDisplacementStaysWithinAuthoredTravel: exchangeState.latestAttackerRootDisplacement
+        ? exchangeState.latestAttackerRootDisplacement.distanceMeters
+            <= (exchangeState.latestRootDisplacement?.attacker?.peakMeters ?? 0) + 1e-6
+          && (exchangeState.latestDefenderRootDisplacement?.distanceMeters ?? 0)
+            <= (exchangeState.latestRootDisplacement?.defender?.peakMeters ?? 0) + 1e-6
+        : true,
+      defenderDisplacementStaysSmallerThanAttacker: exchangeState.latestRootDisplacement?.attacker
+        && exchangeState.latestRootDisplacement?.defender
+        ? exchangeState.latestRootDisplacement.defender.peakMeters
+            < exchangeState.latestRootDisplacement.attacker.peakMeters
         : true,
       weaponArmRemainsContactConstrainedDuringStep3A: ownsLiveContact
         ? exchangeState.step3AContactTransfer?.weaponArmContactConstrained === true

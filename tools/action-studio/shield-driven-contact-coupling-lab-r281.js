@@ -225,6 +225,7 @@ const contactHandoffController = createShieldParryContactHandoffController({
   exchangeState,
   buckler,
   attacker,
+  defender,
   attackerSword,
   camera,
   combat,
@@ -361,11 +362,9 @@ function sampleAttackerBase(snapshot, deltaMs) {
 function resetExchange() {
   parryGate.reset();
   swordGripConstraint.reset();
-  bracingRuntime.resetImpact();
-  fineTrackingRuntime.reset();
-  residualBodyReachRuntime.reset();
-  residualStanceReachRuntime.reset();
-  predictivePresentation.reset();
+  bracingRuntime.resetImpact(); fineTrackingRuntime.reset();
+  residualBodyReachRuntime.reset(); residualStanceReachRuntime.reset();
+  predictivePresentation.reset(); contactHandoffController.resetRootDisplacement();
   preContactController.resetActiveIntercept();
   resetShieldParryExchangeState(exchangeState, {
     previousShieldLeadSurface: cloneSurface(buckler.getWorldParrySurface()),
@@ -663,8 +662,7 @@ function frame(timestamp) {
       selectedDirection,
       needsUpdate: contactFrame.liveConstraintNeedsUpdate,
     });
-    attackerSword.update(); defenderSword?.update();
-    contactHandoffController.recordVisibleOldB3Sample(exchangeState.latestCombatUpdate);
+    attackerSword.update(); defenderSword?.update(); contactHandoffController.recordVisibleOldB3Sample(exchangeState.latestCombatUpdate);
 
     if (!exchangeState.firstContact) {
       const currentBlade = captureBladePolyline();

@@ -67,7 +67,7 @@ test('G4.3B.5R.2.7 preserves backward almost-fall bias and owns the release legs
   assert.ok(Math.abs(result.plan.body.pitchDegrees) * 0.42 >= 13.4);
   assert.equal(result.profileOverrides.legStrengthScale, 1.95);
   assert.equal(result.powerFrame.parentChainFreeArmMotion, true);
-  assert.equal(result.rootMotion, false);
+  assert.equal(result.rootMotion, true);
 });
 
 test('G4.3B.5R.2.7 Perfect is stronger and longer than normal Parry', () => {

@@ -408,7 +408,9 @@ test('armed Parry recruits predicted or measured low stance, holds it, and prese
   assert.match(diagnosticFormattersSource, /feet \$\{footL\}\/\$\{footR\} \$\{planted\}/);
   assert.match(html, /compares the measured sword point with the predicted future sword point/);
   assert.match(html, /defender wrist\.l · chest · spine · hips · upper\/lower legs · foot orientation correction/);
-  assert.match(html, /both foot world positions \(no step\)/);
+  // The pre-contact no-step guarantee is now stated as the zero-displacement
+  // window: nothing may move while the swept probe owns parry success.
+  assert.match(html, /zero displacement while the swept probe owns success/);
   const block = preContactFunctionBody('updateBlockPreContact', 'updateParryPreContact');
   assert.doesNotMatch(block, /refineMeasuredContact/);
   assert.doesNotMatch(block, /residualBodyReachRuntime\.update/);

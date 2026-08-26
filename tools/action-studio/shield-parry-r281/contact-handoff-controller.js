@@ -1,6 +1,7 @@
 import {
   evaluateSweptContactTemporalEligibility,
 } from '../../../src/combat/swept-contact-temporal-eligibility.js';
+import { createParryRootDisplacementRuntime } from '../../../src/combat/parry-root-displacement.js';
 
 const WEAPON_ARM_RELEASE_BONES = Object.freeze(['upperarm.r', 'lowerarm.r', 'wrist.r', 'hand.r', 'handslot.r']);
 
@@ -8,6 +9,7 @@ export function createShieldParryContactHandoffController({
   exchangeState,
   buckler,
   attacker,
+  defender,
   attackerSword,
   camera,
   combat,
@@ -41,6 +43,8 @@ export function createShieldParryContactHandoffController({
     publishPostCouplingRecoilStaggerHandoff,
     measureAttackerRecoilWorldSilhouette,
   } = services;
+  const attackerRootDisplacement = createParryRootDisplacementRuntime({ rig: attacker?.rig });
+  const defenderRootDisplacement = createParryRootDisplacementRuntime({ rig: defender?.rig });
   const {
     captureCanonicalAttackerOldB3Base,
     captureAttackerWorldSilhouette,
@@ -74,6 +78,9 @@ export function createShieldParryContactHandoffController({
   }
 
   function updateDefenderDeflectReleaseGate() {
+    // guardRuntime rebuilds the defender pose from its clip every frame, so the
+    // defender root has to be re-offset after that rebuild, not before it.
+    exchangeState.latestDefenderRootDisplacement = defenderRootDisplacement.apply();
     if (exchangeState.latchedDefenderDeflectReleaseGate) return exchangeState.latchedDefenderDeflectReleaseGate;
     const current = currentDefenderDeflectReleaseGate();
     if (!current.passed) return current;
@@ -140,9 +147,44 @@ export function createShieldParryContactHandoffController({
       targetPose: contactBasePose,
       authority: 'weapon-arm-contact-pose-fades-into-contact-base-while-old-b3-body-keeps-running',
     };
+    // Displacement is armed here, never earlier: while the swept probe is live
+    // it owns parry success, and moving either root would move the geometry it
+    // measures. The defender is pushed the opposite way by the same impulse.
+    const backwardDirection = handoff.couplingReport?.attackDirection
+      ? exchangeState.latestCombatResult?.attackerReaction?.plan?.body?.direction
+      : null;
+    const attackerDisplacement = attackerRootDisplacement.start({
+      role: 'attacker',
+      backwardDirection,
+      momentum: 1,
+    });
+    const defenderDisplacement = backwardDirection
+      ? defenderRootDisplacement.start({
+          role: 'defender',
+          backwardDirection: {
+            x: -(Number(backwardDirection.x) || 0),
+            y: 0,
+            z: -(Number(backwardDirection.z) || 0),
+          },
+          momentum: 1,
+        })
+      : null;
+
+    exchangeState.latestRootDisplacement = Object.freeze({
+      attacker: attackerDisplacement?.accepted === true
+        ? Object.freeze({ peakMeters: attackerDisplacement.peakMeters, durationMs: attackerDisplacement.durationMs })
+        : null,
+      defender: defenderDisplacement?.accepted === true
+        ? Object.freeze({ peakMeters: defenderDisplacement.peakMeters, durationMs: defenderDisplacement.durationMs })
+        : null,
+      startsAfterDeflectImpulse: true,
+      reason: attackerDisplacement?.accepted === true ? null : attackerDisplacement?.reason || 'not-planned',
+    });
+
     exchangeState.step3AContactTransfer = Object.freeze({
       ...exchangeState.step3AContactTransfer,
       releasedToOldB3: true,
+      rootDisplacementArmedAtDeflectImpulse: attackerDisplacement?.accepted === true,
       releaseHandoff: handoff,
       defenderReleaseGate,
       handoffPublished: true,
@@ -431,7 +473,19 @@ export function createShieldParryContactHandoffController({
         });
       }
       if (exchangeState.step3AReleaseBlend) exchangeState.step3AReleaseBlend.elapsedMs += deltaMs;
-      if (exchangeState.latestCombatUpdate?.justCompleted && !hasAttackerRecovery) beginAttackRecovery(selectedDirection);
+      // One clock, two writers: the attacker root is safe to write here because
+      // guardRuntime only rebuilds the defender.
+      attackerRootDisplacement.advance(deltaMs);
+      defenderRootDisplacement.advance(deltaMs);
+      exchangeState.latestAttackerRootDisplacement = attackerRootDisplacement.apply();
+      if (exchangeState.latestCombatUpdate?.justCompleted) {
+        // The clock above stops with the exchange, so settle both roots back
+        // onto their base rather than leaving a residual offset standing.
+        resetRootDisplacement();
+        exchangeState.latestAttackerRootDisplacement = null;
+        exchangeState.latestDefenderRootDisplacement = null;
+        if (!hasAttackerRecovery) beginAttackRecovery(selectedDirection);
+      }
     }
     return Object.freeze({ handledCombat: true, liveConstraintNeedsUpdate });
   }
@@ -468,8 +522,15 @@ export function createShieldParryContactHandoffController({
     return Object.freeze({ release, passed });
   }
 
+  function resetRootDisplacement() {
+    attackerRootDisplacement.reset();
+    defenderRootDisplacement.reset();
+    return null;
+  }
+
   return Object.freeze({
     ownsLiveContact,
+    resetRootDisplacement,
     defenderDeflectReleaseGate,
     updateDefenderDeflectReleaseGate,
     releaseLiveContactToOldB3,
