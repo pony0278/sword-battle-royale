@@ -89,7 +89,7 @@ test('Step 3A exposes an explicit live contact inspection state and markers', ()
   assert.match(html, /Cyan = shield target/);
   assert.match(html, /yellow = sword contact/);
   assert.match(html, /confirmed real Parry uses the same bridge as a fail-safe and cannot remain frozen/);
-  assert.match(html, /TOP\/RIGHT 7\/7/);
+  assert.match(html, /the 7\/7 inspection \(all directions\)/);
   assert.match(labUiSource, /STEP 3A HOLD · LIVE CONTACT VERIFIED/);
   assert.match(labUiSource, /formatInspectionFailureSummary/);
   assert.match(labUiSource, /failedGateCount/);

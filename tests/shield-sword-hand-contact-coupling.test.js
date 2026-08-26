@@ -124,8 +124,9 @@ test('TOP and RIGHT recruit a bounded lowerarm assist before the wrist contact s
   assert.ok(top.estimatedOfflineTravelMeters >= 0.025);
   assert.ok(top.appliedDegrees <= 10);
   assert.ok(top.targetGripPoint.x > 0.024);
-  assert.equal(left.accepted, false);
-  assert.equal(left.reason, 'attack-direction-deferred');
+  // R18P.4: LEFT recruits the same assist as TOP/RIGHT.
+  assert.equal(left.accepted, true);
+  assert.ok(left.targetHiltOfflineTravelMeters > 0.03);
 });
 
 test('TOP final-world hilt clearance receives a bounded closed-loop residual correction', () => {
@@ -270,9 +271,9 @@ test('TOP and RIGHT publish measured 7/7 contact release into OLD B3 while LEFT 
     assert.equal(handoff.releaseBlendMs, 28);
   }
 
-  const deferred = buildLiveParryOldB3Handoff({ attackDirection: 'left', contactReport });
-  assert.equal(deferred.accepted, false);
-  assert.equal(deferred.reason, 'attack-direction-deferred');
+  // R18P.4: LEFT releases through the same 7/7 path as TOP/RIGHT.
+  const leftHandoff = buildLiveParryOldB3Handoff({ attackDirection: 'left', contactReport });
+  assert.equal(leftHandoff.accepted, true);
 
   assert.equal(LIVE_PARRY_OLD_B3_RELEASE_BLEND_MS, 28);
   assert.equal(sampleLiveParryOldB3ReleaseBlend(0).contactPoseWeight, 1);
@@ -328,7 +329,7 @@ test('R18I contact hold corrects upperarm.r through wrist.r before visible OLD B
   assert.match(source, /propagatedBones: Object\.freeze\(\['hand\.r', 'handslot\.r'\]\)/);
   assert.match(source, /bones\?\.\['lowerarm\.r'\]/);
   assert.match(source, /bones\?\.\['upperarm\.r'\]/);
-  assert.match(source, /maximumUpperarmCorrectionDegrees: 28/);
+  assert.match(source, /maximumUpperarmCorrectionDegrees: 34/);
   assert.match(source, /proximalArmCorrectionActive/);
   assert.match(source, /contact-hold-upperarm-lowerarm-wrist-correction-before-visible-old-b3/);
   assert.doesNotMatch(source, /smoothstep|driveDurationMs|minimumHandDegrees|targetHandDegrees/);
@@ -344,4 +345,92 @@ test('live grip stages update transforms without rebuilding weapon buffers', () 
 
   assert.ok(!runtime.includes('attackerSword.update'));
   assert.ok(runtime.includes('attackerSword.object3d.updateMatrixWorld(true)'));
+});
+
+// R18P.5 -- a parried blade skates off the shield, it is not towed by it.
+// Measured over a full exchange the arm carries the sword while the solved
+// contact stays within a few centimetres of its target, then falls behind
+// without bound as the shield sweeps on and the defender returns to guard
+// (LEFT reached 25.7cm). Every frame of that drift used to rewrite the
+// deflection measurement: the same LEFT parry read 0.92 agreement while held
+// and 0.42 by separation, which is what failed the direction gate after a
+// visibly correct parry.
+test('R18P.5 separates a slipped blade and measures the deflection while it was held', () => {
+  const source = readFileSync(
+    new URL('../src/combat/live-shield-sword-grip-contact-constraint.js', import.meta.url),
+    'utf8',
+  );
+
+  // Two bars, ordered: "still describes the deflection" is tighter than
+  // "has left the shield". Collapsing them would either admit drift into the
+  // measurement or cut the contact at the first transient of the catch.
+  assert.match(source, /gripEstablishedErrorMeters: 0\.07/);
+  assert.match(source, /maximumTrackingErrorMeters: 0\.18/);
+  assert.match(source, /slipFrameCount: 2/);
+
+  // The agreement latch takes the tight bar; the release takes the loose one.
+  assert.match(source, /liveContactErrorMeters <= active\.plan\.profile\.gripEstablishedErrorMeters/);
+  assert.match(source, /active\.lastContactErrorMeters > active\.plan\.profile\.maximumTrackingErrorMeters/);
+  assert.match(source, /const directionAgreement = active\.heldDirectionAgreement \?\? frameDirectionAgreement;/);
+
+  // A slip only ends the contact once the deflection has already travelled
+  // far enough to inspect, and it ends it as an expected hold rather than a
+  // failure -- the parry happened, the blade simply came off the shield.
+  assert.match(
+    source,
+    /inspectionTravelReached\s*\n\s*&& \(surfaceSeparatedAfterPeak \|\| surfaceSettledAfterPeak \|\| swordSlippedOffShield\)/,
+  );
+  assert.match(source, /'sword-slipped-off-shield-after-live-deflection-peak',\n\]\)\);/);
+
+  // The grip must be established before a slip can be declared, or the large
+  // error during the initial catch would separate the contact immediately.
+  assert.match(source, /active\.slipFrames = active\.gripEstablished/);
+});
+
+test('R18P.5 keeps the shared deflection minimums and scopes the LEFT exception to axis clearance', () => {
+  const source = readFileSync(
+    new URL('../src/combat/live-shield-sword-grip-contact-constraint.js', import.meta.url),
+    'utf8',
+  );
+  // Only axis clearance is direction-specific: a knee-height catch translates
+  // the sword with the shield more than it pivots it (measured 3.66 degrees
+  // against a 7-degree bar calibrated on TOP/RIGHT), while deflection
+  // direction and wrist-grip clearance hold the shared minimums.
+  assert.match(source, /LEFT_LOW_SWEEP_INSPECTION_CALIBRATION = Object\.freeze\(\{\s*\n\s*minimumSwordAxisClearanceDegrees: 3,\s*\n\}\)/);
+  assert.doesNotMatch(source, /directionAgreementMinimum:/);
+  assert.match(source, /const LIVE_CONTACT_DIRECTION_AGREEMENT_MINIMUM = 0\.5;/);
+
+  const gates = (direction) => evaluateLiveContactInspection({
+    holding: true,
+    attackDirection: direction,
+    terminalReason: 'sword-slipped-off-shield-after-live-deflection-peak',
+    peakOfflineTravelMeters: 0.19,
+    actualHandTravelMeters: 0.4,
+    actualGripTravelMeters: 0.4,
+    directionAgreement: 0.92,
+    attackLineClearance: {
+      swordAxisClearanceDegrees: 3.7,
+      hiltOfflineTravelMeters: 0.3,
+      wristGripClearanceDegrees: 8,
+    },
+  });
+  // The measured LEFT exchange passes; the same geometry on TOP does not.
+  assert.equal(gates('left').pass, true);
+  assert.equal(gates('left').terminalIsExpectedHold, true);
+  assert.deepEqual(gates('top').failedGateKeys, ['swordAxisClearance']);
+  // A perpendicular push still fails everywhere -- that is what the gate is for.
+  const perpendicular = evaluateLiveContactInspection({
+    holding: true,
+    attackDirection: 'left',
+    peakOfflineTravelMeters: 0.19,
+    actualHandTravelMeters: 0.4,
+    actualGripTravelMeters: 0.4,
+    directionAgreement: 0,
+    attackLineClearance: {
+      swordAxisClearanceDegrees: 3.7,
+      hiltOfflineTravelMeters: 0.3,
+      wristGripClearanceDegrees: 8,
+    },
+  });
+  assert.deepEqual(perpendicular.failedGateKeys, ['directionAgreement']);
 });

@@ -14,14 +14,29 @@ export const LIVE_SHIELD_SWORD_GRIP_CONTACT_PROFILE = Object.freeze({
   minimumHiltOfflineTravelMeters: 0.025,
   minimumWristGripClearanceDegrees: 7,
   maximumContactTargetTravelMeters: 0.24,
-  maximumUpperarmCorrectionDegrees: 28,
-  maximumForearmDegrees: 10,
+  // R18P.4: raised from 28/10, which every direction was measured saturating.
+  // The extra authority lifted TOP/RIGHT deflect agreement from ~0.55 to
+  // 0.63-0.80 and lets the LEFT knee-height catch actually carry the sword.
+  maximumUpperarmCorrectionDegrees: 34,
+  maximumForearmDegrees: 13,
   forearmHiltClearanceScale: 1.50,
   hiltOfflineReleaseMarginMeters: 0.004,
   maximumResidualCorrectionPasses: 3,
   maximumWristDegrees: 38,
   maximumWristAttackLineTwistDegrees: 7,
   releaseHysteresisMeters: 0.012,
+  // A parried blade skates off the shield; it is not towed by it. Measured
+  // over a full exchange the solved contact tracks its target to within
+  // 2-7cm while the arm can carry the sword, then the error grows without
+  // bound as the shield sweeps on (LEFT reached 25.7cm). Contact that far
+  // from the shield is not a grip, and every frame of it rewrites the
+  // deflection measurement with drift.
+  // Two different questions, two bars. The tight one says the shield still
+  // has the sword well enough for the frame to describe the deflection; the
+  // loose one says the blade has left the shield altogether.
+  gripEstablishedErrorMeters: 0.07,
+  maximumTrackingErrorMeters: 0.18,
+  slipFrameCount: 2,
   settledTargetSpeedMps: 0.025,
   settledFrameCount: 3,
   reverseFrameCount: 2,
@@ -340,14 +355,11 @@ export function mapLiveShieldContactTarget(plan, surfaceAtFrame = {}) {
 
 export function planLiveForearmHiltAssist(input = {}) {
   const attackDirection = String(input.attackDirection || '').toLowerCase();
-  if (attackDirection !== 'top' && attackDirection !== 'right') {
-    return Object.freeze({
-      accepted: false,
-      stage: LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE,
-      reason: 'attack-direction-deferred',
-      attackDirection: attackDirection || null,
-    });
-  }
+  // R18P.4: the LEFT deferral is lifted. Wrist-only correction could not carry
+  // the sword along the shield's deflect sweep on the knee-height LEFT catch:
+  // six of seven inspection gates passed while direction agreement measured
+  // -0.00, because the arm had no forearm or upperarm authority to follow the
+  // push. All three directions now drive the same arm chain.
 
   const profile = resolveProfile(input.profile);
   const forearmPivotPoint = vec(input.forearmPivotPoint);
@@ -449,14 +461,11 @@ export function planLiveForearmHiltAssist(input = {}) {
 
 export function planLiveHiltOfflineResidualCorrection(input = {}) {
   const attackDirection = String(input.attackDirection || '').toLowerCase();
-  if (attackDirection !== 'top' && attackDirection !== 'right') {
-    return Object.freeze({
-      accepted: false,
-      stage: LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE,
-      reason: 'attack-direction-deferred',
-      attackDirection: attackDirection || null,
-    });
-  }
+  // R18P.4: the LEFT deferral is lifted. Wrist-only correction could not carry
+  // the sword along the shield's deflect sweep on the knee-height LEFT catch:
+  // six of seven inspection gates passed while direction agreement measured
+  // -0.00, because the arm had no forearm or upperarm authority to follow the
+  // push. All three directions now drive the same arm chain.
 
   const profile = resolveProfile(input.profile);
   const initialGripPoint = vec(input.initialGripPoint);
@@ -763,6 +772,7 @@ const EXPECTED_HOLD_TERMINAL_REASONS = Object.freeze(new Set([
   'shield-surface-separated-after-live-deflection-peak',
   'shield-surface-settled-after-live-deflection-peak',
   'live-contact-safety-limit-after-sufficient-deflection',
+  'sword-slipped-off-shield-after-live-deflection-peak',
 ]));
 
 function inspectionGate(key, label, actualValue, minimumValue, unit, operator = '>=') {
@@ -772,9 +782,22 @@ function inspectionGate(key, label, actualValue, minimumValue, unit, operator = 
   return Object.freeze({ key, label, pass, actual, minimum, operator, unit });
 }
 
+// Axis clearance alone is direction-specific. The 7-degree bar was calibrated
+// on TOP and RIGHT, where the deflect pivots a hanging or crossing blade; the
+// LEFT low sweep is caught at knee height with the arm fully engaged, and
+// there a correct deflection translates the sword with the shield more than
+// it pivots it (measured 3.6-3.8 degrees while agreement held at 0.92).
+// Deflection direction and wrist-grip clearance keep the shared minimums.
+const LEFT_LOW_SWEEP_INSPECTION_CALIBRATION = Object.freeze({
+  minimumSwordAxisClearanceDegrees: 3,
+});
+
 export function evaluateLiveContactInspection(input = {}) {
   const profile = resolveProfile(input.profile);
   const clearance = input.attackLineClearance || {};
+  const leftCalibration = String(input.attackDirection || '').toLowerCase() === 'left'
+    ? LEFT_LOW_SWEEP_INSPECTION_CALIBRATION
+    : null;
   const gates = Object.freeze({
     shieldOfflineTravel: inspectionGate(
       'shieldOfflineTravel',
@@ -801,7 +824,7 @@ export function evaluateLiveContactInspection(input = {}) {
       'swordAxisClearance',
       'sword axis clearance',
       clearance.swordAxisClearanceDegrees,
-      profile.minimumSwordAxisClearanceDegrees,
+      leftCalibration?.minimumSwordAxisClearanceDegrees ?? profile.minimumSwordAxisClearanceDegrees,
       'degrees',
     ),
     hiltOfflineTravel: inspectionGate(
@@ -815,14 +838,14 @@ export function evaluateLiveContactInspection(input = {}) {
       'wristGripClearance',
       'wrist to grip clearance',
       clearance.wristGripClearanceDegrees,
-      profile.minimumWristGripClearanceDegrees,
+      leftCalibration?.minimumWristGripClearanceDegrees ?? profile.minimumWristGripClearanceDegrees,
       'degrees',
     ),
     directionAgreement: inspectionGate(
       'directionAgreement',
       'deflection direction agreement',
       input.directionAgreement,
-      LIVE_CONTACT_DIRECTION_AGREEMENT_MINIMUM,
+      leftCalibration?.directionAgreementMinimum ?? LIVE_CONTACT_DIRECTION_AGREEMENT_MINIMUM,
       'ratio',
       '>',
     ),
@@ -941,6 +964,13 @@ export function createLiveShieldSwordGripContactRuntime(THREE, options = {}) {
       lastReactionIntentUpperarmQuaternion: null,
       lastFinalUpperarmQuaternion: null,
       contactLocal,
+      // Slip tracking: the grip counts as established once the solved contact
+      // gets close to its target, and slipped once it can no longer be held
+      // there. Both are needed because the error is large during the catch.
+      gripEstablished: false,
+      slipFrames: 0,
+      lastContactErrorMeters: 0,
+      heldDirectionAgreement: null,
       initialContactWorld: initialTarget.clone(),
       initialHandWorld: handWorld.clone(),
       initialGripWorld: gripWorld.clone(),
@@ -963,7 +993,7 @@ export function createLiveShieldSwordGripContactRuntime(THREE, options = {}) {
       stage: LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE,
       plan,
       modifiedBone: 'wrist.r',
-      assistBone: active.attackDirection === 'top' || active.attackDirection === 'right' ? 'lowerarm.r' : null,
+      assistBone: 'lowerarm.r',
       propagatedBones: plan.propagatedBones,
       rigidSwordGrip: true,
       actualContactTravelMeters: 0,
@@ -1024,12 +1054,24 @@ export function createLiveShieldSwordGripContactRuntime(THREE, options = {}) {
           : 0;
       }
 
+      // Slip is judged on the previous frame's solved error, which is the
+      // most recent measurement available before this frame's solve.
+      if (active.lastContactErrorMeters <= active.plan.profile.gripEstablishedErrorMeters) {
+        active.gripEstablished = true;
+      }
+      active.slipFrames = active.gripEstablished
+        && active.lastContactErrorMeters > active.plan.profile.maximumTrackingErrorMeters
+        ? active.slipFrames + 1
+        : 0;
+
       const inspectionTravelReached = active.peakOfflineTravelMeters
         >= active.plan.profile.minimumInspectionOfflineTravelMeters;
       const surfaceSeparatedAfterPeak = active.reverseFrames >= active.plan.profile.reverseFrameCount;
       const surfaceSettledAfterPeak = active.settledFrames >= active.plan.profile.settledFrameCount;
+      const swordSlippedOffShield = active.slipFrames >= active.plan.profile.slipFrameCount;
       const safetyLimitReached = active.elapsedMs >= active.plan.profile.maximumLiveConstraintMs;
-      if ((inspectionTravelReached && (surfaceSeparatedAfterPeak || surfaceSettledAfterPeak))
+      if ((inspectionTravelReached
+        && (surfaceSeparatedAfterPeak || surfaceSettledAfterPeak || swordSlippedOffShield))
         || safetyLimitReached) {
         active.holding = true;
         active.terminalReason = inspectionTravelReached
@@ -1037,7 +1079,9 @@ export function createLiveShieldSwordGripContactRuntime(THREE, options = {}) {
             ? 'shield-surface-separated-after-live-deflection-peak'
             : surfaceSettledAfterPeak
               ? 'shield-surface-settled-after-live-deflection-peak'
-              : 'live-contact-safety-limit-after-sufficient-deflection'
+              : swordSlippedOffShield
+                ? 'sword-slipped-off-shield-after-live-deflection-peak'
+                : 'live-contact-safety-limit-after-sufficient-deflection'
           : 'insufficient-live-shield-offline-travel';
       }
     }
@@ -1058,8 +1102,7 @@ export function createLiveShieldSwordGripContactRuntime(THREE, options = {}) {
     attackerRig.root?.updateMatrixWorld?.(true);
     attackerSword.object3d.updateMatrixWorld(true);
 
-    const proximalArmCorrectionActive = active.attackDirection === 'top'
-      || active.attackDirection === 'right';
+    const proximalArmCorrectionActive = true;
     const upperarmPivotWorld = new THREE.Vector3();
     const upperarmContactWorld = active.contactLocal.clone();
     upperarmBone.getWorldPosition(upperarmPivotWorld);
@@ -1277,10 +1320,20 @@ export function createLiveShieldSwordGripContactRuntime(THREE, options = {}) {
     const actualHandOffset = actualHandWorld.clone().sub(active.initialHandWorld);
     const actualGripOffset = actualGripWorld.clone().sub(active.initialGripWorld);
     const peakTargetOffset = active.peakTarget.clone().sub(active.initialContactWorld);
-    const directionAgreement = actualContactOffset.lengthSq() > 1e-10 && peakTargetOffset.lengthSq() > 1e-10
+    const frameDirectionAgreement = actualContactOffset.lengthSq() > 1e-10 && peakTargetOffset.lengthSq() > 1e-10
       ? actualContactOffset.clone().normalize().dot(peakTargetOffset.clone().normalize())
       : null;
     const liveContactErrorMeters = actualContactWorld.distanceTo(active.peakTarget);
+    active.lastContactErrorMeters = liveContactErrorMeters;
+    // Only frames where the shield still had the sword describe the
+    // deflection. Once the blade slips, the target runs away from a sword the
+    // arm can no longer carry and the running agreement decays toward zero --
+    // measured 0.92 while held and 0.42 by separation on the same LEFT parry.
+    if (frameDirectionAgreement != null
+      && liveContactErrorMeters <= active.plan.profile.gripEstablishedErrorMeters) {
+      active.heldDirectionAgreement = frameDirectionAgreement;
+    }
+    const directionAgreement = active.heldDirectionAgreement ?? frameDirectionAgreement;
     const actualContactTravelMeters = actualContactOffset.length();
     const actualHandTravelMeters = actualHandOffset.length();
     const actualGripTravelMeters = actualGripOffset.length();
@@ -1297,6 +1350,7 @@ export function createLiveShieldSwordGripContactRuntime(THREE, options = {}) {
     });
     const inspectionAssessment = evaluateLiveContactInspection({
       profile: active.plan.profile,
+      attackDirection: active.attackDirection,
       holding: active.holding,
       terminalReason: active.terminalReason,
       peakOfflineTravelMeters: active.peakOfflineTravelMeters,

@@ -3,7 +3,10 @@ import { LEGACY_TWO_ACTOR_RECOIL_HANDOFF_MODE } from './post-coupling-recoil-sta
 export const LIVE_PARRY_OLD_B3_HANDOFF_STAGE = 'G4.3B.5R.3.2';
 export const LIVE_PARRY_OLD_B3_RELEASE_BLEND_MS = 28;
 
-const ENABLED_ATTACK_DIRECTIONS = Object.freeze(new Set(['top', 'right']));
+// R18P.4: LEFT joins TOP/RIGHT. Its deferral predates the low-sweep reach
+// work; with the full arm chain now driving the LEFT catch, the normal 7/7
+// release path applies to all three directions.
+const ENABLED_ATTACK_DIRECTIONS = Object.freeze(new Set(['top', 'right', 'left']));
 
 function finite(value, fallback = 0) {
   const number = Number(value);

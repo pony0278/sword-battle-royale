@@ -207,7 +207,7 @@ export function createShieldParryLabUi(elements) {
       : 'LIVE Shield → Sword → Grip: locked until valid manual timing and real contact pass';
     hudSeparation.textContent = step3AContactTransfer?.accepted
       ? `Step 3A: ${inspection} · contact error ${centimeters(latestGripConstraintReport?.liveContactErrorMeters)}cm · direction ${agreement} · hold ${formatTerminalState(latestGripConstraintReport?.terminalReason)} · ${latestGripConstraintReport?.elbowPropagationActive ? 'lowerarm.r assist → ' : ''}wrist.r → hand.r + handslot.r · shoulder OFF`
-      : 'Step 3A: waiting · TOP/RIGHT lowerarm assist + wrist/grip; LEFT remains wrist-only';
+      : 'Step 3A: waiting · full arm chain (upperarm + lowerarm + wrist/grip) on every direction';
     const lineClearance = latestGripConstraintReport?.attackLineClearance || null;
     const lineGate = (passed) => passed ? 'PASS' : 'FAIL';
     hudLineClearance.textContent = lineClearance

@@ -73,8 +73,8 @@ test('R18M.6 release preserves 28ms bridge and canonical OLD B3 continuation fro
   assert.match(controller, /deflect-impulse-continuity-bridge-weapon-arm-joins-running-old-b3/);
 });
 
-test('R18M.6 TOP/RIGHT policy remains data-driven and LEFT release stays delegated to handoff authority', () => {
-  assert.match(controller, /selectedDirection === 'top' \|\| selectedDirection === 'right'/);
+test('R18P.4 arm-chain policy is direction-uniform and release stays delegated to handoff authority', () => {
+  assert.doesNotMatch(controller, /selectedDirection === 'top' \|\| selectedDirection === 'right'/);
   assert.match(controller, /buildLiveParryOldB3Handoff\(\{/);
   assert.match(controller, /attackDirection: selectedDirection/);
   assert.doesNotMatch(controller, /selectedDirection === 'left'.*releasedToOldB3/s);

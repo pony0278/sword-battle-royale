@@ -50,7 +50,7 @@ function sliceFunction(text, startMarker) {
 test('R18M.1 baseline targets the actual R18I5 R281 browser entry', () => {
   assert.match(
     html,
-    /<script type="module" src="\.\/shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-left-reach-r18p3"><\/script>/,
+    /<script type="module" src="\.\/shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-slip-release-r18p5"><\/script>/,
   );
   assert.match(html, /BUILD R18I5 TOP\/RIGHT/);
   assert.match(html, /LEFT release (?:仍)?(?:暫緩|deferred)/);
@@ -123,21 +123,12 @@ test('R18M.1 locks DEFLECT_IMPULSE release, confirmed-Parry fail-safe, continuit
   assert.match(html, /the weapon arm joins the running OLD B3/);
 });
 
-test('R18M.1 locks TOP\/RIGHT calibrated arm assistance while LEFT release remains deferred', () => {
-  assert.match(
-    contactHandoffSource,
-    /proximalAssistBone: selectedDirection === 'top' \|\| selectedDirection === 'right' \? 'upperarm\.r' : null,/,
-  );
-  assert.match(
-    contactHandoffSource,
-    /assistBone: selectedDirection === 'top' \|\| selectedDirection === 'right' \? 'lowerarm\.r' : null,/,
-  );
-  assert.match(
-    contactHandoffSource,
-    /elbowPropagationActive: selectedDirection === 'top' \|\| selectedDirection === 'right',/,
-  );
+test('R18P.4 locks the calibrated arm assistance for every attack direction', () => {
+  assert.match(contactHandoffSource, /proximalAssistBone: 'upperarm\.r',/);
+  assert.match(contactHandoffSource, /assistBone: 'lowerarm\.r',/);
+  assert.match(contactHandoffSource, /elbowPropagationActive: true,/);
   assert.match(contactHandoffSource, /shoulderPropagationActive: false,/);
-  assert.match(html, /TOP\/RIGHT 7\/7/);
+  assert.match(html, /the 7\/7 inspection \(all directions\)/);
   assert.match(html, /LEFT release (?:仍)?(?:暫緩|deferred)/);
 });
 

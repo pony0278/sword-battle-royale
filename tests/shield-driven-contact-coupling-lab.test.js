@@ -49,7 +49,7 @@ test('G4.3B.5R.2.7 preserves terminal hand constraint and neutral release base b
 test('historical .2.7 source remains covered while current Lab selects at impact and starts at deflect', () => {
   assert.match(html, /Success authority<\/span><b>real swept Sword .* Shield contact<\/b>/);
   assert.match(html, /After success<\/span><b>ParryImpact selects one exaggerated OLD B3 plan whose torso and legs run from impact.*DEFLECT_IMPULSE.*28ms continuity bridge.*the weapon arm joins the running OLD B3<\/b>/);
-  assert.match(html, /contact correction fades to zero before visible OLD B3 arm sweep.*separate shoulder\/clavicle helper off.*LEFT release deferred/);
+  assert.match(html, /contact correction fades to zero before visible OLD B3 arm sweep.*separate shoulder\/clavicle helper off.*all three directions release/);
   assert.match(source, /WHOLE-BODY BURST: ACTIVE/);
   assert.match(source, /oldTwoActorWholeBodyB3ClockRestoredAtRelease: true/);
   assert.match(source, /weaponShouldersTorsoHipsLegsShareBurstClock: true/);
