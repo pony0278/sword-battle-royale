@@ -134,6 +134,9 @@ export function createShieldParryContactHandoffController({
     // guardRuntime rebuilds the defender pose from its clip every frame, so the
     // defender root has to be re-offset after that rebuild, not before it.
     exchangeState.latestDefenderRootDisplacement = defenderRootDisplacement.apply();
+    // Same repaint rule as the attacker: the defender's line avatar was drawn
+    // before this root offset landed.
+    if (defenderRootDisplacement.active) defender?.update?.(0, camera);
     if (exchangeState.latchedDefenderDeflectReleaseGate) return exchangeState.latchedDefenderDeflectReleaseGate;
     const current = currentDefenderDeflectReleaseGate();
     if (!current.passed) return current;
@@ -631,6 +634,14 @@ export function createShieldParryContactHandoffController({
       attackerRootDisplacement.advance(deltaMs);
       defenderRootDisplacement.advance(deltaMs);
       exchangeState.latestAttackerRootDisplacement = attackerRootDisplacement.apply();
+      // The v3 line avatar (limb connectors, contour, head outline) is only
+      // rebuilt inside the character's appearance update, which ran before
+      // these last writers rotated the bones. Without a repaint the joint
+      // nodes follow the corrected pose while the lines stay one authority
+      // behind on every frame.
+      if (attackerTorsoLean.active || attackerArmFling.active || attackerRootDisplacement.active) {
+        attacker.update(0, camera);
+      }
       if (exchangeState.latestCombatUpdate?.justCompleted) {
         // The clock above stops with the exchange, so settle both roots back
         // onto their base rather than leaving a residual offset standing. The
