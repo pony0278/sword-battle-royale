@@ -84,7 +84,6 @@ import { createDirectOldB3DiagnosticController } from './shield-parry-r281/direc
 import { ATTACKER_WALK_CLIPS, bootstrapShieldParryLabAssets } from './shield-parry-r281/lab-bootstrap.js';
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
 
-
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
 const THREE = window.THREE;
@@ -390,7 +389,7 @@ function triggerParryNow(source = 'button') {
     });
     const trackingDistance = exchangeState.latestParryInput.requiredShieldTravelMeters == null
       ? 'path pending'
-      : `${(exchangeState.latestParryInput.requiredShieldTravelMeters * 100).toFixed(1)}cm${exchangeState.latestParryInput.gates.trackingClamped ? ' → CLAMP 18cm' : ''}`;
+      : `${(exchangeState.latestParryInput.requiredShieldTravelMeters * 100).toFixed(1)}cm${exchangeState.latestParryInput.gates.trackingClamped ? ' → CLAMPED' : ''}`;
     status.textContent = `PARRY ARMED · TTC ${(exchangeState.latestParryInput.timeToContactSeconds * 1000).toFixed(0)}ms · tracking ${trackingDistance} · waiting for real Sword × Shield contact`;
     status.className = 'good';
   } else {
@@ -630,6 +629,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     dispatchParryInput,
     forceOldTwoActorB3,
     resetLane: () => (combat.active || attackRuntime.active ? null : laneController.resetLane()),
+    captureBladeGeometry: () => ({ blade: captureBladePolyline(), surface: buckler.getWorldParrySurface() }),
     setEngagementSeparation: (meters) => {
       // Between exchanges only: moving either actor mid-exchange would move the geometry the
       // swept contact probe is measuring.

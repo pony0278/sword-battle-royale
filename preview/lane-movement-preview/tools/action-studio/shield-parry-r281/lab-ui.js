@@ -1,6 +1,7 @@
 // R18M.3 — presentation-only Parry cue/HUD rendering and DOM event binding.
 // Callers provide snapshots/callbacks. This module never decides combat success.
 
+import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from '../../../src/combat/parry-lunge-reach.js';
 import {
   describeContactGeometry,
   formatAllInspectionGates,
@@ -123,7 +124,7 @@ export function createShieldParryLabUi(elements) {
       const reachCm = opportunity.requiredShieldTravelMeters == null
         ? '—'
         : (opportunity.requiredShieldTravelMeters * 100).toFixed(1);
-      const tracking = opportunity.gates.trackingClamped ? `tracking ${reachCm}cm → clamp 18cm` : `shield travel ${reachCm}cm`;
+      const tracking = opportunity.gates.trackingClamped ? `tracking ${reachCm}cm → clamp ${(PARRY_LUNGE_TRAVEL_BUDGET_METERS * 100).toFixed(0)}cm` : `shield travel ${reachCm}cm`;
       showParryCue('ready', 'PARRY NOW! · PRESS F', `commitment + TTC gate 已開 · ${tracking} · review hold 最多 1.5s`);
       return;
     }
@@ -209,8 +210,8 @@ export function createShieldParryLabUi(elements) {
       : latestParryInput
       ? latestReachableInterceptTarget?.fallbackApplied && interceptRequired != null
         ? `Shield intercept: MEASURED SWEEP ${(interceptRequired * 100).toFixed(1)}→${(interceptApplied * 100).toFixed(1)}cm · bad linear prediction ${originalPrediction == null ? '—' : `${(originalPrediction * 100).toFixed(1)}cm`} rejected · real contact still required`
-        : `Shield tracking: ${latestParryInput.requiredShieldTravelMeters == null ? 'path pending' : `${(latestParryInput.requiredShieldTravelMeters * 100).toFixed(1)}cm → ${latestParryInput.gates.trackingClamped ? 'CLAMP 18cm' : 'within 18cm'}`} · geometry cannot veto input · plane ${latestParryInput.predictedPlaneDistanceMeters == null ? '—' : `${(latestParryInput.predictedPlaneDistanceMeters * 100).toFixed(1)}cm`}`
-      : 'Shield tracking: geometry guides a clamped 18cm response; it cannot veto valid timing input';
+        : `Shield tracking: ${latestParryInput.requiredShieldTravelMeters == null ? 'path pending' : `${(latestParryInput.requiredShieldTravelMeters * 100).toFixed(1)}cm → ${latestParryInput.gates.trackingClamped ? `CLAMP ${(PARRY_LUNGE_TRAVEL_BUDGET_METERS * 100).toFixed(0)}cm` : `within ${(PARRY_LUNGE_TRAVEL_BUDGET_METERS * 100).toFixed(0)}cm`}`} · geometry cannot veto input · plane ${latestParryInput.predictedPlaneDistanceMeters == null ? '—' : `${(latestParryInput.predictedPlaneDistanceMeters * 100).toFixed(1)}cm`}`
+      : `Shield tracking: geometry guides a clamped ${(PARRY_LUNGE_TRAVEL_BUDGET_METERS * 100).toFixed(0)}cm response; it cannot veto valid timing input`;
     const centimeters = (value) => value == null ? '—' : (value * 100).toFixed(1);
     const agreement = latestGripConstraintReport?.directionAgreement == null
       ? '—'

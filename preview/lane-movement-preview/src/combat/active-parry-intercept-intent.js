@@ -1,8 +1,12 @@
+import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from './parry-lunge-reach.js';
+
 export const ACTIVE_PARRY_INTERCEPT_INTENT_STAGE = 'R18N.1';
 
 export const ACTIVE_PARRY_INTERCEPT_INTENT_PROFILE = Object.freeze({
   minimumLeadMeters: 0.09,
-  maximumLeadMeters: 0.18,
+  // R19F.1: the latched lead shares the lunge-reach travel budget - the F-press aims at a blade
+  // whose path the attack advance moved, so the lead has the same journey to cover.
+  maximumLeadMeters: PARRY_LUNGE_TRAVEL_BUDGET_METERS,
 });
 
 function finite(value, fallback = 0) {

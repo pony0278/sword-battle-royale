@@ -17,6 +17,7 @@ import {
   R18N_SHIELD_ARM_DELTA_BONES,
   extractShieldArmAuthoredDelta,
 } from './predictive-parry-arm-delta.js';
+import { PARRY_LUNGE_PROMPT_TTC_SECONDS } from './parry-lunge-reach.js';
 
 export const PREDICTIVE_INTERCEPT_PARRY_STAGE = 'G4.3B.5R';
 export const RHYTHM_TRIGGER_ACTIVE_PARRY_STAGE = 'G4.3B.5R.1';
@@ -42,7 +43,9 @@ const PRODUCTION_PARRY_PRESENTATION_MARKERS = getProductionParryDeflectProfile('
 export const PREDICTIVE_INTERCEPT_PARRY_PROFILE = Object.freeze({
   detectionHorizonSeconds: 0.30,
   planeCaptureMeters: 0.055,
-  normalTriggerTtcSeconds: 0.135,
+  // R19F.1: the prompt fires at the committed gate's earliest legal input edge - a lunge-length
+  // journey spends every legal frame. The player's input window itself is unchanged.
+  normalTriggerTtcSeconds: PARRY_LUNGE_PROMPT_TTC_SECONDS,
   perfectTriggerTtcSeconds: 0.065,
   minimumTriggerTtcSeconds: 0.020,
   earlyWindowEndSeconds: 0.22,

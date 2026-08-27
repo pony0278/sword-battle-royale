@@ -163,7 +163,7 @@ export function buildShieldParryVerificationReport(context) {
       noAutomaticTimingTrigger: true,
       authoredCommitmentMarkerRequired: exchangeState.latestParryInput?.gates?.attackCommitted ?? null,
       ttcWindowRequired: exchangeState.latestParryInput?.gates?.timingInsideWindow ?? null,
-      shieldTrackingClampedTo18cm: exchangeState.latestParryInput?.gates?.trackingClamped ?? null,
+      shieldTrackingClampedToBudget: exchangeState.latestParryInput?.gates?.trackingClamped ?? null,
       geometryGuidesButCannotVetoInput: exchangeState.latestParryInput?.gates?.geometryGuidanceCanVetoInput === false,
       measuredSweepFallbackIsGuidanceOnly: exchangeState.latestReachableInterceptTarget?.authority === 'guidance-only-real-swept-contact-remains-success-authority' || !exchangeState.latestReachableInterceptTarget,
       realSweptContactRequired: exchangeState.latestParryConfirmation?.gates?.realSweptContact ?? null,

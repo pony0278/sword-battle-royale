@@ -9,6 +9,7 @@ const handoff = await readFile(new URL('../tools/action-studio/shield-parry-r281
 const intent = await readFile(new URL('../src/combat/active-parry-intercept-intent.js', import.meta.url), 'utf8');
 const director = await readFile(new URL('../src/combat/parry-intercept-director.js', import.meta.url), 'utf8');
 const lifecycle = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
+const lungeReach = await readFile(new URL('../src/combat/parry-lunge-reach.js', import.meta.url), 'utf8');
 
 test('R18N.3 keeps Active Intercept as the last post-presentation shield-arm writer', () => {
   // R18S.3: the lab latches the intent, the director drives the ladder on it.
@@ -65,7 +66,10 @@ test('R18N.3 publishes world-target before/after evidence without contact author
 });
 
 test('R18N.3 preserves production tracking limits and real-contact reset boundary', () => {
-  assert.match(tracking, /maxTrackingSpeedMps: 1\.6/);
+  // R19F.1: parry's speed is the shared lunge-reach constant rather than a literal, so the scan
+  // asserts the binding and the binding's value in its own module.
+  assert.match(tracking, /maxTrackingSpeedMps: PARRY_LUNGE_TRACKING_SPEED_MPS/);
+  assert.match(lungeReach, /PARRY_LUNGE_TRACKING_SPEED_MPS = 3\.2/);
   assert.match(tracking, /upperArmMaxDegrees: 20/);
   assert.match(tracking, /lowerArmMaxDegrees: 26/);
   assert.match(bodyReach, /maxBodyReachMeters: 0\.035/);

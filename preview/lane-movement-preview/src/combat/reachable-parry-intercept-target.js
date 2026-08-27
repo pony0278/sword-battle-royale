@@ -1,7 +1,10 @@
+import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from './parry-lunge-reach.js';
+
 export const REACHABLE_PARRY_INTERCEPT_TARGET_STAGE = 'G4.3B.5R.3.3';
 
 export const REACHABLE_PARRY_INTERCEPT_PROFILE = Object.freeze({
-  maxCorrectionMeters: 0.18,
+  // R19F.1: shares the lunge-reach travel budget with the rest of the parry chain.
+  maxCorrectionMeters: PARRY_LUNGE_TRAVEL_BUDGET_METERS,
   comfortRadiusRatio: 0.60,
   // Aim the threat 4cm inside the rim, not 1.2cm. Measured on LEFT's
   // knee-height sweep, a 1.2cm inset spent the whole travel budget arriving
