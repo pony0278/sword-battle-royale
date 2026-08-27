@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>G3.5.1P-T2 Perfect Parry Deflect A/B</title>
+  <style>
+    html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}body{display:grid;grid-template-columns:minmax(0,1fr) 430px;overflow:hidden}main{position:relative;min-width:0}canvas{width:100%;height:100%;display:block}.hud{position:absolute;left:16px;top:16px;background:#07101acc;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.45 ui-monospace,monospace}.good{color:#7ef0ad}.bad{color:#ff8c8c}.warn{color:#ffd27a}aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:18px;margin:0 0 6px}h2{font-size:13px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:8px 10px;margin:3px;cursor:pointer}button:hover,button.on{background:#2b4268}.row{display:flex;flex-wrap:wrap}.note{color:#9eb0c8;font-size:12px}.tuning-note{margin:8px 0;padding:8px 10px;border:1px solid #334969;border-radius:7px;background:#111b2b;color:#bfd6f5;font-size:12px}label{display:block;margin:10px 0}input[type=range]{width:100%}output{float:right;color:#9fd0ff}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <main>
+    <canvas id="canvas"></canvas>
+    <div class="hud"><b>G3.5.1P-T2 · Perfect Parry A/B</b><div id="hudState">Loading…</div><div id="hudDetail"></div></div>
+  </main>
+  <aside>
+    <h1>Perfect Parry · Shared vs Power</h1>
+    <div class="note">兩個候選都保留同一個 Perfect contact timing；唯一主要差異是接觸後使用 Normal T1 compact deflect，或 Perfect T1 power deflect。</div>
+    <div class="tuning-note">判斷標準：哪一個更像「先撞盾 → 再撥開」。如果 Power 只是更像盾擊，就不值得為 Perfect 保留獨立動畫。</div>
+    <h2>Perfect Deflect Candidate</h2>
+    <div class="row"><button data-candidate="shared-normal-t1" class="on">A · Shared Normal T1</button><button data-candidate="power-t1">B · Power T1</button></div>
+    <div class="row"><button id="playToggle">▶ Play chain</button><button id="restart">↺ Restart</button></div>
+    <label>Chain elapsed <output id="timeLabel">0 ms</output><input id="timeline" type="range" min="0" max="500" step="1" value="0"></label>
+    <h2>Locked Contract</h2>
+    <pre id="contract">Loading…</pre>
+    <h2>View</h2>
+    <div class="row"><button data-view="front">Front</button><button data-view="three">3/4</button><button data-view="side">Side</button><button data-view="back">Back</button></div>
+    <h2>Verification</h2>
+    <div id="status" class="warn">Loading T2 A/B…</div>
+    <pre id="report">Not run.</pre>
+  </aside>
+  <script type="module" src="./perfect-parry-deflect-ab.js"></script>
+</body>
+</html>

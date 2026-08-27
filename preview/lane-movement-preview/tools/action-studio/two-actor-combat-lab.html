@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>G4.2 Two-Actor Combat Lab</title>
+  <style>
+    html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}body{display:grid;grid-template-columns:minmax(0,1fr) 420px;overflow:hidden}main{position:relative;min-width:0}canvas{width:100%;height:100%;display:block}.hud{position:absolute;left:16px;top:16px;min-width:290px;background:#07101acc;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.5 ui-monospace,monospace}.legend{position:absolute;left:16px;bottom:16px;background:#07101acc;border:1px solid #26354d;border-radius:10px;padding:8px 10px;font-size:12px}.good{color:#7ef0ad}.bad{color:#ff8c8c}.warn{color:#ffd27a}aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:19px;margin:0 0 6px}h2{font-size:13px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:9px 11px;margin:3px;cursor:pointer}button:hover{background:#22314c}button.active{border-color:#75e6c2;background:#18352f}.row{display:flex;flex-wrap:wrap}.note{color:#9eb0c8;font-size:12px}.metric{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:8px 0;padding:10px;border:1px solid #243147;border-radius:8px;background:#080d14}.metric b{color:#ddecff}.sep{height:1px;background:#243147;margin:14px 0}label{display:block;margin:10px 0}.toggle{display:flex;align-items:center;gap:8px}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px;max-height:270px;overflow:auto}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <main>
+    <canvas id="canvas"></canvas>
+    <div class="hud">
+      <b>G4.2 · Two-Actor Combat Lab</b>
+      <div id="hudAttack">Attack: loading…</div>
+      <div id="hudGuard">Defender: loading…</div>
+      <div id="hudContact">Contact: —</div>
+    </div>
+    <div class="legend">Attacker ← UAL1/UAL2 &nbsp;·&nbsp; Defender ← Production Skyrim Guard</div>
+  </main>
+  <aside>
+    <h1>Directional Attack × Guard</h1>
+    <div class="note">G4.1 canonical attack runtime 驅動左側攻擊者；右側直接使用目前 production Guard / Block Hit / Parry runtime。這裡的 contact reaction 是 scripted presentation trigger，真正空間碰撞與 authoritative combat resolver 留給 G4.3。</div>
+
+    <h2>Attack direction</h2>
+    <div class="row">
+      <button data-attack="top">TOP</button>
+      <button data-attack="right">RIGHT</button>
+      <button data-attack="left">LEFT</button>
+    </div>
+
+    <h2>Defender response at contact</h2>
+    <div class="row">
+      <button class="active" data-response="hold">Guard Hold</button>
+      <button data-response="block">Block Hit</button>
+      <button data-response="parry">Parry</button>
+      <button data-response="perfect">Perfect Parry</button>
+    </div>
+    <label class="toggle"><input id="autoRepeat" type="checkbox"> Auto repeat selected direction</label>
+
+    <h2>Canonical timing</h2>
+    <div class="metric">
+      <span>TOP · UAL1/Sword_Attack</span><b>0.43 s</b>
+      <span>RIGHT · UAL2/Sword_Regular_A</span><b>0.23 s</b>
+      <span>LEFT · UAL2/Sword_Regular_B</span><b>0.30 s</b>
+    </div>
+
+    <h2>Views</h2>
+    <div class="row"><button data-view="three">3/4</button><button data-view="side">Side</button><button data-view="attacker">Attacker</button><button data-view="defender">Defender</button></div>
+
+    <h2>Verification</h2>
+    <div id="status" class="warn">Loading UAL + Skyrim production clips…</div>
+    <pre id="report">Not run.</pre>
+  </aside>
+  <script type="module" src="./two-actor-combat-lab.js"></script>
+</body>
+</html>

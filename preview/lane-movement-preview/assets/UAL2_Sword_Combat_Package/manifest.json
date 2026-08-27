@@ -1,0 +1,142 @@
+{
+  "Rigged_Source": {
+    "No_Root_Motion": {
+      "Sword_Regular_A": {
+        "duration_seconds": 0.433,
+        "size_bytes": 696972
+      },
+      "Sword_Regular_B": {
+        "duration_seconds": 0.533,
+        "size_bytes": 704780
+      },
+      "Sword_Regular_C": {
+        "duration_seconds": 2.0,
+        "size_bytes": 819340
+      },
+      "Sword_Regular_Combo": {
+        "duration_seconds": 3.0,
+        "size_bytes": 897660
+      },
+      "Sword_Heavy_Combo": {
+        "duration_seconds": 4.333,
+        "size_bytes": 1002032
+      },
+      "Sword_Dash": {
+        "duration_seconds": 1.567,
+        "size_bytes": 785500
+      },
+      "Sword_Block": {
+        "duration_seconds": 1.233,
+        "size_bytes": 758320
+      },
+      "Hit_Knockback": {
+        "duration_seconds": 0.833,
+        "size_bytes": 728216
+      }
+    },
+    "Root_Motion": {
+      "Sword_Regular_A": {
+        "duration_seconds": 0.433,
+        "size_bytes": 696972
+      },
+      "Sword_Regular_B": {
+        "duration_seconds": 0.533,
+        "size_bytes": 704780
+      },
+      "Sword_Regular_C": {
+        "duration_seconds": 2.0,
+        "size_bytes": 819340
+      },
+      "Sword_Regular_Combo": {
+        "duration_seconds": 3.0,
+        "size_bytes": 897660
+      },
+      "Sword_Heavy_Combo": {
+        "duration_seconds": 4.333,
+        "size_bytes": 1002032
+      },
+      "Sword_Dash": {
+        "duration_seconds": 1.567,
+        "size_bytes": 785500
+      },
+      "Sword_Block": {
+        "duration_seconds": 1.233,
+        "size_bytes": 758320
+      },
+      "Hit_Knockback": {
+        "duration_seconds": 0.833,
+        "size_bytes": 728216
+      }
+    }
+  },
+  "Animation_Only": {
+    "No_Root_Motion": {
+      "Sword_Regular_A": {
+        "duration_seconds": 0.433,
+        "size_bytes": 93904
+      },
+      "Sword_Regular_B": {
+        "duration_seconds": 0.533,
+        "size_bytes": 101724
+      },
+      "Sword_Regular_C": {
+        "duration_seconds": 2.0,
+        "size_bytes": 216392
+      },
+      "Sword_Regular_Combo": {
+        "duration_seconds": 3.0,
+        "size_bytes": 294756
+      },
+      "Sword_Heavy_Combo": {
+        "duration_seconds": 4.333,
+        "size_bytes": 399156
+      },
+      "Sword_Dash": {
+        "duration_seconds": 1.567,
+        "size_bytes": 182516
+      },
+      "Sword_Block": {
+        "duration_seconds": 1.233,
+        "size_bytes": 155288
+      },
+      "Hit_Knockback": {
+        "duration_seconds": 0.833,
+        "size_bytes": 125176
+      }
+    },
+    "Root_Motion": {
+      "Sword_Regular_A": {
+        "duration_seconds": 0.433,
+        "size_bytes": 93904
+      },
+      "Sword_Regular_B": {
+        "duration_seconds": 0.533,
+        "size_bytes": 101724
+      },
+      "Sword_Regular_C": {
+        "duration_seconds": 2.0,
+        "size_bytes": 216396
+      },
+      "Sword_Regular_Combo": {
+        "duration_seconds": 3.0,
+        "size_bytes": 294756
+      },
+      "Sword_Heavy_Combo": {
+        "duration_seconds": 4.333,
+        "size_bytes": 399156
+      },
+      "Sword_Dash": {
+        "duration_seconds": 1.567,
+        "size_bytes": 182516
+      },
+      "Sword_Block": {
+        "duration_seconds": 1.233,
+        "size_bytes": 155288
+      },
+      "Hit_Knockback": {
+        "duration_seconds": 0.833,
+        "size_bytes": 125176
+      }
+    }
+  }
+}

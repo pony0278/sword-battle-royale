@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PUNCH STUDIO — 15-part detached model editor (sockets.json B-1)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script><!-- Meshy GLB 預設 Draco 壓縮:掛 DRACOLoader 原檔直載(loader 統一走 rig.js psMakeGltfLoader) -->
+<!-- 接縫規格 sockets.json v0.5.5 已抽成 ps/sockets-data.js(SOCKETS_JSON_RAW 全域;在 parts.js 之前載入) -->
+<link rel="stylesheet" href="ps/punch-studio.css">
+</head>
+<body>
+<header>
+  <h1>PUNCH&nbsp;STUDIO</h1>
+  <span class="sub" id="metaSub">pose-by-pose keyframe 編輯器 · loading…</span>
+  <span class="badge" id="modeBadge">MODE：TIMELINE EDIT</span>
+</header>
+
+<main>
+  <section id="stage">
+    <canvas id="c"></canvas>
+    <div class="hud"><div class="phasenow" id="phasenow">IDLE</div></div>
+    <div class="hint">滑鼠拖曳：旋轉 · 滾輪：縮放<br>
+      <span style="color:var(--cy)">EDIT:</span> 拖 slider 即時看姿勢 · 點 Timeline key 換編輯目標<br>
+      <span style="color:var(--lime)">PLAY:</span> 按下後動畫照 timing 跑完一輪</div>
+    <div id="hitFlash" style="position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:8"></div>
+    <div class="scrub" id="scrubWrap">
+      <span class="slbl" style="min-width:auto;color:var(--dim)">SCRUB</span>
+      <input type="range" id="rscrub" min="0" max="1000" step="1" value="0">
+      <span class="slbl" id="scrubLbl">—</span>
+    </div>
+  </section>
+
+  <aside>
+    <div class="tabs" id="phaseTabs">
+      <button data-p="idle">IDLE</button>
+      <button data-p="anti" class="on">ANTI</button>
+      <button data-p="strike">STRIKE</button>
+      <button data-p="impact">IMPACT</button>
+      <button data-p="recovery">RECOVER</button>
+    </div>
+
+    <div class="group timeline">
+      <h3>FREE TIMELINE <span id="timelineInfo" style="color:var(--dim);font-weight:400"></span></h3>
+      <div id="timelineBar" class="timeline-bar"></div>
+      <div id="timelineList" class="timeline-list"></div>
+      <div class="timeline-help">每個 key 有自己的 frame。改 timing 三個方法：拖上方 marker／右側「上一段長度」數字（會推移後面的 key，編動作鏈用）／「絕對 frame 位置」滑桿。改名：右側 key 名稱輸入框（英數/底線）。</div>
+    </div>
+
+    <div class="play">
+      <button class="big" id="playBtn">▶ PLAY</button>
+      <button class="slow" id="slowBtn">0.3×</button>
+      <button class="slow" id="loopBtn">LOOP</button>
+    </div>
+
+    <div class="util" style="gap:14px">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="whiteToggle"> 白模(白底黑邊觀察)</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="XYZ 三色基準線 + 腳下 FRONT/BACK/L/R 方向標示"><input type="checkbox" id="axesToggle" checked> 軸向標示</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="地面格線"><input type="checkbox" id="gridToggle" checked> 格線</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="markerToggle" checked> 🟠 朝向標記</label>
+    </div>
+
+    <div class="util">
+      <select id="presetSel">
+        <option value="">— 載入預設 —</option>
+        <option value="blank">空白(全 0)</option>
+        <option value="cross">直拳 cross</option>
+        <option value="hookl">左鉤 hook_l</option>
+        <option value="hookr">右鉤 hook_r</option>
+        <option value="upper">上鉤 uppercut</option>
+        <option value="jab">刺拳 jab</option>
+        <option value="punch_l">左拳 punch_l(誇張)</option>
+        <option value="combo8">★ 3連擊 combo(8 key 範本)</option>
+      </select>
+      <button id="mirrorAllBtn" style="border-color:var(--cy)">L↔R 整段鏡像(換手)</button>
+      <button id="mirrorBtn" title="只鏡像目前選中的 key,用於擺姿勢時修正左右">鏡像本 key</button>
+      <button id="copyBtn">複製 key…</button>
+      <button id="goofyBtn">填入站架</button>
+      <button id="tposeBtn" title="把目前 key 的參數整組設為 T-pose(雙臂水平、其餘歸零),可 undo;快捷鍵 T。與部位面板的「檢視 T-pose」不同——那個是唯讀檢視不動參數">T-pose 填入(T)</button>
+    </div>
+
+    <div class="group parts">
+      <h3>15 PARTS 部位式模型 (sockets.json 驅動)</h3>
+      <div class="ref-row">
+        <label class="filebtn" title="上傳一個含全部部位的 GLB,自動對應到所有 slot(深度遍歷,支援巢狀/Armature 包裹)">📦 上傳整包 GLB（一次對應全部）<input type="file" id="partsBundle" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label>
+      </div>
+      <div class="ref-row">
+        <label class="filebtn" title="逐一/多檔載入單一部位 GLB(檔名需含 head/torso/upper_arm_l…)">＋ 逐一載入部位<input type="file" id="partsFiles" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" multiple></label>
+        <label class="filebtn" title="載入任意道具 GLB 掛到「下方選定的 slot」(如 HEADGEAR 頭戴)。不靠檔名對應——先在下方選 slot,再載入,然後用 scale/x/y/z/rot 校準,最後「匯出對位 JSON」">🎩 載入裝備到選定 slot<input type="file" id="partsEquip" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label>
+        <button id="handsBuiltin" title="一鍵載入 repo 內建 rigged 手(assets/rigs/chibi-hands-rigged.glb):自動拆 Hand.L/Hand.R 掛左右手腕(需以本機伺服器開啟;file:// 請用旁邊的選檔載入)">🖐 rigged 手（內建）</button>
+        <label class="filebtn" title="選檔載入 rigged 手 GLB:自動拆 Hand.L/Hand.R 掛到左右手腕。對位用部位滑桿(選 HAND_L/HAND_R);手指彎曲用下方滑桿(逐關鍵格、選手後生效)">🖐 選檔載入<input type="file" id="partsHandsRig" accept=".glb,.gltf,model/gltf-binary,model/gltf+json"></label>
+        <button id="partsDummyToggle" title="隱藏/顯示原本幾何假人，只保留關節群組與載入模型">隱藏假人</button>
+        <button id="partInspectTpose" title="暫時把手臂平舉成 T-pose,讓上臂離開肋廓,確認肩→肘→腕→手接合(不影響存的 phases)">組裝檢視 T-pose</button>
+        <button id="partsClear">清除部位</button>
+      </div>
+      <div class="ref-row" title="道具庫:一鍵載入 repo 內入庫的道具 GLB(assets/scene/)掛到自然位置——火帽戴頭、爆桶/瓶握右腕。掛上後用下方 scale/x/y/z/rot 校準(每道具各自記憶),就能戴著道具編動作。需以本機伺服器開啟(fetch repo 檔)">
+        <span style="font-size:10.5px;color:var(--mut)">🎒 道具庫</span>
+        <select id="propLibSelect" title="選一個入庫道具"></select>
+        <button id="propLibMount" title="從 repo 載入並掛到自然位置(火帽=頭、桶/瓶=右腕)">掛上</button>
+      </div>
+      <div class="ref-row">
+        <select id="partSlotSelect" title="選擇要微調的部位 slot"></select>
+        <button id="partResetSlot">重設本部位</button>
+        <button id="partExportCfg">匯出對位 JSON</button>
+      </div>
+      <div class="parts-grid">
+        <label>scale</label><input type="range" id="partScale" min="0.05" max="5" step="0.01" value="1"><input id="partScaleNum" type="number" step="0.01" value="1">
+        <label>x</label><input type="range" id="partX" min="-2" max="2" step="0.01" value="0"><input id="partXNum" type="number" step="0.01" value="0">
+        <label>y</label><input type="range" id="partY" min="-2" max="2" step="0.01" value="0"><input id="partYNum" type="number" step="0.01" value="0">
+        <label>z</label><input type="range" id="partZ" min="-2" max="2" step="0.01" value="0"><input id="partZNum" type="number" step="0.01" value="0">
+        <label>rotX</label><input type="range" id="partRX" min="-180" max="180" step="1" value="0"><input id="partRXNum" type="number" step="1" value="0">
+        <label>rotY</label><input type="range" id="partRY" min="-180" max="180" step="1" value="0"><input id="partRYNum" type="number" step="1" value="0">
+        <label>rotZ</label><input type="range" id="partRZ" min="-180" max="180" step="1" value="0"><input id="partRZNum" type="number" step="1" value="0">
+      </div>
+      <div class="ref-row" title="手指彎曲=逐關鍵格姿勢(隨時間軸內插):接近幀張開、抓取幀捲起。預設鈕把「當前 key」兩手套成該形;逐手微調在上方 ARM L / ARM R 群組的 指根/指中/指尖/拇指 滑桿(左右獨立)">
+        <button data-handpose="open" title="當前 key 兩手 → 張開">✋ 張開</button>
+        <button data-handpose="grip" title="當前 key 兩手 → 抓握">✊ 抓握</button>
+        <button data-handpose="fist" title="當前 key 兩手 → 握拳">👊 握拳</button>
+        <button id="handShowToggle" title="切換手的顯示:雙手 → 只左手 → 只右手(調單手時不被另一手擋視線)">顯示:雙手</button>
+      </div>
+      <div class="ref-row" title="對照 stand-in:編扛人/丟人/扛桶動作時的參照幽靈,擺在遊戲真實位置(被扛者=正前方32px地面高度、桶=前方31px)。純參照,不參與姿勢/匯出">
+        <button id="ghostCarried" title="半透明紅色 chibi,擺在遊戲扛人的真實位置(再按一次移除)">👤 對照:被扛者</button>
+        <button id="ghostBarrel" title="半透明橘色桶佔位箱,擺在遊戲扛桶的真實位置(再按一次移除)">🛢 對照:桶</button>
+      </div>
+      <div class="ref-row" title="桶跟手掛點:grab 期間桶要黏在哪隻手/哪個點。單手=黏該手抓握面(掌指關節),X/Y/Z 是「手局部」偏移(隨手轉),自己喬進掌心;兩手中點=適合雙手抬。改完即時反映。">
+        <span style="font-size:10.5px;color:var(--mut)">桶掛點</span>
+        <select id="ghostBarrelAnchor"><option value="R">右手(後手)</option><option value="L">左手(前手)</option><option value="mid">兩手中點</option></select>
+        <label style="font-size:10.5px">X<input id="ghostBarrelOX" type="number" step="0.02" value="0" style="width:52px"></label>
+        <label style="font-size:10.5px">Y<input id="ghostBarrelOY" type="number" step="0.02" value="0" style="width:52px"></label>
+        <label style="font-size:10.5px">Z<input id="ghostBarrelOZ" type="number" step="0.02" value="0" style="width:52px"></label>
+      </div>
+      <div class="ref-row" title="被扛者跟手掛點:grab 期間人要黏在哪隻手。「拎頭吊掛」=頭頂貼該手抓握面、身體垂直吊下(拎人專用,不隨腕旋轉亂甩);「坐在手上」=腳底貼掛點。掛點的 X/Y/Z 偏移與傾角改成逐關鍵格:見左側「被扛者」滑桿群組(carry_tilt / 掛點 X/Y/Z)。">
+        <span style="font-size:10.5px;color:var(--mut)">人掛點</span>
+        <select id="ghostCarriedAnchor"><option value="R">右手(後手)</option><option value="L">左手(前手)</option><option value="mid">兩手中點</option></select>
+        <select id="ghostCarriedGrip"><option value="head">拎頭吊掛</option><option value="feet">坐在手上</option></select>
+        <span style="font-size:10px;color:var(--mut)">X/Y/Z 傾角 → 左側「被扛者」滑桿(逐幀)</span>
+      </div>
+      <div id="partsStatus" class="parts-status">尚未載入。最快：用「📦 上傳整包 GLB」一次匯入含全部部位的 bundle(如 tactics5x5_body_parts.glb),自動對應 15 個部位。或用「＋ 逐一載入部位」分檔載入。</div>
+    </div>
+
+    <div class="group">
+      <h3>遊戲整合(Mini Mage Mayhem)</h3>
+      <div style="display:flex;gap:6px;margin:6px 0">
+        <button id="gameViewBtn" style="flex:1">🎮 遊戲視角(44° 後上)</button>
+      </div>
+      <div id="impactInfo" style="font-size:10.5px;color:var(--cy);margin:2px 0 8px">impact: —</div>
+      <div style="display:flex;gap:6px;margin:4px 0">
+        <input id="clipName" placeholder="招式名(如 throw / hookl)" style="flex:1;background:#101322;border:1px solid var(--line);border-radius:7px;color:inherit;padding:5px 8px;font-size:11px">
+        <button id="clipSaveBtn">存入</button>
+      </div>
+      <div id="clipList" class="timeline-list" style="max-height:130px"></div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button id="clipExportAllBtn" style="flex:1">全部匯出 JSON</button>
+      </div>
+      <div class="timeline-help">招式庫存在瀏覽器 localStorage(具名槽,一招一槽)。「全部匯出」產生 {clips:{招式名:snapshot}} 一份 JSON,整份交給遊戲端接入 brawler-clips.js。impact 秒數 = 遊戲 STRIKE_DELAY 要填的值。</div>
+    </div>
+
+    <div id="poseGroups"></div>
+    <div id="propGroups"></div>
+
+    <div class="group timing">
+      <h3>TIMING(frame @ 60fps)<button class="reset-btn" data-r="timing">reset</button></h3>
+      <div id="timingControls"></div>
+    </div>
+
+    <div class="group timing">
+      <h3>LAG(per-limb 鞭打延遲)<button class="reset-btn" data-r="lags">reset</button></h3>
+      <div id="lagControls"></div>
+    </div>
+
+    <div class="group">
+      <h3 style="color:var(--hot)">🥊 HIT FEEL（打擊感試打 · 命中段觸發）</h3>
+      <div class="util" style="grid-template-columns:1fr 1fr; gap:12px; margin-bottom:6px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="hfDummy"> 沙包 dummy</label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="hfSound" checked> 音效</label>
+      </div>
+      <div class="ctrl">
+        <div class="lab"><span class="name">命中停頓 hitstop</span><span class="val"><span id="hfHitstopV">0.08</span><span class="unit">s</span></span></div>
+        <input type="range" id="hfHitstop" min="0" max="0.3" step="0.01" value="0.08">
+      </div>
+      <div class="ctrl">
+        <div class="lab"><span class="name">畫面震動 shake</span><span class="val" id="hfShakeV">0.50</span></div>
+        <input type="range" id="hfShake" min="0" max="1" step="0.01" value="0.5">
+      </div>
+      <div class="ctrl">
+        <div class="lab"><span class="name">沙包擊退 knockback</span><span class="val" id="hfKbV">0.50</span></div>
+        <input type="range" id="hfKb" min="0" max="1" step="0.01" value="0.5">
+      </div>
+      <div class="ctrl">
+        <div class="lab"><span class="name">沙包距離 dist</span><span class="val" id="hfDistV">1.30</span></div>
+        <input type="range" id="hfDist" min="0.6" max="2.2" step="0.01" value="1.3">
+      </div>
+    </div>
+
+    <div class="play" style="margin-top:14px">
+      <button id="importBtn" style="flex:1">📥 匯入參數</button>
+      <button class="slow" id="exportBtn" style="flex:1">EXPORT → Godot</button>
+    </div>
+    <div class="play" style="margin-top:8px">
+      <button class="slow" id="undoBtn" style="flex:1">↶ UNDO</button>
+      <button class="slow" id="redoBtn" style="flex:1">REDO ↷</button>
+      <button class="slow" id="jsonExportBtn" style="flex:1">JSON</button>
+    </div>
+    <div class="play" style="margin-top:8px">
+      <button id="captureBtn" style="flex:1">📷 擷取 contact sheet(播放條 × 雙角度,給 AI 看)</button>
+    </div>
+  </aside>
+</main>
+
+<div class="modal" id="modal">
+  <div class="box">
+    <h4>Export · 完整 pose set</h4>
+    <p id="modalHelp">可輸出 Godot 文字或 JSON。JSON 是推薦保存格式；Godot 文字適合貼到引擎端。</p>
+    <textarea id="modalText" readonly></textarea>
+    <div class="row">
+      <button id="copyText">再複製一次</button>
+      <button id="closeModal">關閉</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="importModal">
+  <div class="box">
+    <h4>Import · 貼上 EXPORT 文字</h4>
+    <p>可貼上 Godot EXPORT 文字或 JSON。可貼 JSON 或 Godot text。新格式含 keyorder/frame 會套用完整 timeline；舊格式仍會依勾選 key 覆寫。</p>
+    <textarea id="importText" placeholder="# === IDLE ===&#10;idle.root_y = 0.0&#10;...&#10;frame.anti = 7&#10;frames.anti = 7&#10;dim.headSize = 0.840"></textarea>
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin:8px 0; font-size:11px; color:var(--txt); align-items:center">
+      <span style="color:var(--cy)">舊格式覆寫:</span>
+      <label style="cursor:pointer"><input type="checkbox" class="impPh" value="idle" checked> idle</label>
+      <label style="cursor:pointer"><input type="checkbox" class="impPh" value="anti" checked> anti</label>
+      <label style="cursor:pointer"><input type="checkbox" class="impPh" value="strike" checked> strike</label>
+      <label style="cursor:pointer"><input type="checkbox" class="impPh" value="impact" checked> impact</label>
+      <label style="cursor:pointer"><input type="checkbox" class="impPh" value="recovery" checked> recovery</label>
+      <label style="cursor:pointer; margin-left:6px"><input type="checkbox" id="impMeta" checked> timing/lag/比例</label>
+    </div>
+    <div class="row">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="impAppend"> 接續匯入：串到目前 timeline 的 CANCEL 點之後（combo 串接，僅 JSON）</label>
+      <button id="importApply">匯入套用</button>
+      <button id="closeImportModal">取消</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="copyModal">
+  <div class="box">
+    <h4>複製 key 姿勢</h4>
+    <p>把哪個 key 的姿勢複製到目前選取的 key?</p>
+    <div class="util" id="copyChoices" style="grid-template-columns:repeat(5,1fr); margin-top:14px"></div>
+    <div class="row"><button id="closeCopyModal">取消</button></div>
+  </div>
+</div>
+
+<!-- 主程式:拆檔為 ps/*.js(古典 script,依序載入、共享全域;規則見 ps/README.md) -->
+<script src="ps/sockets-data.js"></script>
+<script src="ps/pose-data.js"></script>
+<script src="ps/rig.js"></script>
+<script src="ps/hitfeel.js"></script>
+<script src="ps/editor-ui.js"></script>
+<script src="ps/parts.js"></script>
+<script src="ps/avatar.js"></script>
+<script src="ps/slim.js"></script><!-- 匯出遊戲角色檔(瘦身;要用 avatar.js 的 AVATAR_LAST_*,故載其後) -->
+<script src="ps/game-bridge.js"></script>
+
+</body>
+</html>

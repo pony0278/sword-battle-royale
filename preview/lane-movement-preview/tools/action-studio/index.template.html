@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Action Studio · Procedural Rig Action Authoring</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./action-studio.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">PROCEDURAL RIG ACTION AUTHORING</p>
+      <h1>ACTION <span>STUDIO</span></h1>
+    </div>
+    <div class="authority-badge"><b>Presentation layer</b><span>combat authority stays external</span></div>
+  </header>
+
+  <main class="workspace">
+    <section class="stage-shell">
+      <canvas id="stageCanvas"></canvas>
+      <div class="stage-hud">
+        <span id="clipNow">SLASH TEST</span>
+        <strong id="phaseNow">READY · 0F</strong>
+      </div>
+      <div class="stage-help">點選手腳／肘膝節點顯示 XYZ 軸 · 拖節點中心可自由移動 · Shift 軸向吸附 5cm · 拖曳空白處旋轉</div>
+      <div id="impactFlash" class="impact-flash"></div>
+      <div class="stage-legend">
+        <span><i class="impact-dot"></i>Impact</span>
+        <span><i class="cancel-dot"></i>Cancel</span>
+        <span><i class="trail-dot"></i>Weapon trail</span>
+      </div>
+    </section>
+
+    <aside class="editor">
+      <section class="panel quick-actions">
+        <div class="panel-title"><span>Phase A demo</span><small>independent core</small></div>
+        <div class="button-grid three">
+          <button id="showTPose">T-Pose</button>
+          <button id="showIdle">Idle</button>
+          <button id="playSlash" class="primary">▶ Slash Test</button>
+        </div>
+      </section>
+
+      <section id="guardRuntimePanel" class="panel guard-runtime-panel" data-stage="G3.4" data-guard-runtime-static="true" data-controller-bound="false" data-guard-runtime-button-count="5">
+        <div class="panel-title"><span>Guard Runtime · G3.4</span><small>Skyrim Guard ↔ KayKit Counter</small></div>
+        <p class="blocking-intro">真正 Guard FSM 預覽。Block / Parry 使用 Skyrim Guard family；Counter 只會在預覽送出 authoritative <b>COUNTER_CONFIRMED</b> 後進入 KayKit <b>Melee_Block_Attack</b>，完成後回到 Skyrim Recover / Hold。</p>
+        <div class="button-grid three">
+          <button data-guard-runtime="hold">Guard Hold</button>
+          <button data-guard-runtime="block">Block Hit</button>
+          <button data-guard-runtime="parry">Parry</button>
+        </div>
+        <div class="button-grid two secondary-row">
+          <button data-guard-runtime="perfect">Perfect Parry</button>
+          <button data-guard-runtime="counter" class="primary">▶ Counter</button>
+        </div>
+        <div id="guardRuntimeStatus" class="status-line">G3.4 · assets load on first preview</div>
+        <div id="guardRuntimeDetail" class="status-line">Counter = Melee_Block_Attack · presentation never self-confirms combat authority</div>
+        <div class="status-line" data-g361-readability-entry="true">
+  <a id="powerBashReadabilityLink" href="./power-bash-readability-lab.html" target="_blank" rel="noopener">G3.6.3 · D Production + A/B/C History →</a>
+</div>
+      </section>
+
+      <section class="panel pose-drag-panel">
+        <div class="panel-title"><span>Direct Pose V3</span><small>select · XYZ gizmo · world / local</small></div>
+        <p class="pose-drag-intro">先點選任一手、腳、肘或膝節點，再拖紅 X／綠 Y／藍 Z 軸精確移動。直接拖節點中心仍是自由拖曳；自然極限後全身會繼續分攤動作。</p>
+        <div class="pose-drag-legend" aria-label="Direct Pose controls">
+          <span><i class="pose-hand-left"></i>Left hand</span><span><i class="pose-hand-right"></i>Right hand · weapon</span>
+          <span><i class="pose-foot-left"></i>Left foot</span><span><i class="pose-foot-right"></i>Right foot</span>
+          <span><i class="pose-joint-arm"></i>Elbow bend</span><span><i class="pose-joint-leg"></i>Knee bend</span>
+          <span><i class="pose-axis-x"></i>X · left / right</span><span><i class="pose-axis-y"></i>Y · up / down</span>
+          <span><i class="pose-axis-z"></i>Z · forward / back</span>
+        </div>
+        <div class="pose-drag-toggles">
+          <label class="check"><input id="poseDragEnabled" type="checkbox" checked> Show four limb controls</label>
+          <label class="check"><input id="poseJointHandles" type="checkbox" checked> Show elbow / knee handles</label>
+          <label class="check"><input id="poseAxisGizmo" type="checkbox" checked> Show XYZ on selected node</label>
+          <label class="check"><input id="posePinLeftFoot" type="checkbox" checked> Pin left foot</label>
+          <label class="check"><input id="posePinRightFoot" type="checkbox" checked> Pin right foot</label>
+        </div>
+        <div class="pose-drag-modes">
+          <label><span>Axis space</span><select id="poseAxisSpace"><option value="world">World axes</option><option value="local">Local joint axes</option></select></label>
+          <label><span>Free-drag plane</span><select id="poseDragPlane"><option value="screen">Screen plane</option><option value="vertical">Vertical plane</option><option value="ground">Ground plane</option></select></label>
+        </div>
+        <div id="poseAxisReadout" class="pose-axis-readout">Select a hand, foot, elbow, or knee</div>
+        <label class="pose-drag-coupling"><span>Whole-body coupling</span><output id="poseDragCouplingValue">0.85</output><input id="poseDragCoupling" type="range" min="0" max="1" step="0.01" value="0.85"></label>
+        <div class="pose-drag-limit">Limb stretch limit <b>1.05×</b> · Hold <b>Shift</b> for 0.05m axis snap · Esc clears selection · Release commits the selected Pose Key</div>
+        <div id="poseDragStatus" class="status-line">Select a pose node, then drag X / Y / Z or drag the node freely.</div>
+      </section>
+
+      <section class="panel blocking-panel">
+        <div class="panel-title"><span>Action Blocking V1</span><small>capture · onion skin · motion arcs</small></div>
+        <p class="blocking-intro">把目前姿勢複製成下一個 Key，再拖曳成揮砍下一段；每次 Capture 都會建立可還原的本機 JSON 備份。</p>
+        <div class="blocking-capture-row">
+          <button id="captureNextKey" class="primary">◆ Capture Next Key</button>
+          <label><span>Gap</span><input id="blockingFrameStep" type="number" min="1" max="60" step="1" value="4"><small>frames</small></label>
+        </div>
+        <div class="blocking-toggles">
+          <label class="check"><input id="blockingGhostPrevious" type="checkbox" checked> Previous ghost</label>
+          <label class="check"><input id="blockingGhostNext" type="checkbox" checked> Next ghost</label>
+          <label class="check"><input id="blockingTrajectories" type="checkbox" checked> Palm / sword-tip paths</label>
+        </div>
+        <div class="blocking-legend" aria-label="Blocking visualization legend">
+          <span><i class="blocking-previous"></i>Previous pose</span>
+          <span><i class="blocking-next"></i>Next pose</span>
+          <span><i class="blocking-hand-left"></i>Left palm</span>
+          <span><i class="blocking-hand-right"></i>Weapon palm</span>
+          <span><i class="blocking-sword-tip"></i>Sword tip</span>
+        </div>
+        <div id="blockingStatus" class="status-line">Capture the raised pose, then drag the new key downward.</div>
+      </section>
+
+      <section class="panel motion-guide-panel">
+        <div class="panel-title"><span>Whole-Body Motion</span><small>semantic guides → Pose Keys</small></div>
+        <div id="wholeBodyMotionEditor"></div>
+      </section>
+
+      <section class="panel kaykit-runtime-panel">
+        <div class="panel-title"><span>External Motion Library</span><small>UAL1/UAL2 retarget · KayKit native · 23 generated bones</small></div>
+        <div class="kaykit-runtime-controls">
+          <select id="animationPackSource" aria-label="Animation source">
+            <option value="ual2">UAL2 Sword Combat</option>
+            <option value="ual1">UAL1 Sword Basics</option>
+            <option value="kaykit">KayKit Base</option>
+          </select>
+          <button id="loadKayKitAnimations">Load selected pack</button>
+          <select id="kaykitClip"><option value="">Load UAL2 Sword Combat first</option></select>
+          <button id="playKayKitAnimation" class="primary">▶ Preview source</button>
+          <button id="stopKayKitAnimation">Return to Action</button>
+        </div>
+        <div class="animation-binding-controls">
+          <label>Speed<input id="animationBindingSpeed" type="number" min="0.001" step="0.05" value="1"></label>
+          <label>Offset (s)<input id="animationBindingOffset" type="number" min="0" step="0.05" value="0"></label>
+          <label class="check"><input id="animationBindingInPlace" type="checkbox" checked> In-place</label>
+          <label class="check"><input id="animationBindingLoop" type="checkbox"> Loop source</label>
+          <button id="bindKayKitAnimation">Bind source</button>
+          <button id="fitKayKitAnimation" class="primary">Fit + bind clip</button>
+          <button id="clearAnimationBinding">Use Pose Keys</button>
+        </div>
+        <div id="animationBindingStatus" class="status-line">Pose keys drive the action timeline</div>
+        <div id="kaykitStatus" class="status-line">UAL2 Sword Combat · not loaded · use the local HTTP server</div>
+      </section>
+
+      <section class="panel character-style-panel">
+        <div class="panel-title"><span>V3 Rig Line Only</span><small>fully procedural avatar</small></div>
+        <div class="button-grid two">
+          <button id="toggleRigNodes" class="on">Joint Nodes</button>
+          <button id="toggleRigGlow" class="on">Glow Layer</button>
+        </div>
+        <div id="characterStyleStatus" class="status-line">avatar 18 nodes · weapon 10 nodes · exact v3 sword outline</div>
+      </section>
+
+      <section class="panel playback">
+        <div class="button-grid four">
+          <button id="playToggle" class="primary">▶ Play</button>
+          <button id="slowToggle">0.25×</button>
+          <button id="loopToggle">Loop</button>
+          <button id="gameCamera">Game Camera</button>
+        </div>
+      </section>
+
+      <section class="panel timeline-panel">
+        <div class="panel-title"><span>Timeline</span><small id="timelineSummary">—</small></div>
+        <div id="timelineBar" class="timeline-bar"><div id="timelinePlayhead" class="timeline-playhead"></div></div>
+        <div class="scrub-row">
+          <input id="timelineScrub" type="range" min="0" max="26" step="0.01" value="0">
+          <output id="frameNow">0.00f</output>
+        </div>
+        <div id="timelineKeys" class="timeline-keys"></div>
+        <div class="key-tools">
+          <button id="addKey">＋ Key</button>
+          <button id="duplicateKey">⧉ Duplicate</button>
+          <button id="deleteKey">× Delete</button>
+        </div>
+        <div class="key-editor">
+          <label>Name<input id="keyName" type="text"></label>
+          <label>Frame<input id="keyFrame" type="number" min="0" step="1"></label>
+          <label>Ease<select id="keyEase"><option>lin</option><option>in</option><option>out</option><option>in-out</option></select></label>
+          <label>Tag<input id="keyTag" type="text"></label>
+          <label class="check"><input id="keyImpact" type="checkbox"> Impact</label>
+          <label class="check"><input id="keyCancel" type="checkbox"> Cancel</label>
+          <button id="applyKey" class="primary">Apply key data</button>
+        </div>
+      </section>
+
+      <section class="panel metadata-panel">
+        <div class="panel-title"><span>Action metadata</span><small>authoring hints · not hit results</small></div>
+        <div id="windowEditor" class="window-editor"></div>
+      </section>
+
+      <section class="panel socket-panel">
+        <div class="panel-title"><span>Weapon mount · HAND_R</span><small id="socketStatus">attached</small></div>
+        <div id="mountEditor" class="mount-editor"></div>
+        <div class="button-grid two">
+          <button id="saveMount" class="primary">Save calibration</button>
+          <button id="resetMount">Reset</button>
+        </div>
+        <div id="weaponRigStatus" class="status-line">exact v3 edges · 11 weapon bones · secondary grip · parry / trail points</div>
+      </section>
+
+      <section class="panel feel-panel">
+        <div class="panel-title"><span>Combat Feel Preview</span><small>same animation · A/B impact response</small></div>
+        <div id="feelAbControls">
+          <div class="button-grid two">
+            <label>Profile A<select id="feelProfileA"><option value="light">Light Slash</option><option value="heavy">Heavy Slash</option><option value="block">Block</option><option value="parry">Perfect Parry</option></select></label>
+            <label>Profile B<select id="feelProfileB"><option value="light">Light Slash</option><option value="heavy" selected>Heavy Slash</option><option value="block">Block</option><option value="parry">Perfect Parry</option></select></label>
+          </div>
+          <div class="button-grid two secondary-row">
+            <button id="feelUseA" class="on">Use A</button>
+            <button id="feelUseB">Use B</button>
+          </div>
+          <div id="feelProfileStatus" class="status-line">Active A · Light Slash · same animation, different impact response</div>
+        </div>
+        <label>Hitstop <output id="hitstopValue">0.03s</output><input id="hitstop" type="range" min="0" max="0.25" step="0.005" value="0.03"></label>
+        <label>Camera shake <output id="shakeValue">0.18</output><input id="shake" type="range" min="0" max="1" step="0.01" value="0.18"></label>
+        <label>Dummy knockback <output id="knockbackValue">0.22</output><input id="knockback" type="range" min="0" max="1" step="0.01" value="0.22"></label>
+        <label class="check"><input id="dummyToggle" type="checkbox" checked> Preview dummy + impact flash</label>
+      </section>
+
+      <section class="panel library-panel">
+        <div class="panel-title"><span>Clip Library / Combo Preview</span><small>local presentation workspace</small></div>
+        <div class="library-save"><input id="libraryName" type="text" placeholder="action name"><button id="saveClip" class="primary">Save</button></div>
+        <div id="clipLibrary" class="clip-library"></div>
+        <div class="combo-head"><span>Combo queue</span><div><button id="playCombo">▶ Preview</button><button id="clearCombo">Clear</button></div></div>
+        <div id="comboQueue" class="combo-queue">queue is empty</div>
+      </section>
+
+      <section class="panel io-panel">
+        <div class="panel-title"><span>Project JSON</span><small>downloadable pose + action snapshots</small></div>
+        <textarea id="projectJson" spellcheck="false" placeholder="Export or paste a project / legacy snapshot"></textarea>
+        <div class="button-grid three">
+          <button id="exportProject">Copy JSON</button><button id="downloadProject" class="primary">↓ Download .json</button><button id="importProject">Import text</button>
+        </div>
+        <div class="button-grid two io-file-row">
+          <button id="openProjectFile">Open .json file</button><button id="restoreAutosave">Restore auto backup</button>
+        </div>
+        <input id="projectFileInput" class="io-file-input" type="file" accept="application/json,.json">
+        <div id="autosaveStatus" class="status-line">Auto backup starts after your first edit or Capture.</div>
+        <div id="ioStatus" class="status-line"></div>
+      </section>
+
+      <section class="panel pose-panel">
+        <div class="panel-title"><span>Pose sliders</span><small id="poseAxisSummary">POSE_KEYS</small></div>
+        <div id="poseControls"></div>
+      </section>
+
+      <section class="architecture-note">
+        <b>Runtime boundary</b>
+        <span>Action State → KayKit Rig → V3 Line Avatar / HAND_R → V3 Weapon Rig → Trail / Sweep / VFX</span>
+        <small>Network / Combat Simulation remains the authority for hit, block, parry and counter outcomes.</small>
+      </section>
+    </aside>
+  </main>
+
+  <script type="module">
+    await import('./action-studio.js');
+    await import('./studio-combat-feel-controller.js');
+  </script>
+</body>
+</html>

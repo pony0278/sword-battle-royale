@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>G4.3B.5 Contact-Synchronized Parry</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}
+    body{display:grid;grid-template-columns:minmax(0,1fr) 430px;overflow:hidden}main{position:relative;min-width:0;min-height:0}canvas{width:100%;height:100%;display:block;touch-action:none}
+    .hud{position:absolute;left:16px;top:16px;min-width:430px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.5 ui-monospace,monospace;pointer-events:none}
+    .legend{position:absolute;left:16px;bottom:16px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:8px 10px;font-size:12px;pointer-events:none}
+    aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:19px;margin:0 0 6px}h2{font-size:13px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}
+    button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:9px 11px;margin:3px;cursor:pointer}button:hover{background:#22314c}button.active{border-color:#75e6c2;background:#18352f}.row{display:flex;flex-wrap:wrap}.note{color:#9eb0c8;font-size:12px}.good{color:#7ef0ad}.bad{color:#ff8c8c}.warn{color:#ffd27a}
+    .metric{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:8px 0;padding:10px;border:1px solid #243147;border-radius:8px;background:#080d14}.metric b{color:#ddecff}.toggle{display:flex;align-items:center;gap:8px;margin:10px 0}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px;max-height:300px;overflow:auto}
+    @media(max-width:900px){html,body{height:auto;min-height:100%;overflow:auto}body{display:block;min-height:100vh}main{height:58vh;min-height:360px;border-bottom:1px solid #26354d}aside{overflow:visible;border-left:0;border-top:1px solid #26354d;padding:16px}.hud{left:10px;right:10px;top:10px;min-width:0;font-size:11px}.legend{left:10px;right:10px;bottom:10px;font-size:11px}.row{gap:2px}button{flex:1 1 30%;min-width:92px;min-height:44px;margin:2px;padding:10px 8px}.metric{font-size:12px}pre{max-height:45vh}}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <main>
+    <canvas id="canvas"></canvas>
+    <div class="hud">
+      <b>G4.3B.5 · Contact-Synchronized Parry</b>
+      <div id="hudAttack">Attack: loading…</div>
+      <div id="hudOutcome">Outcome: —</div>
+      <div id="hudContact">Contact: —</div>
+      <div id="hudRecoil">Recoil: —</div>
+      <div id="hudDefender">Defender: —</div>
+    </div>
+    <div class="legend">Red = final G4.3A contact after Fine Tracking · defender deflect visually leads attacker recoil</div>
+  </main>
+  <aside>
+    <h1>Contact-Synchronized Parry</h1>
+    <div class="note">B.5 保留 B.4 的完整 combat chain，但修正三件事：Parry 視覺 pre-roll 讓防守者先開始撥劍、恢復最多 7cm Fine Guard Tracking 以接住 LEFT、並降低 debug HUD/report 與 render density 以減少卡頓。</div>
+
+    <h2>Attack direction</h2>
+    <div class="row"><button data-attack="top">TOP</button><button data-attack="right" class="active">RIGHT</button><button data-attack="left">LEFT</button></div>
+
+    <h2>Guard timing grade</h2>
+    <div class="row"><button data-grade="block">BLOCK</button><button data-grade="parry" class="active">PARRY</button><button data-grade="perfect">PERFECT</button></div>
+    <div class="metric">
+      <span>BLOCK test age</span><b>260 ms</b>
+      <span>PARRY test age</span><b>120 ms</b>
+      <span>PERFECT test age</span><b>50 ms</b>
+      <span>Parry visual pre-roll</span><b>205 ms</b>
+      <span>Attacker recoil gate</span><b>14–20 ms</b>
+      <span>Fine Guard Tracking</span><b>max 0.07 m</b>
+      <span>Contact authority</span><b>final swept geometry</b>
+    </div>
+    <label class="toggle"><input id="autoRepeat" type="checkbox"> Auto repeat after defender returns Hold</label>
+    <label class="toggle"><input id="showSurface" type="checkbox" checked> Show Buckler parry surface</label>
+
+    <h2>Views</h2>
+    <div class="row"><button data-view="three">3/4</button><button data-view="side">Side</button><button data-view="attacker">Attacker</button><button data-view="contact">Contact</button></div>
+
+    <h2>Expected chain</h2>
+    <div class="metric">
+      <span>1</span><b>Directional attack</b>
+      <span>2</span><b>Body brace + Fine Tracking</b>
+      <span>3</span><b>Final swept contact</b>
+      <span>4</span><b>Freeze contact pose</b>
+      <span>5</span><b>Defender starts redirect</b>
+      <span>6</span><b>Attacker directional recoil</b>
+      <span>7</span><b>Handoff / recovery</b>
+    </div>
+
+    <h2>Debug performance</h2>
+    <div class="metric">
+      <span>HUD refresh</span><b>20 Hz</b>
+      <span>JSON report</span><b>5 Hz</b>
+      <span>Pixel ratio cap</span><b>1.5</b>
+      <span>Blade polyline</span><b>double-buffered</b>
+    </div>
+
+    <h2>Verification</h2>
+    <div id="status" class="warn">Loading G4.3B.5…</div>
+    <pre id="report">Not run.</pre>
+  </aside>
+  <script type="module" src="./two-actor-combat-integration-lab.js"></script>
+</body>
+</html>

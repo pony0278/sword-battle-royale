@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>G4.3B.5R.2.9.2 Physical Grip / Wrist Compliance</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}
+    body{display:grid;grid-template-columns:minmax(0,1fr) 430px;overflow:hidden}main{position:relative;min-width:0;min-height:0}canvas{width:100%;height:100%;display:block}
+    aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:19px;margin:0 0 6px}h2{font-size:12px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}
+    button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:9px 12px;margin:3px;cursor:pointer}button:hover{border-color:#75e6c2}.row{display:flex;flex-wrap:wrap;gap:6px}.note{color:#9eb0c8;font-size:12px}
+    .hud{position:absolute;left:16px;top:16px;min-width:650px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.55 ui-monospace,monospace;pointer-events:none}.legend{position:absolute;left:16px;bottom:16px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:8px 10px;font-size:12px}
+    .metric{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:8px 0;padding:10px;border:1px solid #243147;border-radius:8px;background:#080d14}.metric b{color:#ddecff}.control{display:grid;grid-template-columns:135px 1fr 58px;gap:8px;align-items:center;margin:9px 0}.control input{width:100%}.good{color:#7ef0ad}.warn{color:#ffd27a}.bad{color:#ff8c8c}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px;max-height:310px;overflow:auto}
+    @media(max-width:920px){html,body{height:auto;min-height:100%;overflow:auto}body{display:block}main{height:58vh;min-height:360px}.hud{left:10px;right:10px;top:10px;min-width:0;font-size:10px}aside{border-left:0;border-top:1px solid #26354d}}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <main>
+    <canvas id="canvas"></canvas>
+    <div class="hud">
+      <b>G4.3B.5R.2.9.2 · Physical Grip / Wrist Compliance</b>
+      <div id="hudContact">CCD: waiting…</div>
+      <div id="hudGrip">Grip error: —</div>
+      <div id="hudHand">Hand travel: —</div>
+      <div id="hudWrist">Wrist error: —</div>
+      <div id="hudTransfer">Energy handoff: —</div>
+      <div id="hudSword">Sword tip / hand travel: —</div>
+    </div>
+    <div class="legend">Cyan = shield · Silver = sword · Orange = contact/impulse · Green = hand · Purple = forearm/body anchor</div>
+  </main>
+  <aside>
+    <h1>Physical Grip / Wrist Compliance</h1>
+    <div class="note">沿用 `.2.9.1` whole-blade earliest-TOI contact。盾只撞劍；之後劍柄透過 spring/damper 把力量傳給 Hand proxy，Hand 再透過 forearm anchor 承接。沒有 IK、沒有把劍柄硬 copy 回手的位置。</div>
+    <h2>Presets</h2>
+    <div class="row"><button id="restart">Restart</button><button id="strong">Strong parry</button><button id="firm">Firm grip</button><button id="loose">Loose grip</button></div>
+    <label class="control"><span>Grip stiffness</span><input id="gripStiffness" type="range" min="500" max="2400" step="50" value="1450"><b id="gripStiffnessValue">1450</b></label>
+    <label class="control"><span>Grip damping</span><input id="gripDamping" type="range" min="20" max="120" step="2" value="72"><b id="gripDampingValue">72</b></label>
+    <label class="control"><span>Wrist stiffness</span><input id="wristStiffness" type="range" min="6" max="48" step="1" value="24"><b id="wristStiffnessValue">24</b></label>
+    <label class="control"><span>Forearm stiffness</span><input id="forearmStiffness" type="range" min="180" max="900" step="20" value="520"><b id="forearmStiffnessValue">520</b></label>
+    <h2>Acceptance</h2>
+    <div class="metric">
+      <span>Contact</span><b>same `.2.9.1` earliest TOI</b>
+      <span>Sword tip</span><b>large immediate physical deflection</b>
+      <span>Grip</span><b>stays connected with elastic error</b>
+      <span>Hand</span><b>moves much less than sword tip</b>
+      <span>Wrist</span><b>rotates after blade impulse, not before</b>
+      <span>Forearm</span><b>receives delayed constraint load</b>
+      <span>Forbidden</span><b>no hard snap / IK / pose target</b>
+    </div>
+    <h2>Verification</h2><div id="status" class="warn">Loading…</div><pre id="report">Not run.</pre>
+  </aside>
+  <script type="module" src="./physical-grip-wrist-compliance-lab-r292.js?v=g43b5r292-grip-wrist"></script>
+</body>
+</html>

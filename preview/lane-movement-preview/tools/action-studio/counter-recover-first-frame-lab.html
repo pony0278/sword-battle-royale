@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>G3.4.1.2 Counter Recover First-Frame Lab</title>
+  <style>
+    html,body{margin:0;min-height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}body{padding:20px}.good{color:#7ef0ad}.bad{color:#ff8c8c}.warn{color:#ffd27a}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:12px;font-size:11px;max-width:1100px}.note{color:#9eb0c8;max-width:900px}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <h1>G3.4.1.2 · Counter Recover First-Frame Continuity</h1>
+  <p class="note">Exact Counter final pose → Recover t=0 → first 60 Hz frame. The first Recover frame must remain identical to the Counter final pose; blending begins only after the continuity latch.</p>
+  <div id="status" class="warn">Loading…</div>
+  <pre id="report">Not run.</pre>
+  <script type="module" src="./counter-recover-first-frame-lab.js"></script>
+</body>
+</html>

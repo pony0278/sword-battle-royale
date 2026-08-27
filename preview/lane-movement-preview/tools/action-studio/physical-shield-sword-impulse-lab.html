@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>G4.3B.5R.2.9 Physical Shield–Sword Impulse Lab</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}
+    body{display:grid;grid-template-columns:minmax(0,1fr) 420px;overflow:hidden}main{position:relative;min-width:0;min-height:0}canvas{width:100%;height:100%;display:block}
+    aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:19px;margin:0 0 6px}h2{font-size:12px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}
+    button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:9px 12px;margin:3px;cursor:pointer}button:hover{border-color:#75e6c2}.row{display:flex;flex-wrap:wrap;gap:6px}
+    .note{color:#9eb0c8;font-size:12px}.hud{position:absolute;left:16px;top:16px;min-width:580px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.55 ui-monospace,monospace;pointer-events:none}
+    .legend{position:absolute;left:16px;bottom:16px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:8px 10px;font-size:12px}.metric{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:8px 0;padding:10px;border:1px solid #243147;border-radius:8px;background:#080d14}.metric b{color:#ddecff}.control{display:grid;grid-template-columns:120px 1fr 58px;gap:8px;align-items:center;margin:9px 0}.control input{width:100%}.good{color:#7ef0ad}.warn{color:#ffd27a}.bad{color:#ff8c8c}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px;max-height:300px;overflow:auto}
+    @media(max-width:900px){html,body{height:auto;min-height:100%;overflow:auto}body{display:block}main{height:58vh;min-height:360px}.hud{left:10px;right:10px;top:10px;min-width:0;font-size:10px}aside{border-left:0;border-top:1px solid #26354d}}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <main>
+    <canvas id="canvas"></canvas>
+    <div class="hud">
+      <b>G4.3B.5R.2.9 · Physical Shield–Sword Impulse Lab</b>
+      <div id="hudPhase">Phase: loading…</div>
+      <div id="hudShield">Shield contact speed: —</div>
+      <div id="hudRelative">Closing speed: —</div>
+      <div id="hudImpulse">Impulse: —</div>
+      <div id="hudSword">Sword Δω: —</div>
+    </div>
+    <div class="legend">Cyan = kinematic shield · Silver = dynamic sword · Orange = physical contact point</div>
+  </main>
+  <aside>
+    <h1>Physical Shield–Sword Impulse Lab</h1>
+    <div class="note">這一階段故意不接人物、不做 IK、不做 target pose。盾是 kinematic driver；劍在接觸後只吃一次由 relative velocity / restitution / friction / inertia 算出的 impulse，之後依自己的線速度與角速度飛開。</div>
+    <h2>Controls</h2>
+    <div class="row"><button id="restart">Restart</button><button id="strong">Strong parry preset</button><button id="soft">Soft parry preset</button></div>
+    <label class="control"><span>Shield speed</span><input id="shieldSpeed" type="range" min="0.45" max="2.2" step="0.05" value="1.35"><b id="shieldSpeedValue">1.35×</b></label>
+    <label class="control"><span>Restitution</span><input id="restitution" type="range" min="0" max="0.8" step="0.02" value="0.34"><b id="restitutionValue">0.34</b></label>
+    <label class="control"><span>Friction</span><input id="friction" type="range" min="0" max="1.2" step="0.02" value="0.62"><b id="frictionValue">0.62</b></label>
+    <label class="control"><span>Contact bias</span><input id="contactBias" type="range" min="0.15" max="0.95" step="0.02" value="0.78"><b id="contactBiasValue">0.78</b></label>
+    <h2>Acceptance</h2>
+    <div class="metric">
+      <span>Before contact</span><b>shield already has contact-point velocity</b>
+      <span>At contact</span><b>impulse generated from relative velocity</b>
+      <span>Immediately after</span><b>sword gains linear + angular velocity</b>
+      <span>Sword tip</span><b>must visibly outrun the hand-end / COM</b>
+      <span>Forbidden</span><b>no IK target / no position follow ratio</b>
+      <span>Next stage</span><b>hand + forearm constraint, then old body follow</b>
+    </div>
+    <h2>Verification</h2><div id="status" class="warn">Loading…</div><pre id="report">Not run.</pre>
+  </aside>
+  <script type="module" src="./physical-shield-sword-impulse-lab.js?v=g43b5r29-physical-impulse"></script>
+</body>
+</html>

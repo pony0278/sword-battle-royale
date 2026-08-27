@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>G3.5.1P-T1 Parry Contact → Deflect Visual Tuning</title>
+  <style>
+    html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}body{display:grid;grid-template-columns:minmax(0,1fr) 430px;overflow:hidden}main{position:relative;min-width:0}canvas{width:100%;height:100%;display:block}.hud{position:absolute;left:16px;top:16px;background:#07101acc;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.45 ui-monospace,monospace}.good{color:#7ef0ad}.bad{color:#ff8c8c}.warn{color:#ffd27a}aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:18px;margin:0 0 6px}h2{font-size:13px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:8px 10px;margin:3px;cursor:pointer}button:hover,button.on{background:#2b4268}.row{display:flex;flex-wrap:wrap}.note{color:#9eb0c8;font-size:12px}.tuning-note{margin:8px 0;padding:8px 10px;border:1px solid #334969;border-radius:7px;background:#111b2b;color:#bfd6f5;font-size:12px}label{display:block;margin:10px 0}input[type=range]{width:100%}output{float:right;color:#9fd0ff}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <main>
+    <canvas id="canvas"></canvas>
+    <div class="hud"><b>G3.5.1P-T1 · Contact → Compact Deflect</b><div id="hudState">Loading…</div><div id="hudDetail"></div></div>
+  </main>
+  <aside>
+    <h1>Parry Presentation Visual Tuning</h1>
+    <div class="note">先讓敵人武器明確「撞到盾牌」，再只取 shield-bash 中間的撥開段。此頁仍只驗證視覺，不改 production Parry / combat authority。</div>
+    <div class="tuning-note">藍色八角盾 = 目前 `HAND_L` 位置；淡色盾 = contact 時的 `HAND_L` 參考位置；兩者之間的線 = 盾牌中心位移。這是 probe marker，不是正式盾牌美術。</div>
+    <h2>Variant</h2>
+    <div class="row"><button data-variant="parry" class="on">Normal · blockbash</button><button data-variant="perfect">Power · blockbashpower</button></div>
+    <h2>Tuning A/B</h2>
+    <div class="row"><button data-preset="compact-t1" class="on">T1 Compact Redirect</button><button data-preset="baseline-p0">P0 Baseline</button></div>
+    <div class="tuning-note">T1：contact hold 更長、skip bash early preparation、trim late forward follow-through。目標是「接住 → 撥開」，不是「接住 → 再撞一次」。</div>
+    <div class="row"><button id="playToggle">▶ Play chain</button><button id="restart">↺ Restart</button></div>
+    <label>Chain elapsed <output id="timeLabel">0 ms</output><input id="timeline" type="range" min="0" max="600" step="1" value="0"></label>
+    <h2>Contact</h2>
+    <label>Block Hit end <output id="contactEndValue">0.160s</output><input id="contactEnd" type="range" min="0.06" max="0.40" step="0.005" value="0.16"></label>
+    <label>Impact hold / hitstop <output id="holdValue">85ms</output><input id="holdMs" type="range" min="0" max="160" step="5" value="85"></label>
+    <label>Crossfade <output id="blendValue">70ms</output><input id="blendMs" type="range" min="0" max="160" step="5" value="70"></label>
+    <h2>Deflect source trim</h2>
+    <label>Start <output id="deflectStartValue">0.090s</output><input id="deflectStart" type="range" min="0" max="0.50" step="0.005" value="0.09"></label>
+    <label>End <output id="deflectEndValue">0.220s</output><input id="deflectEnd" type="range" min="0.08" max="0.70" step="0.005" value="0.22"></label>
+    <label>Blend lead <output id="blendLeadValue">0.030s</output><input id="blendLead" type="range" min="0" max="0.14" step="0.005" value="0.03"></label>
+    <label>Deflect speed <output id="deflectRateValue">1.15×</output><input id="deflectRate" type="range" min="0.5" max="1.8" step="0.05" value="1.15"></label>
+    <h2>View</h2>
+    <div class="row"><button data-view="front">Front</button><button data-view="three">3/4</button><button data-view="side">Side</button><button data-view="back">Back</button></div>
+    <h2>Verification</h2>
+    <div id="status" class="warn">Loading Skyrim Guard family…</div>
+    <pre id="report">Not run.</pre>
+  </aside>
+  <script type="module" src="./parry-contact-deflect-probe.js"></script>
+</body>
+</html>
