@@ -6,6 +6,8 @@ import {
   shouldRetainTopDirectionAdditive,
 } from '../../../src/combat/parry-top-direction-compatibility-probe.js';
 import { createTopPrepReadabilityHoldRuntime } from '../../../src/combat/parry-top-prep-readability-hold.js';
+import { createGuardCoverageDirector } from '../../../src/combat/guard-coverage-director.js';
+import { createParryInterceptDirector } from '../../../src/combat/parry-intercept-director.js';
 
 const TOP_DIRECTION_PROBE_ARM_BONES = Object.freeze(['upperarm.l', 'lowerarm.l']);
 
@@ -50,6 +52,28 @@ export function createShieldParryPreContactController({
   const visualOwnership = createVisualOwnershipRuntimeTaps({ rig: defender.rig, exchangeState });
   const shieldArmAdditiveRuntime = createBoundedShieldArmAdditiveRuntime();
   const topPrepReadabilityHoldRuntime = createTopPrepReadabilityHoldRuntime();
+  // Everything about which coverage pass runs when, and what each one may look at, lives in the
+  // director. This controller supplies the lab's live shield and publishes what came back.
+  // The reach ladder - aim, arm, body, stance, and the final closure - is the director's. Each
+  // stage announces itself as it writes, so the lab's ownership taps can snapshot the rig at the
+  // instant that stage owned it.
+  const parryInterceptDirector = createParryInterceptDirector({
+    trackingRuntime: fineTrackingRuntime,
+    bodyReachRuntime: residualBodyReachRuntime,
+    stanceRuntime: residualStanceReachRuntime,
+    readShieldSurface: () => buckler.getWorldParrySurface(),
+    observe: {
+      primaryArm: (report) => visualOwnership.afterPrimaryArm(report),
+      residualArm: (report) => visualOwnership.afterResidualArm(report),
+      body: (report) => visualOwnership.afterBody(report),
+      stance: (report) => visualOwnership.afterStance(report),
+    },
+  });
+  const guardCoverageDirector = createGuardCoverageDirector({
+    trackingRuntime: fineTrackingRuntime,
+    stanceRuntime: residualStanceReachRuntime,
+    readShieldSurface: () => buckler.getWorldParrySurface(),
+  });
   const topDirectionProbeQuery = typeof globalThis.location?.search === 'string'
     ? new URLSearchParams(globalThis.location.search).get('topProbe')
     : null;
@@ -62,7 +86,6 @@ export function createShieldParryPreContactController({
     analyzePredictiveInterceptParry,
     evaluateCommittedParryInput,
     measureSweptSwordBucklerClosestApproach,
-    selectReachableParryInterceptTarget,
     planGuardThreatCorrection,
     sampleActiveShieldLeadMotion,
     compactInterceptDriveTraceFrame,
@@ -81,13 +104,19 @@ export function createShieldParryPreContactController({
         })
       : zeroBracePlan();
     bracingRuntime.update(bracePlan, deltaSeconds);
-    const postBraceSurface = buckler.getWorldParrySurface();
-    exchangeState.latestFinePlan = planFineGuardTracking({
-      threat: bracePlan?.analysis?.threat || null,
-      bucklerSurface: postBraceSurface,
-      maxCorrectionMeters: bracePlan?.fineTrackMaxMeters || 0,
+    const coverage = guardCoverageDirector.update({
+      sequence: snapshot.sequence,
+      direction: snapshot.direction,
+      committed: snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED,
+      previousBlade,
+      currentBlade,
+      deltaSeconds,
     });
-    exchangeState.latestFineTracking = fineTrackingRuntime.update(exchangeState.latestFinePlan, deltaSeconds);
+    exchangeState.latestFinePlan = coverage.plan;
+    exchangeState.latestFineTracking = coverage.tracking;
+    exchangeState.latestGuardResidual = coverage.residual;
+    exchangeState.latestGuardStanceReach = coverage.stanceReach;
+    exchangeState.latestGuardCoverage = coverage.coverage;
     defender.update(0, camera); defenderSword?.update();
     exchangeState.previousShieldLeadSurface = cloneSurface(buckler.getWorldParrySurface());
   }
@@ -142,105 +171,34 @@ export function createShieldParryPreContactController({
       });
       visualOwnership.afterPredictive(exchangeState.latestPredictiveReport);
       const predictiveSurface = cloneSurface(buckler.getWorldParrySurface());
-      const continuitySurface = exchangeState.previousShieldLeadSurface
-        ? cloneSurface(exchangeState.previousShieldLeadSurface)
-        : predictiveSurface;
-      const measuredClosestApproach = measureSweptSwordBucklerClosestApproach({
-        previousBlade,
-        currentBlade,
-        bucklerSurface: continuitySurface,
-      });
       const activeIntentPlan = activeInterceptIntent?.plan({
         sequence: snapshot.sequence,
         bucklerSurface: predictiveSurface,
       }) || null;
-      exchangeState.latestReachableInterceptTarget = selectReachableParryInterceptTarget({
-        predictedThreat: exchangeState.latestPredictiveAnalysis?.threat,
-        predictedTrackingPlan: exchangeState.latestPredictiveAnalysis?.trackingPlan,
-        closestApproach: measuredClosestApproach,
-        bucklerSurface: continuitySurface,
-      });
-      exchangeState.latestFinePlan = activeIntentPlan || (exchangeState.latestReachableInterceptTarget?.fallbackApplied
-        ? exchangeState.latestReachableInterceptTarget.trackingPlan
-        : exchangeState.latestReachableInterceptTarget?.threat
-          ? planGuardThreatCorrection({
-              mode: 'parry',
-              threat: exchangeState.latestReachableInterceptTarget.threat,
-              bucklerSurface: predictiveSurface,
-            })
-          : null);
-      const trackingSurfaceBefore = cloneSurface(buckler.getWorldParrySurface());
-      // R18N.3: Guard/Parry presentation is allowed to rebuild its authored pose every frame.
-      // Keep the tracking runtime's bounded carry across frames and apply it after presentation,
-      // so currentOffset acts as an absolute additive world-space correction and Active Intercept
-      // remains the last writer of the shield-arm pose before real swept contact is evaluated.
-      exchangeState.latestFineTracking = fineTrackingRuntime.update(exchangeState.latestFinePlan, deltaSeconds);
-      visualOwnership.afterPrimaryArm(exchangeState.latestFineTracking);
-      const residualCarryBeforeMeters = magnitude(exchangeState.latestFineTracking?.carriedResidualOffset);
-      const primaryTrackingSurfaceAfter = cloneSurface(buckler.getWorldParrySurface());
-      const residualBeforeRefinement = measureSweptSwordBucklerClosestApproach({
+      const activeIntent = activeIntentPlan
+        ? { plan: activeIntentPlan, targetCenter: activeInterceptIntent?.report?.targetCenter }
+        : null;
+      const reached = parryInterceptDirector.reach({
         previousBlade,
         currentBlade,
-        bucklerSurface: primaryTrackingSurfaceAfter,
+        deltaSeconds,
+        continuitySurface: exchangeState.previousShieldLeadSurface
+          ? cloneSurface(exchangeState.previousShieldLeadSurface)
+          : predictiveSurface,
+        predictiveAnalysis: exchangeState.latestPredictiveAnalysis,
+        activeIntent,
+        stanceProfile: debugMode ? debugStanceProfile : null,
       });
-      const residualNeedsRefinement = residualBeforeRefinement.radialGapMeters > 1e-5
-        || residualBeforeRefinement.planeGapMeters > 1e-5;
-      const residualInterceptTarget = residualNeedsRefinement
-        ? selectReachableParryInterceptTarget({
-            predictedThreat: null,
-            predictedTrackingPlan: null,
-            closestApproach: residualBeforeRefinement,
-            bucklerSurface: primaryTrackingSurfaceAfter,
-          })
-        : null;
-      const residualTrackingPlan = residualInterceptTarget?.fallbackApplied
-        ? residualInterceptTarget.trackingPlan
-        : null;
-      const residualRefinement = residualTrackingPlan?.appliedDistance > 1e-6
-        ? fineTrackingRuntime.refineMeasuredContact(residualTrackingPlan, deltaSeconds, {
-            speedScale: 1,
-            jointBudgetScale: 0.35,
-            maxResidualMeters: 0.06,
-            iterations: 2,
-          })
-        : null;
-      visualOwnership.afterResidualArm(residualRefinement);
-      const residualAfterArmRefinement = measureSweptSwordBucklerClosestApproach({
-        previousBlade,
-        currentBlade,
-        bucklerSurface: cloneSurface(buckler.getWorldParrySurface()),
-      });
-      const residualBodyReach = activeIntentPlan
-        ? residualBodyReachRuntime.trackWorldTarget({
-            targetCenter: activeInterceptIntent?.report?.targetCenter,
-          }, deltaSeconds)
-        : residualBodyReachRuntime.update({
-            mode: 'parry',
-            closestApproach: residualAfterArmRefinement,
-          }, deltaSeconds);
-      visualOwnership.afterBody(residualBodyReach);
-      const residualAfterBodyReach = measureSweptSwordBucklerClosestApproach({
-        previousBlade,
-        currentBlade,
-        bucklerSurface: cloneSurface(buckler.getWorldParrySurface()),
-      });
-      const residualStanceReach = residualStanceReachRuntime.update({
-        mode: 'parry',
-        profile: debugMode ? debugStanceProfile : null,
-        closestApproach: residualAfterBodyReach,
-        anticipatedClosestApproach: exchangeState.latestPredictiveAnalysis?.threat?.worldPoint
-          ? { point: exchangeState.latestPredictiveAnalysis.threat.worldPoint }
-          : null,
-        anticipatedLeadSeconds: exchangeState.latestPredictiveAnalysis?.threat?.futureSeconds ?? null,
-        armEvidence: {
-          extensionRatio: residualBodyReach.armExtensionRatio ?? 0,
-          correctionAttemptedMeters: residualTrackingPlan?.appliedDistance ?? 0,
-          correctionAchievedMeters: residualRefinement?.achievedDistance ?? 0,
-          edgeGapBeforeMeters: residualBeforeRefinement.radialGapMeters,
-          edgeGapAfterMeters: residualAfterArmRefinement.radialGapMeters,
-        },
-      }, deltaSeconds);
-      visualOwnership.afterStance(residualStanceReach);
+      const measuredClosestApproach = reached.measuredClosestApproach;
+      exchangeState.latestReachableInterceptTarget = reached.interceptTarget;
+      exchangeState.latestFinePlan = reached.plan;
+      exchangeState.latestFineTracking = reached.tracking;
+      const {
+        residualCarryBeforeMeters, residualBeforeRefinement,
+        residualInterceptTarget, residualTrackingPlan, residualRefinement,
+        residualAfterArmRefinement, bodyReach: residualBodyReach,
+        residualAfterBodyReach, stanceReach: residualStanceReach,
+      } = reached;
       const topDirectionProbeActive = Boolean(topDirectionProbeVariant)
         && snapshot.direction === 'top'
         && Boolean(activeIntentPlan);
@@ -298,12 +256,7 @@ export function createShieldParryPreContactController({
         timeToContactSeconds: exchangeState.latestPredictiveAnalysis?.timeToContactSeconds,
       });
       visualOwnership.afterTopPrepReadabilityHold(topPrepReadabilityHold);
-      const activeInterceptArmClosure = activeIntentPlan
-        ? fineTrackingRuntime.refineWorldTarget(activeInterceptIntent?.report?.targetCenter, {
-            jointBudgetScale: 0.6,
-            iterations: 2,
-          })
-        : null;
+      const activeInterceptArmClosure = parryInterceptDirector.finalClosure({ activeIntent });
       if (activeIntentPlan
         && snapshot.direction === 'top'
         && !topDirectionProbeActive
@@ -318,53 +271,17 @@ export function createShieldParryPreContactController({
       // Rebuild dynamic line geometry once after all pose solvers have finished.
       defender.update(0, camera);
       defenderSword?.update();
-      const trackingSurfaceAfter = cloneSurface(buckler.getWorldParrySurface());
-      const residualAfterRefinement = measureSweptSwordBucklerClosestApproach({
-        previousBlade,
-        currentBlade,
-        bucklerSurface: trackingSurfaceAfter,
+      const outcome = parryInterceptDirector.measureOutcome({
+        previousBlade, currentBlade, reached, activeIntent,
       });
-      const shieldStepVector = Object.freeze({
-        x: trackingSurfaceAfter.center.x - trackingSurfaceBefore.center.x,
-        y: trackingSurfaceAfter.center.y - trackingSurfaceBefore.center.y,
-        z: trackingSurfaceAfter.center.z - trackingSurfaceBefore.center.z,
-      });
-      const shieldStepTranslationMeters = magnitude(shieldStepVector);
-      const plannedCorrectionVector = exchangeState.latestFinePlan?.correction || null;
-      const plannedCorrectionMeters = magnitude(plannedCorrectionVector);
-      const correctionDirectionDot = plannedCorrectionMeters > 1e-6 && shieldStepTranslationMeters > 1e-6
-        ? (plannedCorrectionVector.x * shieldStepVector.x
-          + plannedCorrectionVector.y * shieldStepVector.y
-          + plannedCorrectionVector.z * shieldStepVector.z)
-          / (plannedCorrectionMeters * shieldStepTranslationMeters)
-        : null;
-      const residualEdgeReductionMeters = residualBeforeRefinement.radialGapMeters
-        - residualAfterRefinement.radialGapMeters;
-      const residualPlaneReductionMeters = residualBeforeRefinement.planeGapMeters
-        - residualAfterRefinement.planeGapMeters;
-      const bodyEdgeReductionMeters = residualAfterArmRefinement.radialGapMeters
-        - residualAfterBodyReach.radialGapMeters;
-      const bodyPlaneReductionMeters = residualAfterArmRefinement.planeGapMeters
-        - residualAfterBodyReach.planeGapMeters;
-      const stanceEdgeReductionMeters = residualAfterBodyReach.radialGapMeters
-        - residualAfterRefinement.radialGapMeters;
-      const stancePlaneReductionMeters = residualAfterBodyReach.planeGapMeters
-        - residualAfterRefinement.planeGapMeters;
-      const activeInterceptTargetCenter = activeIntentPlan ? activeInterceptIntent?.report?.targetCenter : null;
-      const activeInterceptTargetErrorBeforeMeters = activeInterceptTargetCenter
-        ? Math.hypot(
-            activeInterceptTargetCenter.x - trackingSurfaceBefore.center.x,
-            activeInterceptTargetCenter.y - trackingSurfaceBefore.center.y,
-            activeInterceptTargetCenter.z - trackingSurfaceBefore.center.z,
-          )
-        : null;
-      const activeInterceptTargetErrorAfterMeters = activeInterceptTargetCenter
-        ? Math.hypot(
-            activeInterceptTargetCenter.x - trackingSurfaceAfter.center.x,
-            activeInterceptTargetCenter.y - trackingSurfaceAfter.center.y,
-            activeInterceptTargetCenter.z - trackingSurfaceAfter.center.z,
-          )
-        : null;
+      const {
+        residualAfterRefinement, shieldStepVector, shieldStepTranslationMeters,
+        plannedCorrectionVector, plannedCorrectionMeters, correctionDirectionDot,
+        residualEdgeReductionMeters, residualPlaneReductionMeters,
+        bodyEdgeReductionMeters, bodyPlaneReductionMeters,
+        stanceEdgeReductionMeters, stancePlaneReductionMeters,
+        activeInterceptTargetErrorBeforeMeters, activeInterceptTargetErrorAfterMeters,
+      } = outcome;
       exchangeState.latestInterceptDriveReport = Object.freeze({
         attackPhase: snapshot.phase,
         elapsedSeconds: snapshot.elapsedSeconds,
@@ -440,8 +357,7 @@ export function createShieldParryPreContactController({
     } else {
       shieldArmAdditiveRuntime.reset();
       topPrepReadabilityHoldRuntime.reset();
-      residualBodyReachRuntime.reset();
-      residualStanceReachRuntime.reset();
+      parryInterceptDirector.standDown();
       exchangeState.latestReachableInterceptTarget = null;
       exchangeState.latestFinePlan = null;
       exchangeState.latestFineTracking = null;
@@ -470,6 +386,7 @@ export function createShieldParryPreContactController({
     activeInterceptIntent?.reset();
     shieldArmAdditiveRuntime.reset();
     topPrepReadabilityHoldRuntime.reset();
+    guardCoverageDirector.reset();
     visualOwnership.reset();
   }
 

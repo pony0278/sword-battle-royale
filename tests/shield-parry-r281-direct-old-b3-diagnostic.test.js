@@ -15,6 +15,7 @@ const diagnosticSource = await readFile(
   new URL('../tools/action-studio/shield-parry-r281/direct-old-b3-diagnostic.js', import.meta.url),
   'utf8',
 );
+const lifecycleDirectorSource = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
 const contactHandoffSource = await readFile(
   new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url),
   'utf8',
@@ -64,7 +65,8 @@ test('R18M.C4 synthetic diagnostic contact is explicitly isolated from productio
 test('R18M.C4 keeps production real-contact and manual Parry authority outside the diagnostic module', () => {
   assert.match(entrySource, /latestParryInput = parryGate\.arm\(\{/);
   assert.match(entrySource, /manual: true,/);
-  assert.match(contactHandoffSource, /probeSweptSwordBucklerContact\(\{/);
-  assert.match(contactHandoffSource, /if \(!exchangeState\.latestContact\.contact\) return;/);
-  assert.match(contactHandoffSource, /parryGate\.confirm\(\{/);
+  // R18S.4: production real-contact authority lives in the lifecycle director.
+  assert.match(lifecycleDirectorSource, /probeSweptSwordBucklerContact\(\{/);
+  assert.match(lifecycleDirectorSource, /if \(!contactEvaluation\.contact\)/);
+  assert.match(lifecycleDirectorSource, /confirmParry\(\{/);
 });

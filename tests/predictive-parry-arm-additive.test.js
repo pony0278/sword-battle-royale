@@ -120,10 +120,11 @@ test('R18N.4.3-B.1 additive runtime has pose authority only and no contact autho
 
 test('R18N.4.3-B.1 is wired after stance and before final Active Intercept closure', async () => {
   const preContact = await readFile(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
-  const stanceIndex = preContact.indexOf('visualOwnership.afterStance(residualStanceReach)');
+  // R18S.3: the stance is the last writer of the director's reach ladder.
+  const stanceIndex = preContact.indexOf('parryInterceptDirector.reach({');
   const additiveIndex = preContact.indexOf('shieldArmAdditiveRuntime.update({');
   const additiveTapIndex = preContact.indexOf('visualOwnership.afterShieldArmAdditive(shieldArmBoundedAdditive)');
-  const closureIndex = preContact.indexOf('fineTrackingRuntime.refineWorldTarget(');
+  const closureIndex = preContact.indexOf('parryInterceptDirector.finalClosure({');
   const closureTapIndex = preContact.indexOf('visualOwnership.afterFinalClosure(activeInterceptArmClosure)');
   assert.ok(stanceIndex >= 0);
   assert.ok(additiveIndex > stanceIndex, 'bounded additive must run after stance/body support');

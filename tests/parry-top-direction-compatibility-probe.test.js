@@ -96,7 +96,7 @@ test('R18N.4.3-B.1.1 runtime source keeps A/B/C lab-only and final closure after
 
   const additiveIndex = source.indexOf('shieldArmAdditiveRuntime.update({');
   const probeIndex = source.indexOf('analyzeTopDirectionCompatibilityProbe({');
-  const closureIndex = source.indexOf('fineTrackingRuntime.refineWorldTarget(');
+  const closureIndex = source.indexOf('parryInterceptDirector.finalClosure({');
   assert.ok(additiveIndex >= 0 && probeIndex > additiveIndex, 'probe must inspect the authored additive result');
   assert.ok(closureIndex > probeIndex, 'Active Intercept final closure must remain after the probe decision');
 });

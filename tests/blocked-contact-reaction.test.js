@@ -120,13 +120,14 @@ test('R18Q.1 torso lean answers on role as well as outcome', () => {
 });
 
 test('R18Q.1 the lab arms block at impact with no contact constraint', () => {
+  // R18S.4: the arming and the outcome branch live in the lifecycle director now.
   const controller = readFileSync(
-    new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url),
+    new URL('../src/combat/contact-lifecycle-director.js', import.meta.url),
     'utf8',
   );
   // Both outcomes go through one arming path, so they cannot drift apart.
-  assert.match(controller, /function armContactReaction\(\{ outcome,/);
-  assert.match(controller, /armContactReaction\(\{\s*\n\s*outcome: 'block',/);
+  assert.match(controller, /function armReaction\(\{ outcome,/);
+  assert.match(controller, /armReaction\(\{\s*\n\s*outcome: 'block',/);
   // A block never starts the live grip constraint: nothing takes the blade
   // hostage, so there is no DEFLECT_IMPULSE marker to gate the release on.
   const blockBranch = controller.slice(

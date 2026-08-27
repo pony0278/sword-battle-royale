@@ -178,20 +178,32 @@ test('R18N.4.1-B wires taps after existing writers and exposes diagnostics witho
     assert.ok(earlierIndex >= 0, 'missing writer anchor: ' + earlier);
     assert.ok(laterIndex > earlierIndex, 'tap must follow writer: ' + label);
   }
+  const director = await readFile(new URL('../src/combat/parry-intercept-director.js', import.meta.url), 'utf8');
   const parryStart = preContact.indexOf('function updateParryPreContact');
   const parryEnd = preContact.indexOf('function armActiveIntercept', parryStart);
   const parrySource = preContact.slice(parryStart, parryEnd);
   assertBefore(parrySource, 'predictivePresentation.update({', 'visualOwnership.afterPredictive(exchangeState.latestPredictiveReport)', 'predictive presentation');
-  assertBefore(parrySource, 'fineTrackingRuntime.update(exchangeState.latestFinePlan, deltaSeconds)', 'visualOwnership.afterPrimaryArm(exchangeState.latestFineTracking)', 'primary active intercept arm');
-  assertBefore(parrySource, 'fineTrackingRuntime.refineMeasuredContact(', 'visualOwnership.afterResidualArm(residualRefinement)', 'residual active intercept arm');
-  assertBefore(parrySource, 'const residualBodyReach = activeIntentPlan', 'visualOwnership.afterBody(residualBodyReach)', 'residual body reach');
-  assertBefore(parrySource, 'const residualStanceReach = residualStanceReachRuntime.update({', 'visualOwnership.afterStance(residualStanceReach)', 'residual stance reach');
-  assertBefore(parrySource, 'visualOwnership.afterStance(residualStanceReach)', 'shieldArmAdditiveRuntime.update({', 'bounded authored arm additive after stance');
+  // R18S.3: the ladder's own writers moved into the director, and each one announces itself the
+  // instant it has written, because these taps snapshot the rig at exactly that point. The lab
+  // wires each announcement to its tap; the director guarantees the announcement follows the write.
+  for (const [stage, tap] of [
+    ['primaryArm', 'visualOwnership.afterPrimaryArm(report)'],
+    ['residualArm', 'visualOwnership.afterResidualArm(report)'],
+    ['body', 'visualOwnership.afterBody(report)'],
+    ['stance', 'visualOwnership.afterStance(report)'],
+  ]) {
+    assert.ok(preContact.includes(`${stage}: (report) => ${tap}`), 'tap must stay wired to writer: ' + stage);
+  }
+  assert.match(director, /announce\('primaryArm', trackingRuntime\.update\(plan, deltaSeconds\)\)/);
+  assert.match(director, /announce\(\s*\n?\s*'residualArm',/);
+  // The lab's own authored-arm writers still sit between the ladder's stance and its final
+  // closure, and each is still observed the instant it has written.
+  assertBefore(parrySource, 'parryInterceptDirector.reach({', 'shieldArmAdditiveRuntime.update({', 'bounded authored arm additive after the reach ladder');
   assertBefore(parrySource, 'shieldArmAdditiveRuntime.update({', 'visualOwnership.afterShieldArmAdditive(shieldArmBoundedAdditive)', 'bounded authored arm additive tap');
   assertBefore(parrySource, 'visualOwnership.afterShieldArmAdditive(shieldArmBoundedAdditive)', 'topPrepReadabilityHoldRuntime.update({', 'TOP readability hold after bounded additive');
   assertBefore(parrySource, 'topPrepReadabilityHoldRuntime.update({', 'visualOwnership.afterTopPrepReadabilityHold(topPrepReadabilityHold)', 'TOP readability hold telemetry');
-  assertBefore(parrySource, 'visualOwnership.afterTopPrepReadabilityHold(topPrepReadabilityHold)', 'fineTrackingRuntime.refineWorldTarget(', 'actual-target final closure remains after readability hold');
-  assertBefore(parrySource, 'fineTrackingRuntime.refineWorldTarget(', 'topPrepReadabilityHoldRuntime.arm({', 'first final-closure TOP prep anchor capture');
+  assertBefore(parrySource, 'visualOwnership.afterTopPrepReadabilityHold(topPrepReadabilityHold)', 'parryInterceptDirector.finalClosure({', 'actual-target final closure remains after readability hold');
+  assertBefore(parrySource, 'parryInterceptDirector.finalClosure({', 'topPrepReadabilityHoldRuntime.arm({', 'first final-closure TOP prep anchor capture');
   assertBefore(parrySource, 'topPrepReadabilityHoldRuntime.arm({', 'visualOwnership.afterFinalClosure(activeInterceptArmClosure)', 'final closure telemetry follows read-only anchor capture');
 
   const updateStart = preContact.indexOf('function updatePreContact');

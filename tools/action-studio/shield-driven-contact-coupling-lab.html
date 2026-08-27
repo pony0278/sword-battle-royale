@@ -78,6 +78,7 @@
       <span>Predictive geometry</span><b>geometry-guided shield motion clamped to 18cm · unreachable linear target may fall back to measured current sweep · guidance · cannot veto input</b><span>Target continuity</span><b>previous post-tracking shield → primary relative drive → recapture rotated shield → bounded residual drive → real contact</b>
       <span>Success authority</span><b>real swept Sword × Shield contact</b>
       <span>Invalid / no input</span><b>falls back to BLOCK</b>
+      <span>Guard coverage (BLOCK)</span><b>omnidirectional · the guard reads the committed direction, waits out a 70ms reaction delay, then covers it: directional anchor → predicted threat once it is credible → measured swept approach once the blade is close · the shield arm is bounded to 34cm of travel at 1.55m/s and a low threat also recruits the planted crouch, so a short-warning attack still gets through · TOP and RIGHT block every attempt; LEFT lands about 9 in 10 - its contact window is only 2-3 frames wide, so a dropped frame costs the block</b>
       <span>Motion authority</span><b>current world shield surface · every frame</b><span>Early low stance</span><b>predicted future sword point ≤ 180ms starts posture only; once engaged, hold until real contact or attack reset</b>
       <span>Preset motion curve</span><b>none</b>
       <span>After success</span><b>ParryImpact selects one exaggerated OLD B3 plan whose torso and legs run from impact · latched DEFLECT_IMPULSE + the 7/7 inspection (all directions), or confirmed-Parry fail-safe, starts a 28ms continuity bridge; the weapon arm joins the running OLD B3</b>
@@ -123,6 +124,6 @@
       this.classList.toggle('expanded');
     });
   </script>
-  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-block-reaction-r18q1"></script>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-contact-lifecycle-director-r18s4"></script>
 </body>
 </html>

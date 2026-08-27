@@ -10,6 +10,18 @@ const preContactSource = readFileSync(
   new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url),
   'utf8',
 );
+const contactLifecycleDirectorSource = readFileSync(
+  new URL('../src/combat/contact-lifecycle-director.js', import.meta.url),
+  'utf8',
+);
+const parryInterceptDirectorSource = readFileSync(
+  new URL('../src/combat/parry-intercept-director.js', import.meta.url),
+  'utf8',
+);
+const guardCoverageDirectorSource = readFileSync(
+  new URL('../src/combat/guard-coverage-director.js', import.meta.url),
+  'utf8',
+);
 const contactHandoffSource = readFileSync(
   new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url),
   'utf8',
@@ -34,7 +46,7 @@ const liveContactConstraintSource = readFileSync(
   new URL('../src/combat/live-shield-sword-grip-contact-constraint.js', import.meta.url),
   'utf8',
 );
-const postContactOwnershipSource = `${source}\n${contactHandoffSource}`;
+const postContactOwnershipSource = `${source}\n${contactHandoffSource}\n${contactLifecycleDirectorSource}`;
 const html = readFileSync(
   new URL('../tools/action-studio/shield-driven-contact-coupling-lab.html', import.meta.url),
   'utf8',
@@ -136,13 +148,14 @@ test('R18E exposes URL-gated low-stance tuning without changing real-contact aut
   assert.match(stanceDebugSource, /query: 'downRatio'/);
   assert.match(stanceDebugSource, /query: 'kneeBandCm'/);
   assert.match(stanceDebugSource, /query: 'armAttemptCm'/);
-  assert.match(preContactSource, /profile: debugMode \? debugStanceProfile : null/);
+  assert.match(preContactSource, /stanceProfile: debugMode \? debugStanceProfile : null/);
+  assert.match(parryInterceptDirectorSource, /profile: stanceProfile,/);
   assert.match(diagnosticFormattersSource, /DEBUG pred \$\{predictedDecision\}/);
   assert.match(diagnosticFormattersSource, /anticipatedEligibilityReason/);
   assert.match(diagnosticFormattersSource, /pflags \$\{predictedFlags\}/);
   assert.match(verificationReportSource, /latestThreatSelection/);
   assert.match(verificationReportSource, /debug-profile-changes-posture-guidance-only-real-swept-contact-remains-success-authority/);
-  assert.match(contactHandoffSource, /if \(!exchangeState\.latestContact\.contact\) return/);
+  assert.match(contactLifecycleDirectorSource, /if \(!contactEvaluation\.contact\)/);
 });
 
 test('Step 3A renders and reports all three original-attack-line clearance gates', () => {
@@ -154,16 +167,17 @@ test('Step 3A renders and reports all three original-attack-line clearance gates
   assert.match(html, /red = original attack axis/);
 });
 test('Step 3A starts only after the manual gate confirms eligible real contact', () => {
-  const resolveStart = contactHandoffSource.indexOf('function resolveContact(');
-  const resolveEnd = contactHandoffSource.indexOf('function updateCombatBeforeGuard(', resolveStart);
+  // R18S.4: the gate-then-grip sequence lives in the lifecycle director.
+  const resolveStart = contactLifecycleDirectorSource.indexOf('function resolveContact(');
+  const resolveEnd = contactLifecycleDirectorSource.indexOf('function advanceCombat(', resolveStart);
   assert.ok(resolveStart >= 0 && resolveEnd > resolveStart);
-  const resolve = contactHandoffSource.slice(resolveStart, resolveEnd);
+  const resolve = contactLifecycleDirectorSource.slice(resolveStart, resolveEnd);
   const geometry = resolve.indexOf('const geometricContact = probeSweptSwordBucklerContact({');
-  const temporalEligibility = resolve.indexOf('exchangeState.latestContact = evaluateSweptContactTemporalEligibility({', geometry);
-  const reject = resolve.indexOf('if (!exchangeState.latestContact.contact) return;', temporalEligibility);
-  const confirm = resolve.indexOf('parryGate.confirm({ attackSnapshot: snapshot, contact: exchangeState.latestContact })', reject);
-  const resolveCombat = resolve.indexOf('exchangeState.latestCombatResult = combat.resolveContact({', confirm);
-  const liveConstraint = resolve.indexOf('exchangeState.latestGripConstraintReport = swordGripConstraint.start({', resolveCombat);
+  const temporalEligibility = resolve.indexOf('const contactEvaluation = evaluateSweptContactTemporalEligibility({', geometry);
+  const reject = resolve.indexOf('if (!contactEvaluation.contact) {', temporalEligibility);
+  const confirm = resolve.indexOf('confirmParry({ attackSnapshot, contact: contactEvaluation })', reject);
+  const resolveCombat = resolve.indexOf('combatResult = resolveCombat({', confirm);
+  const liveConstraint = resolve.indexOf('gripReport = gripConstraint.start({', resolveCombat);
 
   assert.ok(
     geometry >= 0
@@ -189,10 +203,11 @@ test('R18I lets live contact own the final pose while OLD B3 waits at presentati
   assert.ok(combatDelegate >= 0 && guardUpdate > combatDelegate && deflectLatch > guardUpdate);
   assert.ok(liveDelegate > deflectLatch && swordUpdate > liveDelegate);
 
-  const beforeGuardStart = contactHandoffSource.indexOf('function updateCombatBeforeGuard(');
-  const beforeGuardEnd = contactHandoffSource.indexOf('function updateLiveConstraintAfterGuard(', beforeGuardStart);
-  const beforeGuard = contactHandoffSource.slice(beforeGuardStart, beforeGuardEnd);
-  const afterGuard = contactHandoffSource.slice(beforeGuardEnd);
+  // R18S.4: the live-hold and post-guard constraint phases live in the lifecycle director.
+  const beforeGuardStart = contactLifecycleDirectorSource.indexOf('function advanceCombat(');
+  const beforeGuardEnd = contactLifecycleDirectorSource.indexOf('function advanceConstraint(', beforeGuardStart);
+  const beforeGuard = contactLifecycleDirectorSource.slice(beforeGuardStart, beforeGuardEnd);
+  const afterGuard = contactLifecycleDirectorSource.slice(beforeGuardEnd);
   for (const marker of [
     'if (ownsLiveContact())',
     'TWO_ACTOR_PARRY_REACTION_CHANNELS.LIVE_CONTACT_BODY',
@@ -200,10 +215,10 @@ test('R18I lets live contact own the final pose while OLD B3 waits at presentati
     'holdAttackerInterruption: true',
   ]) assert.ok(beforeGuard.includes(marker), marker);
   for (const marker of [
-    'swordGripConstraint.update(deltaSeconds',
-    'surfaceAtFrame: buckler.getWorldParrySurface()',
+    'gripConstraint.update(deltaSeconds',
+    'surfaceAtFrame: readShieldSurface()',
     'reactionIntentAppliedBeforeConstraint: true',
-    'releaseLiveContactToOldB3({ selectedDirection })',
+    'release({',
   ]) assert.ok(afterGuard.includes(marker), marker);
 
   for (const marker of [
@@ -216,7 +231,7 @@ test('R18I lets live contact own the final pose while OLD B3 waits at presentati
   ]) assert.ok(postContactOwnershipSource.includes(marker), marker);
   assert.ok(verificationReportSource.includes('boundedProximalArmCorrectionBeforeForearmAndWrist'));
   assert.ok(verificationReportSource.includes('weaponArmRemainsContactConstrainedDuringStep3A'));
-  assert.ok(contactHandoffSource.includes('exchangeState.frozenAttackerContactPose = captureRigPose(attacker.rig)'));
+  assert.ok(contactLifecycleDirectorSource.includes('frozenContactPose = captureRigPose(attackerRig)'));
   assert.ok(attackerPresentationSource.includes('applyRigPose(attacker.rig, exchangeState.frozenAttackerContactPose)'));
   assert.ok(attackerPresentationSource.includes('exchangeState.canonicalAttackerOldB3Pose = captureRigPose(attacker.rig)'));
   assert.ok(attackerPresentationSource.includes('sampleCanonicalInterruptionPose(interruption)'));
@@ -227,22 +242,22 @@ test('R18I lets live contact own the final pose while OLD B3 waits at presentati
 });
 
 test('R18I preserves predictive defender time and latches the defender deflect marker', () => {
-  const resolveStart = contactHandoffSource.indexOf('function resolveContact(');
-  const resolveEnd = contactHandoffSource.indexOf('function updateCombatBeforeGuard(', resolveStart);
-  const releaseStart = contactHandoffSource.indexOf('function releaseLiveContactToOldB3(');
-  const releaseEnd = contactHandoffSource.indexOf('function recordVisibleOldB3Sample(', releaseStart);
+  const resolveStart = contactLifecycleDirectorSource.indexOf('function resolveContact(');
+  const resolveEnd = contactLifecycleDirectorSource.indexOf('function advanceCombat(', resolveStart);
+  const releaseStart = contactLifecycleDirectorSource.indexOf('function release(');
+  const releaseEnd = contactLifecycleDirectorSource.indexOf('function resolveContact(', releaseStart);
   assert.ok(resolveStart >= 0 && resolveEnd > resolveStart && releaseStart >= 0 && releaseEnd > releaseStart);
-  const resolve = contactHandoffSource.slice(resolveStart, resolveEnd);
-  const release = contactHandoffSource.slice(releaseStart, releaseEnd);
+  const resolve = contactLifecycleDirectorSource.slice(resolveStart, resolveEnd);
+  const release = contactLifecycleDirectorSource.slice(releaseStart, releaseEnd);
 
-  assert.match(resolve, /latestPredictiveHandoff\.defenderPresentationOffsetSeconds/);
+  assert.match(resolve, /predictiveHandoff\.defenderPresentationOffsetSeconds/);
   assert.match(resolve, /defenderPresentationOffsetSeconds:/);
-  assert.match(contactHandoffSource, /function defenderDeflectReleaseGate\(\)/);
-  assert.match(contactHandoffSource, /function updateDefenderDeflectReleaseGate\(\)/);
+  assert.match(contactLifecycleDirectorSource, /function defenderReleaseGate\(\)/);
+  assert.match(contactLifecycleDirectorSource, /function advanceDefender\(\)/);
   assert.match(contactHandoffSource, /latchedDefenderDeflectReleaseGate/);
-  assert.match(contactHandoffSource, /latched-defender-deflect-marker-gates-attacker-release/);
-  assert.match(contactHandoffSource, /PARRY_ATTACKER_RELEASE_SOURCE_SECONDS/);
-  assert.match(release, /if \(!defenderReleaseGate\.passed\)/);
+  assert.match(contactLifecycleDirectorSource, /latched-defender-deflect-marker-gates-attacker-release/);
+  assert.match(contactLifecycleDirectorSource, /PARRY_ATTACKER_RELEASE_SOURCE_SECONDS/);
+  assert.match(release, /if \(!gate\.passed\)/);
   assert.match(release, /defender-deflect-marker-not-reached/);
   assert.match(release, /allowConfirmedParryFallback: true/);
   assert.match(verificationReportSource, /defenderParryPresentationNeverRewindsAtContact/);
@@ -259,9 +274,9 @@ test('R18I releases contact through 28ms continuity and starts canonical OLD B3 
   const liveDelegate = frame.indexOf('contactHandoffController.updateLiveConstraintAfterGuard({', deflectLatch);
   assert.ok(combatDelegate >= 0 && guardUpdate > combatDelegate && deflectLatch > guardUpdate && liveDelegate > deflectLatch);
 
-  const beforeGuardStart = contactHandoffSource.indexOf('function updateCombatBeforeGuard(');
-  const beforeGuardEnd = contactHandoffSource.indexOf('function updateLiveConstraintAfterGuard(', beforeGuardStart);
-  const beforeGuard = contactHandoffSource.slice(beforeGuardStart, beforeGuardEnd);
+  const beforeGuardStart = contactLifecycleDirectorSource.indexOf('function advanceCombat(');
+  const beforeGuardEnd = contactLifecycleDirectorSource.indexOf('function advanceConstraint(', beforeGuardStart);
+  const beforeGuard = contactLifecycleDirectorSource.slice(beforeGuardStart, beforeGuardEnd);
   assert.ok(beforeGuard.includes('postCouplingHandoffApplied === true'));
   assert.ok(beforeGuard.includes('handoffConsumedByOldB3: true'));
   for (const marker of [
@@ -277,9 +292,9 @@ test('R18I releases contact through 28ms continuity and starts canonical OLD B3 
     'oldB3InitialElapsedMs',
     'OLD B3 ARM JOINED',
     'weapon-arm-contact-pose-fades-into-contact-base-while-old-b3-body-keeps-running',
-  ]) assert.ok(contactHandoffSource.includes(marker), marker);
+  ]) assert.ok(postContactOwnershipSource.includes(marker), marker);
   assert.ok(verificationReportSource.includes('parryImpactSelectsExaggeratedOldB3ReactionDefinition'));
-  assert.ok(contactHandoffSource.includes('deflect-impulse-continuity-bridge-weapon-arm-joins-running-old-b3'));
+  assert.ok(contactLifecycleDirectorSource.includes('deflect-impulse-continuity-bridge-weapon-arm-joins-running-old-b3'));
   assert.ok(source.includes("from '../../src/combat/post-coupling-recoil-stagger-handoff.js';"));
   assert.ok(!source.includes('post-coupling-recoil-stagger-handoff.js?v='));
   assert.ok(verificationReportSource.includes('deflectImpulseContinuesRunningOldB3WithoutBodyRestart'));
@@ -294,7 +309,7 @@ test('Step 3A uses bounded lowerarm plus wrist hierarchy travel instead of a sch
   assert.match(liveContactConstraintSource, /propagatedBones: active\.plan\.propagatedBones/);
   assert.match(liveContactConstraintSource, /assistBone: forearmAssist\.accepted \? 'lowerarm\.r' : null/);
   assert.match(source, /blendRecoveryPose/);
-  assert.match(contactHandoffSource, /noPresetMotionCurve: true/);
+  assert.match(contactLifecycleDirectorSource, /noPresetMotionCurve: true/);
   assert.match(liveContactConstraintSource, /actualHandTravelMeters/);
   assert.match(liveContactConstraintSource, /actualGripTravelMeters/);
   assert.match(liveContactConstraintSource, /residualCorrectionPasses/);
@@ -308,7 +323,7 @@ test('Step 3A uses bounded lowerarm plus wrist hierarchy travel instead of a sch
 test('Step 3A does not add the live grip constraint to the original Block pre-contact path', () => {
   const block = preContactFunctionBody('updateBlockPreContact', 'updateParryPreContact');
   assert.match(block, /planArticulatedImpactBracing/);
-  assert.match(block, /planFineGuardTracking/);
+  assert.match(block, /guardCoverageDirector\.update/);
   assert.doesNotMatch(block, /swordGripConstraint/);
 });
 
@@ -330,15 +345,15 @@ test('Step 3A classifies a Parry whiff from measured sweep geometry without chan
   assert.match(diagnosticFormattersSource, /OUTSIDE_SHIELD_EDGE: 'OUTSIDE SHIELD EDGE'/);
   assert.match(diagnosticFormattersSource, /MISSED_SHIELD_PLANE: 'MISSED SHIELD PLANE'/);
   assert.match(verificationReportSource, /authority: 'presentation-diagnostic-only-no-combat-authority'/);
-  assert.match(contactHandoffSource, /if \(!exchangeState\.latestContact\.contact\) return/);
+  assert.match(contactLifecycleDirectorSource, /if \(!contactEvaluation\.contact\)/);
   assert.doesNotMatch(preContactSource, /parryGate\.confirm|combat\.resolveContact/);
 });
 test('Step 3A replaces only an unreachable linear target with reachable measured sweep guidance', () => {
-  const update = preContactFunctionBody('updateParryPreContact', 'updatePreContact');
-  assert.match(preContactSource, /selectReachableParryInterceptTarget/);
-  assert.match(update, /measureSweptSwordBucklerClosestApproach/);
-  assert.match(update, /predictedTrackingPlan: exchangeState\.latestPredictiveAnalysis\?\.trackingPlan/);
-  assert.match(update, /threat: exchangeState\.latestReachableInterceptTarget\.threat/);
+  // R18S.3: the fallback decision moved into the director with the ladder it feeds.
+  assert.match(parryInterceptDirectorSource, /selectReachableParryInterceptTarget/);
+  assert.match(parryInterceptDirectorSource, /measureSweptSwordBucklerClosestApproach/);
+  assert.match(parryInterceptDirectorSource, /predictedTrackingPlan: predictiveAnalysis\?\.trackingPlan/);
+  assert.match(parryInterceptDirectorSource, /threat: interceptTarget\.threat/);
   assert.match(verificationReportSource, /measuredSweepFallbackIsGuidanceOnly/);
   assert.match(verificationReportSource, /realSweptContactRequired/);
   assert.match(html, /MEASURED SWEEP preserves world direction \+ 1\.2cm inset/);
@@ -346,15 +361,27 @@ test('Step 3A replaces only an unreachable linear target with reachable measured
 });
 test('armed Parry samples a continuous post-tracking shield surface before selecting and driving the next frame', () => {
   const update = preContactFunctionBody('updateParryPreContact', 'updatePreContact');
+  // The lab hands the ladder last frame's post-tracking shield as the selector baseline...
   const presentation = update.indexOf('predictivePresentation.update');
-  const continuity = update.indexOf('const continuitySurface = exchangeState.previousShieldLeadSurface');
-  const measure = update.indexOf('measureSweptSwordBucklerClosestApproach');
-  const select = update.indexOf('selectReachableParryInterceptTarget');
-  const plan = update.indexOf('planGuardThreatCorrection');
-  const drive = update.indexOf('fineTrackingRuntime.update');
-  assert.ok(presentation >= 0 && continuity > presentation && measure > continuity && select > measure && plan > select && drive > plan);
+  const reach = update.indexOf('parryInterceptDirector.reach({');
+  assert.ok(presentation >= 0 && reach > presentation);
+  assert.match(
+    update.slice(reach),
+    /continuitySurface: exchangeState\.previousShieldLeadSurface/,
+    'the ladder is handed last frame\'s post-tracking shield, not this frame\'s rebuilt one',
+  );
+  // ...and the ladder measures against it, selects on it, plans from it, then drives.
+  const measure = parryInterceptDirectorSource.indexOf('measure(previousBlade, currentBlade, selectorSurface)');
+  const select = parryInterceptDirectorSource.indexOf('selectReachableParryInterceptTarget({');
+  const plan = parryInterceptDirectorSource.indexOf('planGuardThreatCorrection({');
+  const drive = parryInterceptDirectorSource.indexOf('trackingRuntime.update(plan, deltaSeconds)');
+  assert.ok(measure >= 0 && select > measure && plan > select && drive > plan);
   assert.match(preContactSource, /selectorBaseline: 'previous-frame-post-tracking-world-shield-surface'/);
-  assert.match(update, /exchangeState\.latestReachableInterceptTarget\?\.fallbackApplied[\s\S]*exchangeState\.latestReachableInterceptTarget\.trackingPlan/);
+  assert.match(
+    parryInterceptDirectorSource,
+    /interceptTarget\?\.fallbackApplied\s*\n\s*\? interceptTarget\.trackingPlan/,
+    'a measured contact correction is preferred over a predicted one',
+  );
   assert.match(preContactSource, /drivePlanSource: activeIntentPlan[\s\S]*exchangeState\.latestReachableInterceptTarget\?\.fallbackApplied/);
   assert.match(preContactSource, /surface-relative-measured-contact-correction/);
   assert.match(preContactSource, /correctionDirectionDot/);
@@ -366,33 +393,36 @@ test('armed Parry samples a continuous post-tracking shield surface before selec
 });
 test('armed Parry recruits predicted or measured low stance, holds it, and preserves contact authority', () => {
   const update = preContactFunctionBody('updateParryPreContact', 'updatePreContact');
-  const primaryDrive = update.indexOf('fineTrackingRuntime.update');
-  const primarySurface = update.indexOf('const primaryTrackingSurfaceAfter', primaryDrive);
-  const residualBefore = update.indexOf('const residualBeforeRefinement', primarySurface);
-  const residualSelect = update.indexOf('const residualInterceptTarget', residualBefore);
-  const refine = update.indexOf('fineTrackingRuntime.refineMeasuredContact', residualSelect);
-  const residualAfterArm = update.indexOf('const residualAfterArmRefinement', refine);
-  const bodyReach = update.indexOf('residualBodyReachRuntime.update', residualAfterArm);
-  const residualAfterBody = update.indexOf('const residualAfterBodyReach', bodyReach);
-  const stanceReach = update.indexOf('residualStanceReachRuntime.update', residualAfterBody);
-  const residualAfter = update.indexOf('const residualAfterRefinement', stanceReach);
-  assert.ok(primaryDrive >= 0 && primarySurface > primaryDrive && residualBefore > primarySurface);
-  assert.ok(residualSelect > residualBefore && refine > residualSelect);
-  assert.ok(residualAfterArm > refine && bodyReach > residualAfterArm);
-  assert.ok(residualAfterBody > bodyReach && stanceReach > residualAfterBody && residualAfter > stanceReach);
-  assert.match(update, /jointBudgetScale: 0\.35/);
-  assert.match(update, /maxResidualMeters: 0\.06/);
-  assert.match(update, /residualEdgeReductionMeters/);
-  assert.match(update, /residualPlaneReductionMeters/);
-  assert.match(update, /bodyEdgeReductionMeters/);
-  assert.match(update, /bodyPlaneReductionMeters/);
-  assert.match(update, /stanceEdgeReductionMeters/);
-  assert.match(update, /stancePlaneReductionMeters/);
+  // R18S.3: each rung is measured against the shield the rung before it just moved, so the order
+  // is the whole contract - and it is the director's.
+  const ladder = parryInterceptDirectorSource;
+  const primaryDrive = ladder.indexOf('trackingRuntime.update(plan, deltaSeconds)');
+  const residualBefore = ladder.indexOf('const residualBeforeRefinement', primaryDrive);
+  const residualSelect = ladder.indexOf('const residualInterceptTarget', residualBefore);
+  const refine = ladder.indexOf('trackingRuntime.refineMeasuredContact', residualSelect);
+  const residualAfterArm = ladder.indexOf('const residualAfterArmRefinement', refine);
+  const bodyReach = ladder.indexOf('bodyReachRuntime.update({', residualAfterArm);
+  const residualAfterBody = ladder.indexOf('const residualAfterBodyReach', bodyReach);
+  const stanceReach = ladder.indexOf('stanceRuntime.update({', residualAfterBody);
+  assert.ok(primaryDrive >= 0 && residualBefore > primaryDrive && residualSelect > residualBefore);
+  assert.ok(refine > residualSelect && residualAfterArm > refine && bodyReach > residualAfterArm);
+  assert.ok(residualAfterBody > bodyReach && stanceReach > residualAfterBody);
+  assert.match(ladder, /jointBudgetScale: 0\.35/);
+  assert.match(ladder, /maxResidualMeters: 0\.06/);
+  for (const reduction of [
+    /residualEdgeReductionMeters/, /residualPlaneReductionMeters/,
+    /bodyEdgeReductionMeters/, /bodyPlaneReductionMeters/,
+    /stanceEdgeReductionMeters/, /stancePlaneReductionMeters/,
+  ]) {
+    assert.match(ladder, reduction, 'the director measures it');
+    assert.match(update, reduction, 'and the lab still reports it');
+  }
   assert.match(source, /createGuardResidualBodyReachRuntime/);
   assert.match(source, /createGuardResidualStanceReachRuntime/);
-  assert.match(update, /anticipatedClosestApproach: exchangeState\.latestPredictiveAnalysis\?\.threat\?\.worldPoint/);
-  assert.match(update, /point: exchangeState\.latestPredictiveAnalysis\.threat\.worldPoint/);
-  assert.match(update, /anticipatedLeadSeconds: exchangeState\.latestPredictiveAnalysis\?\.threat\?\.futureSeconds/);  assert.match(preContactSource, /persistent-arm-carry-then-predicted-or-measured-low-threat-planted-stance-held-to-real-contact-or-reset-diagnostic/);
+  assert.match(update, /predictiveAnalysis: exchangeState\.latestPredictiveAnalysis/);
+  assert.match(ladder, /anticipatedClosestApproach: predictiveAnalysis\?\.threat\?\.worldPoint/);
+  assert.match(ladder, /point: predictiveAnalysis\.threat\.worldPoint/);
+  assert.match(ladder, /anticipatedLeadSeconds: predictiveAnalysis\?\.threat\?\.futureSeconds/);  assert.match(preContactSource, /persistent-arm-carry-then-predicted-or-measured-low-threat-planted-stance-held-to-real-contact-or-reset-diagnostic/);
   assert.match(diagnosticFormattersSource, /residual edge \$\{edgeBefore\}→\$\{edgeAfter\}/);
   assert.match(diagnosticFormattersSource, /carry \$\{carryBefore\}→\$\{carryAfter\}/);
   assert.match(diagnosticFormattersSource, /refine \$\{refinementStep\} · rdir \$\{refinementDirection\}/);
@@ -411,17 +441,24 @@ test('armed Parry recruits predicted or measured low stance, holds it, and prese
   // The pre-contact no-step guarantee is now stated as the zero-displacement
   // window: nothing may move while the swept probe owns parry success.
   assert.match(html, /zero displacement while the swept probe owns success/);
+  // R18S.2: Guard's own reaches moved into its director, so that is where these hold now.
+  // R18R.6: Guard may close its own measured residual, but only at Guard's budget - the plan it
+  // refines with has to be a guard-mode plan, never Parry's.
+  assert.match(guardCoverageDirectorSource, /trackingRuntime\.refineMeasuredContact\(plan, deltaSeconds, RESIDUAL_REFINEMENT\)/);
+  assert.match(guardCoverageDirectorSource, /planGuardThreatCorrection\(\{ mode: 'guard', threat: target\.threat/);
+  // R18R.10: Guard recruits the planted crouch too, in its own mode and on its own profile.
+  assert.match(guardCoverageDirectorSource, /stanceRuntime\.update\(\{\s*\n\s*mode: tracking \? 'guard' : 'off',\s*\n\s*profile: GUARD_MODE_STANCE_REACH_PROFILE,/);
+  // The body reach stays Parry-only, in both places: Guard drops, it does not lean.
   const block = preContactFunctionBody('updateBlockPreContact', 'updateParryPreContact');
-  assert.doesNotMatch(block, /refineMeasuredContact/);
-  assert.doesNotMatch(block, /residualBodyReachRuntime\.update/);
-  assert.doesNotMatch(block, /residualStanceReachRuntime\.update/);
+  assert.doesNotMatch(block, /residualBodyReachRuntime/);
+  assert.doesNotMatch(guardCoverageDirectorSource, /residualBodyReach|BodyReachRuntime/);
 });
 
 test('F review batches presentation rebuilds and avoids dynamic debug bounds work', () => {
   const update = preContactFunctionBody('updateParryPreContact', 'updatePreContact');
   const defenderUpdateCount = update.split('defender.update(0, camera)').length - 1;
   const swordUpdateCount = update.split('defenderSword?.update()').length - 1;
-  const stanceSolve = update.indexOf('residualStanceReachRuntime.update');
+  const stanceSolve = update.indexOf('parryInterceptDirector.reach({');
   const presentationUpdate = update.indexOf('defender.update(0, camera)', stanceSolve);
 
   assert.equal(defenderUpdateCount, 1);

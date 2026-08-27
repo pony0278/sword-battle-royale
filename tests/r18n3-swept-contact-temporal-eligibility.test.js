@@ -11,6 +11,7 @@ import {
 } from '../src/combat/committed-parry-contact-gate.js';
 import { createLongswordDirectionalAttackRuntime } from '../src/combat/longsword-directional-attack-runtime.js';
 
+const lifecycleSource = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
 const controllerSource = await readFile(new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url), 'utf8');
 const integrationSource = await readFile(new URL('../src/combat/two-actor-combat-integration.js', import.meta.url), 'utf8');
 
@@ -138,10 +139,11 @@ test('R18N.3 v6.4 attack interruption freezes the authored source at actual sub-
 });
 
 test('R18N.3 v6.4 preserves real-contact authority through controller and two-actor orchestration', () => {
-  assert.match(controllerSource, /const geometricContact = probeSweptSwordBucklerContact\(\{/);
-  assert.match(controllerSource, /active: true/);
-  assert.match(controllerSource, /evaluateSweptContactTemporalEligibility\(\{/);
-  assert.match(controllerSource, /if \(!exchangeState\.latestContact\.contact\) return;/);
+  // R18S.4: the authority chain lives in the lifecycle director.
+  assert.match(lifecycleSource, /const geometricContact = probeSweptSwordBucklerContact\(\{/);
+  assert.match(lifecycleSource, /active: true/);
+  assert.match(lifecycleSource, /evaluateSweptContactTemporalEligibility\(\{/);
+  assert.match(lifecycleSource, /if \(!contactEvaluation\.contact\)/);
   assert.match(integrationSource, /effectiveAttackPhase = sweptTemporalAuthority && temporalEligibility\.eligible === true/);
   assert.match(integrationSource, /contactTemporalEligibility: sweptTemporalAuthority \? temporalEligibility : null/);
 });

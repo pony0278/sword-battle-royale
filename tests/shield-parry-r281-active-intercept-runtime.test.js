@@ -10,6 +10,7 @@ import {
 const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
 const preContact = await readFile(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
 const exchangeState = await readFile(new URL('../tools/action-studio/shield-parry-r281/exchange-state.js', import.meta.url), 'utf8');
+const director = await readFile(new URL('../src/combat/parry-intercept-director.js', import.meta.url), 'utf8');
 
 class FakeQuaternion {
   constructor(x = 0, y = 0, z = 0, w = 1) { this.set(x, y, z, w); }
@@ -69,23 +70,24 @@ test('R18N.1 keeps manual Parry authority in the entry and only latches intent a
 });
 
 test('R18N.1 makes the F-latched intent the primary incremental shield drive without moving contact authority', () => {
+  // R18S.3: the lab still latches the intent; the ladder it drives is the director's.
   assert.match(preContact, /activeInterceptIntent\?\.plan\(\{/);
-  assert.match(preContact, /exchangeState\.latestFinePlan = activeIntentPlan \|\|/);
+  assert.match(director, /const plan = activeIntentPlan \|\|/, 'an armed intent must win outright over any selected target');
   assert.match(preContact, /drivePlanSource: activeIntentPlan/);
   assert.match(preContact, /preserveShieldArm: Boolean\(activeInterceptIntent\?\.active\)/);
   const planIndex = preContact.indexOf('const activeIntentPlan = activeInterceptIntent?.plan({');
-  const updateIndex = preContact.indexOf('exchangeState.latestFineTracking = fineTrackingRuntime.update(exchangeState.latestFinePlan, deltaSeconds);', planIndex);
-  assert.ok(planIndex >= 0 && updateIndex > planIndex, 'active intent must remain the primary post-presentation tracking step');
+  const reachIndex = preContact.indexOf('parryInterceptDirector.reach({', planIndex);
+  assert.ok(planIndex >= 0 && reachIndex > planIndex, 'active intent must be latched before the ladder drives on it');
   assert.doesNotMatch(
-    preContact.slice(planIndex, updateIndex),
-    /if \(activeIntentPlan\) fineTrackingRuntime\.reset\(\);/,
+    director,
+    /trackingRuntime\.reset\(\)/,
     'R18N.3 must preserve bounded tracking carry so the absolute additive correction can be reapplied after authored presentation each frame',
   );
   assert.match(preContact, /activeInterceptPoseAuthority:[\s\S]*post-guard-post-predictive-absolute-world-offset-last-writer/);
-  assert.match(preContact, /fineTrackingRuntime\.refineMeasuredContact\(/, 'bounded arm residual refinement must remain available');
-  assert.match(preContact, /activeIntentPlan[\s\S]*residualBodyReachRuntime\.trackWorldTarget\(\{[\s\S]*targetCenter: activeInterceptIntent\?\.report\?\.targetCenter/, 'active intercept support chain must follow the same F-latched fixed world target');
-  assert.match(preContact, /residualBodyReachRuntime\.update\(\{[\s\S]*mode: 'parry'/, 'legacy measured-contact body reach remains available outside active intercept');
-  assert.match(preContact, /residualStanceReachRuntime\.update\(\{[\s\S]*mode: 'parry'/, 'stance refinement remains independently available');
+  assert.match(director, /trackingRuntime\.refineMeasuredContact\(/, 'bounded arm residual refinement must remain available');
+  assert.match(director, /activeIntentPlan[\s\S]*bodyReachRuntime\.trackWorldTarget\(\{ targetCenter: activeIntent\?\.targetCenter/, 'active intercept support chain must follow the same F-latched fixed world target');
+  assert.match(director, /bodyReachRuntime\.update\(\{ mode: 'parry'/, 'legacy measured-contact body reach remains available outside active intercept');
+  assert.match(director, /stanceRuntime\.update\(\{\s*\n\s*mode: 'parry'/, 'stance refinement remains independently available');
   assert.match(preContact, /function armActiveIntercept\(snapshot\)/);
   assert.match(preContact, /function resetActiveIntercept\(\)/);
   assert.doesNotMatch(preContact, /parryGate\.arm\(/);

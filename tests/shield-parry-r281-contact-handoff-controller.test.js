@@ -5,6 +5,8 @@ import { createShieldParryContactHandoffController } from '../tools/action-studi
 
 const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
 const controller = await readFile(new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url), 'utf8');
+// R18S.4: the lifecycle state machine lives in src; the controller is its lab shell.
+const director = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
 
 function indexOrder(source, markers) {
   let cursor = -1;
@@ -31,54 +33,56 @@ test('R18M.6 entry delegates contact/release ownership while preserving frame or
 });
 
 test('R18M.6 real swept Sword × Shield contact remains the only Parry success authority', () => {
-  indexOrder(controller, [
+  indexOrder(director, [
     'const geometricContact = probeSweptSwordBucklerContact({',
-    'exchangeState.latestContact = evaluateSweptContactTemporalEligibility({',
-    'if (!exchangeState.latestContact.contact) return;',
-    'parryGate.confirm({ attackSnapshot: snapshot, contact: exchangeState.latestContact })',
-    'exchangeState.latestCombatResult = combat.resolveContact({',
-    'exchangeState.latestGripConstraintReport = swordGripConstraint.start({',
+    'const contactEvaluation = evaluateSweptContactTemporalEligibility({',
+    'if (!contactEvaluation.contact) {',
+    'confirmParry({ attackSnapshot, contact: contactEvaluation })',
+    'combatResult = resolveCombat({',
+    'gripReport = gripConstraint.start({',
   ]);
-  assert.match(controller, /active: true/);
-  assert.match(controller, /fallbackEligible: snapshot\.phase === LONGSWORD_ATTACK_PHASES\.ACTIVE/);
-  assert.match(controller, /realSweptContact: true/);
+  assert.match(director, /active: true/);
+  assert.match(director, /fallbackEligible: attackSnapshot\.phase === LONGSWORD_ATTACK_PHASES\.ACTIVE/);
+  assert.match(director, /realSweptContact: true/);
 });
 
 test('R18M.6 live Sword→Grip ownership holds attacker contact before defender release', () => {
-  assert.match(controller, /attackerRecoilChannels: TWO_ACTOR_PARRY_REACTION_CHANNELS\.LIVE_CONTACT_BODY/);
-  assert.match(controller, /attackerRecoilPhaseLatch: TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES\.LIVE_CONTACT_IMPULSE_PEAK/);
-  assert.match(controller, /holdAttackerInterruption: true/);
-  assert.match(controller, /swordGripConstraint\.update\(deltaSeconds/);
-  assert.match(controller, /contactConstraintOwnsUntilDeflectImpulse: true/);
-  assert.match(controller, /weaponArmContactConstrained: true/);
+  assert.match(director, /attackerRecoilChannels: TWO_ACTOR_PARRY_REACTION_CHANNELS\.LIVE_CONTACT_BODY/);
+  assert.match(director, /attackerRecoilPhaseLatch: TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES\.LIVE_CONTACT_IMPULSE_PEAK/);
+  assert.match(director, /holdAttackerInterruption: true/);
+  assert.match(director, /gripConstraint\.update\(deltaSeconds/);
+  assert.match(director, /contactConstraintOwnsUntilDeflectImpulse: true/);
+  assert.match(director, /weaponArmContactConstrained: true/);
 });
 
 test('R18M.6 DEFLECT_IMPULSE latch gates release and confirmed Parry fail-safe stays intact', () => {
-  assert.match(controller, /sourceTimeSeconds \+ 1e-4 >= PARRY_ATTACKER_RELEASE_SOURCE_SECONDS/);
-  assert.match(controller, /marker: 'deflect-impulse'/);
-  assert.match(controller, /latched-defender-deflect-marker-gates-attacker-release/);
-  assert.match(controller, /reason: 'defender-deflect-marker-not-reached'/);
-  assert.match(controller, /allowConfirmedParryFallback: true/);
-  assert.match(controller, /confirmedParry: exchangeState\.latestParryConfirmation\?\.accepted === true/);
+  assert.match(director, /sourceTimeSeconds \+ 1e-4 >= PARRY_ATTACKER_RELEASE_SOURCE_SECONDS/);
+  assert.match(director, /marker: 'deflect-impulse'/);
+  assert.match(director, /latched-defender-deflect-marker-gates-attacker-release/);
+  assert.match(director, /reason: 'defender-deflect-marker-not-reached'/);
+  assert.match(director, /allowConfirmedParryFallback: true/);
+  assert.match(director, /confirmedParry: confirmation\?\.accepted === true/);
 });
 
 test('R18M.6 release preserves 28ms bridge and canonical OLD B3 continuation from zero', () => {
-  assert.match(controller, /durationMs: handoff\.releaseBlendMs/);
-  assert.match(controller, /continuityBridgeMs: handoff\.releaseBlendMs/);
-  assert.match(controller, /targetPose: contactBasePose/);
-  assert.match(controller, /handoffConsumedByOldB3: true/);
-  assert.match(controller, /bodyRestartedAtRelease: false/);
-  assert.match(controller, /continuationPlanIdentityPreserved: appliedHandoff\?\.planIdentityPreserved === true/);
-  assert.match(controller, /continuationElapsedPreserved: appliedHandoff\?\.presentationElapsedPreserved === true/);
-  assert.match(controller, /deflect-impulse-continuity-bridge-weapon-arm-joins-running-old-b3/);
+  assert.match(director, /durationMs: handoff\.releaseBlendMs/);
+  assert.match(director, /continuityBridgeMs: handoff\.releaseBlendMs/);
+  assert.match(director, /targetPose: contactBasePose/);
+  assert.match(director, /handoffConsumedByOldB3: true/);
+  assert.match(director, /bodyRestartedAtRelease: false/);
+  assert.match(director, /continuationPlanIdentityPreserved: appliedHandoff\?\.planIdentityPreserved === true/);
+  assert.match(director, /continuationElapsedPreserved: appliedHandoff\?\.presentationElapsedPreserved === true/);
+  assert.match(director, /deflect-impulse-continuity-bridge-weapon-arm-joins-running-old-b3/);
 });
 
 test('R18P.4 arm-chain policy is direction-uniform and release stays delegated to handoff authority', () => {
-  assert.doesNotMatch(controller, /selectedDirection === 'top' \|\| selectedDirection === 'right'/);
-  assert.match(controller, /buildLiveParryOldB3Handoff\(\{/);
-  assert.match(controller, /attackDirection: selectedDirection/);
-  assert.doesNotMatch(controller, /selectedDirection === 'left'.*releasedToOldB3/s);
-  assert.doesNotMatch(controller, /attackDirection: 'left'/);
+  for (const source of [controller, director]) {
+    assert.doesNotMatch(source, /selectedDirection === 'top' \|\| selectedDirection === 'right'/);
+    assert.doesNotMatch(source, /selectedDirection === 'left'.*releasedToOldB3/s);
+    assert.doesNotMatch(source, /attackDirection: 'left'/);
+  }
+  assert.match(director, /buildLiveParryOldB3Handoff\(\{/);
+  assert.match(director, /attackDirection: selectedDirection/);
 });
 
 test('R18M.6 contact controller excludes manual input and predictive pre-contact authority', () => {

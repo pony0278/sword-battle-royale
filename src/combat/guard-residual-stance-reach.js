@@ -25,6 +25,25 @@ export const GUARD_RESIDUAL_STANCE_REACH_PROFILE = Object.freeze({
   footPlantIterations: 2,
   footPlantToleranceMeters: 0.012,
 });
+// R18R.10: Guard recruits the same planted crouch as Parry, but it cannot wait for the same cue.
+// Parry's arm solves the shield plane first and then asks the stance to close what is left at the
+// edge, so `planeSolved` at 2.5mm is a fair gate there. Guard's shield arm reaches the end of its
+// own envelope with the blade still centimetres off the plane, and the aim it is tracking early in
+// a swing is a direction-level anchor rather than a solved contact. So both plane cues are relaxed
+// to 12cm: "the aim is roughly in front of the shield and clearly below it" is the read that makes
+// a defender drop into a low guard, and it is the only read available while the swing is still
+// winding up. Measured on LEFT, 8-10 runs per value: 6cm never fires at all (0/8 - the anchor sits
+// ~13cm off the plane once the shield has tracked toward it), 12cm blocks 10/10, 15cm 8/8, and
+// 20cm starts slipping again at 7/8 as the stance commits to an aim that has since drifted.
+// Crouching is quicker than Parry's for the same reason the cues are looser: Guard commits on a
+// coarse read and has to be there early, where Parry buys its frames with input timing.
+// Everything else, including how far Guard may crouch, stays exactly where Parry has it.
+export const GUARD_MODE_STANCE_REACH_PROFILE = Object.freeze({
+  planeSolvedMeters: 0.12,
+  kneeThreatPlaneMeters: 0.12,
+  crouchSpeedMps: 1.4,
+});
+
 const SKIPPED_FOOT_PLANT = Object.freeze({
   appliedDegrees: Object.freeze({ upper: 0, lower: 0 }),
   driftMeters: 0,
@@ -203,7 +222,8 @@ export function planGuardResidualStanceReach(input = {}) {
     bucklerSurface: surface,
     bodyReference: input.bodyReference,
   }, profile);
-  if (mode !== 'parry' || !point || !(surface.radius > 0)) {
+  const reachingMode = mode === 'parry' || mode === 'guard';
+  if (!reachingMode || !point || !(surface.radius > 0)) {
     return Object.freeze({
       stage: GUARD_RESIDUAL_STANCE_REACH_STAGE,
       mode,
@@ -211,7 +231,7 @@ export function planGuardResidualStanceReach(input = {}) {
       arm,
       threat,
       surface,
-      reason: mode !== 'parry' ? 'parry-only' : 'missing-contact-geometry',
+      reason: !reachingMode ? 'reach-modes-only' : 'missing-contact-geometry',
       authority: 'pre-contact-guidance-only-real-swept-contact-required',
     });
   }
@@ -533,7 +553,8 @@ export function createGuardResidualStanceReachRuntime(THREE, options = {}) {
     const initialPlan = threatSelection.drivePlan;
     const driveClosestApproach = threatSelection.driveClosestApproach;
 
-    if (mode === 'parry' && initialPlan.activeCandidate && initialPlan.arm.stalled) {
+    const reachingMode = mode === 'parry' || mode === 'guard';
+    if (reachingMode && initialPlan.activeCandidate && initialPlan.arm.stalled) {
       stallSeconds += dt;
     } else if (!initialPlan.arm?.saturated) {
       stallSeconds = 0;
@@ -543,7 +564,7 @@ export function createGuardResidualStanceReachRuntime(THREE, options = {}) {
         || initialPlan.arm.saturated
         || stallSeconds >= profile.stallConfirmSeconds);
     const wasEngaged = stanceEngaged;
-    if (mode !== 'parry') {
+    if (!reachingMode) {
       clearEngagement();
     } else if (candidateConfirmed) {
       stanceEngaged = true;

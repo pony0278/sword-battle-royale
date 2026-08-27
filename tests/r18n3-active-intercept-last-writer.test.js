@@ -7,17 +7,17 @@ const tracking = await readFile(new URL('../src/combat/guard-threat-tracking.js'
 const bodyReach = await readFile(new URL('../src/combat/guard-residual-body-reach.js', import.meta.url), 'utf8');
 const handoff = await readFile(new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url), 'utf8');
 const intent = await readFile(new URL('../src/combat/active-parry-intercept-intent.js', import.meta.url), 'utf8');
+const director = await readFile(new URL('../src/combat/parry-intercept-director.js', import.meta.url), 'utf8');
+const lifecycle = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
 
 test('R18N.3 keeps Active Intercept as the last post-presentation shield-arm writer', () => {
+  // R18S.3: the lab latches the intent, the director drives the ladder on it.
   const planIndex = preContact.indexOf('const activeIntentPlan = activeInterceptIntent?.plan({');
-  const updateIndex = preContact.indexOf(
-    'exchangeState.latestFineTracking = fineTrackingRuntime.update(exchangeState.latestFinePlan, deltaSeconds);',
-    planIndex,
-  );
-  assert.ok(planIndex >= 0 && updateIndex > planIndex);
+  const reachIndex = preContact.indexOf('parryInterceptDirector.reach({', planIndex);
+  assert.ok(planIndex >= 0 && reachIndex > planIndex);
   assert.doesNotMatch(
-    preContact.slice(planIndex, updateIndex),
-    /fineTrackingRuntime\.reset\(\)/,
+    director,
+    /trackingRuntime\.reset\(\)/,
     'active path must not erase bounded carry immediately before the last-writer solve',
   );
   assert.match(preContact, /preserveShieldArm: Boolean\(activeInterceptIntent\?\.active\)/);
@@ -25,7 +25,8 @@ test('R18N.3 keeps Active Intercept as the last post-presentation shield-arm wri
 });
 
 test('R18N.3 fixed-target support chain follows the same F-latched world target', () => {
-  assert.match(preContact, /activeIntentPlan[\s\S]*residualBodyReachRuntime\.trackWorldTarget\(\{[\s\S]*targetCenter: activeInterceptIntent\?\.report\?\.targetCenter/);
+  assert.match(director, /activeIntentPlan[\s\S]*bodyReachRuntime\.trackWorldTarget\(\{ targetCenter: activeIntent\?\.targetCenter/);
+  assert.match(preContact, /targetCenter: activeInterceptIntent\?\.report\?\.targetCenter/, 'the lab hands the ladder the same latched target');
   assert.match(bodyReach, /function trackWorldTarget\(input = \{\}, deltaSeconds = 1 \/ 60\)/);
   assert.match(bodyReach, /activeTargetOffset/);
   assert.match(bodyReach, /profile\.bodyReachSpeedMps/);
@@ -40,13 +41,14 @@ test('R18N.3 closes the fixed target after support and stance without mutating p
   assert.match(tracking, /mode: 'active-intercept-world-target-closure'/);
   assert.match(tracking, /persistentCarryModified: false/);
   assert.match(tracking, /fixed-world-target-arm-closure-no-persistent-carry-no-contact-authority/);
-  const stanceIndex = preContact.indexOf('const residualStanceReach = residualStanceReachRuntime.update({');
-  const closureIndex = preContact.indexOf('fineTrackingRuntime.refineWorldTarget(', stanceIndex);
+  // The stance is the ladder's last reach; the closure is a separate call precisely so the lab's
+  // own authored-arm writers can run between them, and it still lands before the one rebuild.
+  const stanceIndex = preContact.indexOf('parryInterceptDirector.reach({');
+  const closureIndex = preContact.indexOf('parryInterceptDirector.finalClosure({', stanceIndex);
   const finalUpdateIndex = preContact.indexOf('defender.update(0, camera);', closureIndex);
   assert.ok(stanceIndex >= 0 && closureIndex > stanceIndex && finalUpdateIndex > closureIndex,
     'fixed-target arm closure must be the final bone solver after support/stance and before final defender geometry update');
-  assert.match(preContact.slice(closureIndex, finalUpdateIndex), /jointBudgetScale: 0\.6/);
-  assert.match(preContact.slice(closureIndex, finalUpdateIndex), /iterations: 2/);
+  assert.match(director, /FINAL_CLOSURE_REFINEMENT = Object\.freeze\(\{\s*\n\s*jointBudgetScale: 0\.6,\s*\n\s*iterations: 2,/);
   assert.match(preContact, /activeInterceptArmClosure/);
 });
 
@@ -69,10 +71,13 @@ test('R18N.3 preserves production tracking limits and real-contact reset boundar
   assert.match(bodyReach, /maxBodyReachMeters: 0\.035/);
   assert.match(bodyReach, /chestMaxDegrees: 2\.4/);
   assert.match(bodyReach, /spineMaxDegrees: 1\.6/);
-  assert.match(handoff, /probeSweptSwordBucklerContact\(/);
-  assert.match(handoff, /parryGate\.confirm\(/);
+  // R18S.4: the contact boundary lives in the lifecycle director; the lab wires the gate and the
+  // reach-ownership release into it, and the reset still happens the moment contact takes the arm.
+  assert.match(lifecycle, /probeSweptSwordBucklerContact\(/);
+  assert.match(handoff, /confirmParry: \(input\) => parryGate\.confirm\(input\)/);
   assert.match(handoff, /fineTrackingRuntime\.reset\(\);/);
   assert.match(handoff, /residualBodyReachRuntime\.reset\(\);/);
+  assert.match(lifecycle, /releaseReachOwnership\(\);/);
 });
 
 test('R18N.3 does not promote the fixed target into contact authority', () => {

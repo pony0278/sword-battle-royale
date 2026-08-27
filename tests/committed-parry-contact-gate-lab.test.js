@@ -16,6 +16,17 @@ function functionBody(name, nextName) {
   return source.slice(start, end);
 }
 
+const lifecycleDirectorSource = readFileSync(
+  new URL('../src/combat/contact-lifecycle-director.js', import.meta.url),
+  'utf8',
+);
+function lifecycleFunctionBody(name, nextName) {
+  const start = lifecycleDirectorSource.indexOf(`function ${name}(`);
+  const end = lifecycleDirectorSource.indexOf(`function ${nextName}(`, start + 1);
+  assert.notEqual(start, -1, `${name} must exist in contact lifecycle director`);
+  assert.notEqual(end, -1, `${nextName} must exist in contact lifecycle director`);
+  return lifecycleDirectorSource.slice(start, end);
+}
 function contactHandoffFunctionBody(name, nextName) {
   const start = contactHandoffSource.indexOf(`function ${name}(`);
   const end = contactHandoffSource.indexOf(`function ${nextName}(`, start + 1);
@@ -37,7 +48,7 @@ test('Step 2 exposes one manual Parry and removes Perfect from the Lab', () => {
   assert.match(html, /id="slowReview"[^>]*checked/);
   assert.match(html, />PARRY NOW \(F\)</);
   assert.doesNotMatch(html, /data-mode="perfect"/);
-  assert.match(html, /g43b5r281-block-reaction-r18q1/);
+  assert.match(html, /g43b5r281-contact-lifecycle-director-r18s4/);
 });
 
 test('Step 2 does not auto-start Parry from predictive timing', () => {
@@ -49,19 +60,20 @@ test('Step 2 does not auto-start Parry from predictive timing', () => {
 });
 
 test('Step 3A requires the gate and real swept contact before live wrist-grip transfer', () => {
-  const resolve = contactHandoffFunctionBody('resolveContact', 'updateCombatBeforeGuard');
+  // R18S.4: the lifecycle sequence lives in the director; the gate-then-grip order holds there.
+  const resolve = lifecycleFunctionBody('resolveContact', 'advanceCombat');
   assert.match(resolve, /probeSweptSwordBucklerContact/);
-  assert.match(resolve, /if \(!(?:exchangeState\.)?latestContact\.contact\) return/);
-  assert.match(resolve, /parryGate\.confirm/);
-  assert.match(resolve, /swordGripConstraint\.start/);
-  assert.ok(resolve.indexOf('parryGate.confirm') < resolve.indexOf('swordGripConstraint.start'));
+  assert.match(resolve, /if \(!contactEvaluation\.contact\)/);
+  assert.match(resolve, /confirmParry\(/);
+  assert.match(resolve, /gripConstraint\.start/);
+  assert.ok(resolve.indexOf('confirmParry(') < resolve.indexOf('gripConstraint.start'));
   assert.doesNotMatch(resolve, /publishPostCouplingRecoilStaggerHandoff/);
   assert.doesNotMatch(resolve, /couplingRuntime\.start/);
 });
 
 test('Step 2 invalid or absent Parry input falls back to Block timing', () => {
-  const resolve = contactHandoffFunctionBody('resolveContact', 'updateCombatBeforeGuard');
-  assert.match(resolve, /parryConfirmed \? TIMING_AGE_MS\.parry : TIMING_AGE_MS\.block/);
+  const resolve = lifecycleFunctionBody('resolveContact', 'advanceCombat');
+  assert.match(resolve, /parryConfirmed \? GUARD_INTENT_AGE_MS\.parry : GUARD_INTENT_AGE_MS\.block/);
   assert.match(resolve, /outcome === 'parry' && parryConfirmed/);
 });
 

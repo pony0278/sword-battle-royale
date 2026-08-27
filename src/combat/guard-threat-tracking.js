@@ -1,19 +1,27 @@
 export const GUARD_THREAT_TRACKING_STAGE = 'G4.3A.1';
 export const GUARD_THREAT_RESIDUAL_REFINEMENT_STAGE = 'G4.3B.5R.3.5';
 export const GUARD_THREAT_TRACKING_MODES = Object.freeze(['off', 'guard', 'parry']);
+export const GUARD_THREAT_SELECTION_MODES = Object.freeze(['plane-first', 'disc-distance']);
+export const GUARD_THREAT_EXTRAPOLATION_MODES = Object.freeze(['linear', 'rigid']);
 
 export const GUARD_THREAT_TRACKING_PROFILES = Object.freeze({
   off: Object.freeze({
     mode: 'off', horizonSeconds: 0, maxCorrectionMeters: 0, comfortRadiusRatio: 1,
     maxTrackingSpeedMps: 0, returnSpeedMps: 1.2, upperArmMaxDegrees: 0, lowerArmMaxDegrees: 0,
+    threatSelection: 'plane-first', threatExtrapolation: 'linear',
   }),
+  // R18R.1: Guard is the omnidirectional stance, so it looks further ahead and is allowed a
+  // wider shield-arm correction than the old cosmetic 12cm nudge. It stays slower than Parry:
+  // Guard covers a direction it has time to read, Parry buys the frames a fast attack denies it.
   guard: Object.freeze({
-    mode: 'guard', horizonSeconds: 0.11, maxCorrectionMeters: 0.12, comfortRadiusRatio: 0.82,
-    maxTrackingSpeedMps: 0.85, returnSpeedMps: 1.0, upperArmMaxDegrees: 8, lowerArmMaxDegrees: 10,
+    mode: 'guard', horizonSeconds: 0.16, maxCorrectionMeters: 0.34, comfortRadiusRatio: 0.55,
+    maxTrackingSpeedMps: 1.55, returnSpeedMps: 1.0, upperArmMaxDegrees: 34, lowerArmMaxDegrees: 42,
+    threatSelection: 'disc-distance', threatExtrapolation: 'rigid',
   }),
   parry: Object.freeze({
     mode: 'parry', horizonSeconds: 0.14, maxCorrectionMeters: 0.18, comfortRadiusRatio: 0.60,
     maxTrackingSpeedMps: 1.6, returnSpeedMps: 1.4, upperArmMaxDegrees: 20, lowerArmMaxDegrees: 26,
+    threatSelection: 'plane-first', threatExtrapolation: 'linear',
   }),
 });
 
@@ -61,6 +69,77 @@ function projectToPlane(point, center, normal) {
   return { point: sub(point, mul(normal, signedDistance)), signedDistance };
 }
 
+export function normalizeThreatExtrapolation(extrapolation) {
+  const key = String(extrapolation || 'linear').toLowerCase();
+  return GUARD_THREAT_EXTRAPOLATION_MODES.includes(key) ? key : 'linear';
+}
+
+function cross(a, b) {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  };
+}
+
+function centroid(points) {
+  const sum = points.reduce((acc, point) => add(acc, point), { x: 0, y: 0, z: 0 });
+  return mul(sum, 1 / points.length);
+}
+
+function rotateAboutAxis(vector, axis, cosAngle, sinAngle) {
+  const parallel = mul(axis, dot(axis, vector) * (1 - cosAngle));
+  return add(add(mul(vector, cosAngle), mul(cross(axis, vector), sinAngle)), parallel);
+}
+
+// R18R.4: A sword swing is a rotation, and extrapolating each blade node along its own straight
+// velocity throws the predicted blade off the arc within a few dozen milliseconds - far enough
+// that Guard was reading a threat point over a metre off the shield plane and aiming at nothing.
+// Estimating the rigid step the blade actually took (rotation of the blade axis plus the
+// translation of its centroid) and replaying that step forward keeps the prediction on the arc.
+// Three near-collinear blade nodes leave the spin about the blade's own axis unobservable, which
+// is exactly the component that does not move them.
+function buildRigidStep(previous, current) {
+  const previousAxis = normalize(sub(previous[previous.length - 1], previous[0]));
+  const currentAxis = normalize(sub(current[current.length - 1], current[0]));
+  const previousCentroid = centroid(previous);
+  const currentCentroid = centroid(current);
+  const axisCross = cross(previousAxis, currentAxis);
+  const sinAngle = length(axisCross);
+  const cosAngle = clamp(dot(previousAxis, currentAxis), -1, 1);
+  const axis = sinAngle > 1e-7 ? mul(axisCross, 1 / sinAngle) : { x: 0, y: 1, z: 0 };
+  const rotate = (point) => (sinAngle > 1e-7
+    ? rotateAboutAxis(point, axis, cosAngle, sinAngle)
+    : { ...point });
+  const translation = sub(currentCentroid, rotate(previousCentroid));
+  return (point) => add(rotate(point), translation);
+}
+
+function buildRigidBladeSamples(previous, current, stepCount) {
+  const step = buildRigidStep(previous, current);
+  const blades = [current.map((point) => ({ ...point }))];
+  for (let index = 1; index <= stepCount; index += 1) {
+    blades.push(blades[index - 1].map((point) => step(point)));
+  }
+  return blades;
+}
+
+export function normalizeThreatSelection(selection) {
+  const key = String(selection || 'plane-first').toLowerCase();
+  return GUARD_THREAT_SELECTION_MODES.includes(key) ? key : 'plane-first';
+}
+
+// R18R.1: `plane-first` is the original Parry scoring - it wants the blade point already sitting
+// on the shield plane, because Parry is choosing where to meet a committed swing.
+// `disc-distance` scores the true Euclidean distance from the blade point to the shield disc, so a
+// low sweep's tip beats a hilt end that merely grazes the plane a metre off the disc. Guard needs
+// that: a "covered" reading against a point the blade never occupies is a false positive.
+function scoreThreatCandidate(selection, planeDistance, outsideDisc, futureSeconds) {
+  const timePenalty = futureSeconds * 0.03;
+  if (selection === 'disc-distance') return Math.hypot(planeDistance, outsideDisc) + timePenalty;
+  return planeDistance + outsideDisc * 0.65 + timePenalty;
+}
+
 export function getGuardThreatTrackingProfile(mode = 'guard') {
   const key = String(mode || 'guard').toLowerCase();
   const profile = GUARD_THREAT_TRACKING_PROFILES[key];
@@ -76,13 +155,29 @@ export function predictGuardThreat(input = {}) {
   const deltaSeconds = Math.max(1e-5, finite(input.deltaSeconds, 1 / 60));
   const horizonSeconds = Math.max(0, finite(input.horizonSeconds, 0.11));
   const timeSamples = Math.max(2, Math.round(finite(input.timeSamples, 12)));
+  const selection = normalizeThreatSelection(input.selection);
+  const extrapolation = normalizeThreatExtrapolation(input.extrapolation);
   const velocities = current.map((point, index) => mul(sub(point, previous[index]), 1 / deltaSeconds));
+  const rigidStepCount = extrapolation === 'rigid'
+    ? Math.min(32, Math.max(1, Math.ceil(horizonSeconds / deltaSeconds)))
+    : 0;
+  const rigidBlades = extrapolation === 'rigid'
+    ? buildRigidBladeSamples(previous, current, rigidStepCount)
+    : null;
+  const bladeAt = (futureSeconds) => {
+    if (!rigidBlades) return current.map((point, index) => add(point, mul(velocities[index], futureSeconds)));
+    const steps = clamp(futureSeconds / deltaSeconds, 0, rigidStepCount);
+    const lower = Math.floor(steps);
+    const upper = Math.min(rigidStepCount, lower + 1);
+    const fraction = steps - lower;
+    return rigidBlades[lower].map((point, index) => lerp(point, rigidBlades[upper][index], fraction));
+  };
 
   let best = null;
   for (let sample = 0; sample <= timeSamples; sample += 1) {
     const timeAlpha = sample / timeSamples;
     const futureSeconds = horizonSeconds * timeAlpha;
-    const blade = current.map((point, index) => add(point, mul(velocities[index], futureSeconds)));
+    const blade = bladeAt(futureSeconds);
     for (let sectionIndex = 0; sectionIndex < blade.length - 1; sectionIndex += 1) {
       const projectedA = projectToPlane(blade[sectionIndex], surface.center, surface.normal).point;
       const projectedB = projectToPlane(blade[sectionIndex + 1], surface.center, surface.normal).point;
@@ -92,7 +187,7 @@ export function predictGuardThreat(input = {}) {
       const radial = length(sub(projection.point, surface.center));
       const planeDistance = Math.abs(projection.signedDistance);
       const outsideDisc = Math.max(0, radial - surface.radius);
-      const score = planeDistance + outsideDisc * 0.65 + futureSeconds * 0.03;
+      const score = scoreThreatCandidate(selection, planeDistance, outsideDisc, futureSeconds);
       const bladeFraction = (sectionIndex + closestProjected.u) / (blade.length - 1);
       const candidate = {
         point: projection.point,
@@ -113,6 +208,8 @@ export function predictGuardThreat(input = {}) {
   if (!best) return null;
   return Object.freeze({
     stage: GUARD_THREAT_TRACKING_STAGE,
+    selection,
+    extrapolation,
     point: freezeVector(best.point),
     worldPoint: freezeVector(best.worldPoint),
     signedDistance: best.signedDistance,
@@ -145,6 +242,8 @@ export function planGuardThreatCorrection(input = {}) {
     deltaSeconds: input.deltaSeconds,
     horizonSeconds: profile.horizonSeconds,
     timeSamples: input.timeSamples,
+    selection: input.selection || profile.threatSelection,
+    extrapolation: input.extrapolation || profile.threatExtrapolation,
   });
   if (!threat) return null;
 
@@ -245,7 +344,10 @@ export function createGuardThreatTrackingRuntime(THREE, options = {}) {
     const maxStep = Math.max(0, speed) * dt;
     if (deltaOffset.length() > maxStep && maxStep > 0) deltaOffset.setLength(maxStep);
     currentOffset.add(deltaOffset);
-    if (mode !== 'parry') residualOffset.set(0, 0, 0);
+    // R18R.6: Guard carries its measured residual across frames for the same reason Parry does -
+    // the primary plan is authored against the neutral surface, so the last few centimetres to a
+    // shield that has already moved can only be closed incrementally.
+    if (mode === 'off') residualOffset.set(0, 0, 0);
     constrainResidualOffset(profile);
 
     const baselineSurface = buckler.getWorldParrySurface();

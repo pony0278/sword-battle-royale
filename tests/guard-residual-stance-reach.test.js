@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
+  GUARD_MODE_STANCE_REACH_PROFILE,
   GUARD_RESIDUAL_STANCE_REACH_STAGE,
   classifyGuardArmCorrectionStall,
   classifyGuardKneeLineThreat,
@@ -218,15 +219,19 @@ test('R18B keeps stance off while arm correction still reduces the edge miss', (
   assert.equal(plan.reason, 'arm-correction-still-effective');
 });
 
-test('R18D is Parry-only, latches low stance, and plants feet without root translation or stepping', async () => {
-  const block = planGuardResidualStanceReach({
-    mode: 'block',
+test('R18D latches low stance for the reaching modes, and plants feet without root translation or stepping', async () => {
+  // R18R.10: Parry and Guard both reach with the stance; nothing else does.
+  const inert = {
     bucklerSurface: surface,
     closestApproach: { point: { x: 0, y: -0.298, z: 0 } },
     armEvidence: recordedStall,
-  });
-  assert.equal(block.activeCandidate, false);
-  assert.equal(block.reason, 'parry-only');
+  };
+  for (const mode of ['block', 'off', 'brace']) {
+    const rejected = planGuardResidualStanceReach({ ...inert, mode });
+    assert.equal(rejected.activeCandidate, false, `${mode} should not reach with the stance`);
+    assert.equal(rejected.reason, 'reach-modes-only');
+  }
+  assert.equal(planGuardResidualStanceReach({ ...inert, mode: 'guard' }).reason !== 'reach-modes-only', true);
 
   const source = await readFile(new URL('../src/combat/guard-residual-stance-reach.js', import.meta.url), 'utf8');
   const runtimeStart = source.indexOf('export function createGuardResidualStanceReachRuntime');
@@ -266,4 +271,46 @@ test('inactive residual stance skips both feet IK while preserving active planti
   assert.ok(runtime.includes("plantFoot('l'") && runtime.includes(': SKIPPED_FOOT_PLANT_PAIR;'));
   assert.ok(runtime.includes('footPlantSkipped: !stanceNeedsPlanting'));
   assert.ok(runtime.includes('const finalSurface = stanceNeedsPlanting ?'));
+});
+
+test('R18R.10 Guard drops for a low threat its arm cannot reach, on a cue Parry would still be waiting on', () => {
+  // A blade below the shield and 4cm off its plane: Guard's arm has run out of envelope there.
+  const offPlaneApproach = Object.freeze({ point: { x: 0.06, y: 0.707, z: -0.078 } });
+  const shared = {
+    bucklerSurface: kneeSurface,
+    closestApproach: offPlaneApproach,
+    armEvidence: recordedStall,
+    bodyReference,
+  };
+
+  const parry = planGuardResidualStanceReach({ ...shared, mode: 'parry' });
+  assert.equal(parry.activeCandidate, false);
+  assert.equal(parry.reason, 'shield-plane-not-solved');
+
+  const guard = planGuardResidualStanceReach({
+    ...shared, mode: 'guard', profile: GUARD_MODE_STANCE_REACH_PROFILE,
+  });
+  assert.equal(guard.activeCandidate, true);
+  assert.equal(guard.threat.planeNear, true);
+  assert.ok(guard.requestedCrouchMeters > 0);
+  assert.ok(guard.requestedCrouchMeters <= guard.profile.maxCrouchMeters);
+});
+
+test('R18R.10 the Guard override relaxes the plane cues and nothing else', () => {
+  assert.deepEqual(Object.keys(GUARD_MODE_STANCE_REACH_PROFILE).sort(),
+    ['crouchSpeedMps', 'kneeThreatPlaneMeters', 'planeSolvedMeters']);
+  const merged = planGuardResidualStanceReach({
+    mode: 'guard',
+    bucklerSurface: kneeSurface,
+    closestApproach: kneeLineApproach,
+    armEvidence: recordedStall,
+    bodyReference,
+    profile: GUARD_MODE_STANCE_REACH_PROFILE,
+  }).profile;
+  // Guard commits on a coarser read and gets down quicker, but never further.
+  assert.ok(merged.planeSolvedMeters > 0.1);
+  assert.ok(merged.crouchSpeedMps > 1.05);
+  assert.equal(merged.maxCrouchMeters, 0.045);
+  assert.equal(merged.hipsAimMaxDegrees, 3.2);
+  assert.equal(merged.contactInsetMeters, 0.006);
 });

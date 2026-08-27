@@ -1,4 +1,4 @@
-import { getProductionParryDeflectProfile } from '../../src/animation/parry-contact-deflect-runtime-clip.js?v=g43b5r281-parry-sync-r2';
+import { GUARD_INTENT_AGE_MS } from '../../src/combat/contact-lifecycle-director.js';
 import { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } from '../../src/combat/guard-state-machine.js';
 import { createGuardPresentationRuntime } from '../../src/combat/guard-presentation-runtime.js';
 import { createLongswordDirectionalAttackRuntime, LONGSWORD_ATTACK_PHASES } from '../../src/combat/longsword-directional-attack-runtime.js';
@@ -6,10 +6,8 @@ import { captureRigPose, applyRigPose, blendRecoveryPose } from '../../src/comba
 import { sampleLongswordAttackRecovery } from '../../src/combat/longsword-contact-recovery-presentation.js';
 import {
   measureSweptSwordBucklerClosestApproach,
-  probeSweptSwordBucklerContact,
 } from '../../src/combat/swept-sword-buckler-contact.js?v=g43b5r281-residual-body-reach-r18';
 import { buildParryWhiffDiagnostic } from '../../src/combat/parry-whiff-diagnostic.js?v=g43b5r281-residual-body-reach-r18';
-import { selectReachableParryInterceptTarget } from '../../src/combat/reachable-parry-intercept-target.js?v=g43b5r281-residual-body-reach-r18';
 import { createGuardThreatTrackingRuntime, planGuardThreatCorrection } from '../../src/combat/guard-threat-tracking.js?v=g43b5r281-residual-body-reach-r18';
 import { createGuardResidualBodyReachRuntime } from '../../src/combat/guard-residual-body-reach.js?v=g43b5r281-residual-body-reach-r18';
 import {
@@ -43,7 +41,6 @@ import {
   createLiveShieldSwordGripContactRuntime,
 } from '../../src/combat/live-shield-sword-grip-contact-constraint.js?v=g43b5r281-closed-loop-old-b3-r18i5';
 import {
-  buildLiveParryOldB3Handoff,
   sampleLiveParryOldB3ReleaseBlend,
 } from '../../src/combat/live-parry-old-b3-handoff.js?v=g43b5r281-closed-loop-old-b3-r18i5';
 import {
@@ -90,15 +87,12 @@ const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
 const THREE = window.THREE;
 if (!THREE?.WebGLRenderer || !THREE?.GLTFLoader) throw new Error(`${LAB_STAGE} requires Three.js r128 + GLTFLoader`);
 
-const TIMING_AGE_MS = Object.freeze({ block: 260, parry: 120 });
 const HUD_INTERVAL_MS = 50;
 const REPORT_INTERVAL_MS = 240;
 const MAX_REPORT_DOM_CHARACTERS = 60000;
 const RECENT_COMPACT_TRACE_FRAMES = 8;
 const PARRY_REVIEW_RATE = 0.12;
 const PARRY_PROMPT_HOLD_MS = 1500;
-const PARRY_PRESENTATION_MARKERS = getProductionParryDeflectProfile('parry').presentationMarkers;
-const PARRY_ATTACKER_RELEASE_SOURCE_SECONDS = PARRY_PRESENTATION_MARKERS.attackerReleaseEligibleSeconds;
 const DEBUG_QUERY = new URLSearchParams(window.location.search);
 const DEBUG_MODE = DEBUG_QUERY.get('debug') === '1';
 
@@ -213,7 +207,6 @@ const preContactController = createShieldParryPreContactController({
     analyzePredictiveInterceptParry,
     evaluateCommittedParryInput,
     measureSweptSwordBucklerClosestApproach,
-    selectReachableParryInterceptTarget,
     planGuardThreatCorrection,
     sampleActiveShieldLeadMotion,
     compactInterceptDriveTraceFrame,
@@ -237,22 +230,7 @@ const contactHandoffController = createShieldParryContactHandoffController({
   fineTrackingRuntime,
   residualBodyReachRuntime,
   residualStanceReachRuntime,
-  constants: {
-    TIMING_AGE_MS,
-    PARRY_ATTACKER_RELEASE_SOURCE_SECONDS,
-    LONGSWORD_ATTACK_PHASES,
-    GUARD_STATES,
-    COMMITTED_PARRY_CONTACT_GATE_STAGE,
-    LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE,
-    TWO_ACTOR_PARRY_REACTION_CHANNELS,
-    TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES,
-  },
   services: {
-    probeSweptSwordBucklerContact,
-    captureRigPose,
-    buildLiveParryOldB3Handoff,
-    sampleLiveParryOldB3ReleaseBlend,
-    publishPostCouplingRecoilStaggerHandoff,
     measureAttackerRecoilWorldSilhouette,
   },
   callbacks: {
@@ -277,7 +255,7 @@ const directOldB3DiagnosticController = createDirectOldB3DiagnosticController({
   guardRuntime,
   camera,
   buckler,
-  timingAgeMs: TIMING_AGE_MS.parry,
+  timingAgeMs: GUARD_INTENT_AGE_MS.parry,
   services: {
     captureRigPose,
     publishPostCouplingRecoilStaggerHandoff,
@@ -531,6 +509,7 @@ function updateHud(snapshot, combatSnapshot) {
     parryPromptHeld: Boolean(exchangeState.parryPromptHold),
     firstContact: exchangeState.firstContact,
     latestFinePlan: exchangeState.latestFinePlan,
+    latestFineTracking: exchangeState.latestFineTracking, latestGuardCoverage: exchangeState.latestGuardCoverage,
     latestReachableInterceptTarget: exchangeState.latestReachableInterceptTarget,
     latestGripConstraintReport: exchangeState.latestGripConstraintReport,
     step3AContactTransfer: exchangeState.step3AContactTransfer,
