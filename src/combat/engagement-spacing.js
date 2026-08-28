@@ -53,6 +53,17 @@ export const MEASURED_FULL_COVERAGE_BAND_METERS = Object.freeze({
 // point rather than over a band. Between 1.60m and 2.05m only LEFT is a real threat, and closer
 // than 1.50m the guard starts failing outright - RIGHT blocks 0 of 12 at 1.40m, and every miss in
 // that range reaches the body.
+//
+// R19J.2 measured what that range looks like from the attack's side. Below the guard's floor the
+// attack degenerates too: at the 0.9m body pushbox TOP and RIGHT land on blade fraction 0, the
+// base at the guard, and LEFT misses a standing defender entirely by a centimetre or two. So the
+// band below 1.55m is a distance where neither side has a working answer - not, as R19J.1 first
+// concluded from near-miss data, one where only the defence is missing. close-range-engagement
+// holds those curves and the trap that produced the wrong version.
+//
+// R19L.1 asks the question these bands cannot: not "does a block resolve" but "would the swing
+// have landed if it had not". Paired against unguarded runs, the guard answers a landing blow at
+// three of twenty-seven sampled stances - see guard-effectiveness.
 export const MEASURED_UNDEFENDED_BODY_REACH_METERS = Object.freeze({
   top: 1.55,
   right: 1.55,

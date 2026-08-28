@@ -53,12 +53,8 @@ import {
   compactPredictiveAnalysis,
   compactParryGateAttempt,
   compactReachableInterceptTarget,
-  compactLiveContactConstraint,
-  compactThreatSelection,
 } from './shield-parry-r281/diagnostic-telemetry.js';
 import {
-  describeContactGeometry,
-  formatAllInspectionGates,
   formatInspectionFailureSummary,
   formatTerminalState,
   formatWhiffDiagnostic,
@@ -83,6 +79,7 @@ import { createAttackerPresentationAdapter } from './shield-parry-r281/attacker-
 import { createDirectOldB3DiagnosticController } from './shield-parry-r281/direct-old-b3-diagnostic.js';
 import { ATTACKER_WALK_CLIPS, bootstrapShieldParryLabAssets } from './shield-parry-r281/lab-bootstrap.js';
 import { createNeutralStanceController } from './shield-parry-r281/neutral-stance.js';
+import { createBodyStrikeReactionController } from './shield-parry-r281/body-strike-reaction-controller.js';
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
@@ -124,6 +121,7 @@ const exchangeState = createShieldParryExchangeState();
 const neutralStance = createNeutralStanceController({
   defender, camera, readGuardState: () => guardMachine.state,
 });
+const bodyStrikeReaction = createBodyStrikeReactionController({ defender, camera }); // R19K.1
 
 const attackerPresentation = createAttackerPresentationAdapter({
   THREE,
@@ -244,6 +242,7 @@ const contactHandoffController = createShieldParryContactHandoffController({
     measureAttackerRecoilWorldSilhouette,
   },
   callbacks: {
+    onBodyStruck: (bodyContact) => bodyStrikeReaction.start(bodyContact), // R19K.1
     captureCanonicalAttackerOldB3Base: () => attackerPresentation.captureCanonicalOldB3Base(attackRuntime.snapshot.interruption),
     captureAttackerWorldSilhouette: () => attackerPresentation.captureWorldSilhouette(),
     updateLiveContactMarkers: (report) => inspectionOverlay.update(report),
@@ -578,6 +577,7 @@ function frame(timestamp) {
     guardRuntime.update(deltaMs, camera);
     neutralStance.sample(deltaMs); // R19I.1: no-op unless the guard is neutral
     laneController.overlayDefenderWalkLegs();
+    bodyStrikeReaction.sample(deltaMs); // R19K.1: last writer - a landed blade owns the fighter
     contactHandoffController.updateDefenderDeflectReleaseGate();
     contactHandoffController.updateLiveConstraintAfterGuard({
       deltaSeconds,

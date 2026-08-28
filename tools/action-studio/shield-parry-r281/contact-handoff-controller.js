@@ -192,6 +192,9 @@ export function createShieldParryContactHandoffController({
     if (!result.contacted) {
       exchangeState.latestBodyHit = lifecycleDirector.bodyHit;
       if (result.event?.type !== 'body-struck') return;
+      // R19K.1: the one signal that means a blade genuinely landed. Fired here rather than off
+      // exchangeState.latestBodyHit, which also holds near-misses and would flinch on blocks.
+      callbacks.onBodyStruck?.(result.bodyContact);
       publishStatus({
         text: `HIT · ${selectedDirection.toUpperCase()} reached the ${result.event.band} · the guard was not there`,
         className: 'bad',
