@@ -1,5 +1,6 @@
 import { createAttackAdvanceRuntime } from '../../../src/combat/attack-advance.js';
 import { createGuardFacingTurnRuntime } from '../../../src/combat/guard-facing-turn.js';
+import { createBaseFacingRuntime } from '../../../src/combat/base-facing.js';
 import { createEngagementGround } from '../../../src/combat/engagement-ground.js';
 import { createLaneLocomotionRuntime } from '../../../src/combat/lane-locomotion.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../../../src/combat/lane-walk-cycle.js';
@@ -19,6 +20,11 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   let walkDurations = { forward: 1, backward: 1 };
   const advance = createAttackAdvanceRuntime();
   const guardFacingTurn = createGuardFacingTurnRuntime();
+  // R19T.1: each body's facing is integrated, not read off the bearing - the ledger keeps
+  // reporting the instantaneous bearing as a fact, and these give it inertia. The attacker's
+  // freezes for the length of a committed swing (soft tracking at strength zero until B4).
+  const attackerBaseFacing = createBaseFacingRuntime();
+  const defenderBaseFacing = createBaseFacingRuntime();
   const defenderFeet = createLaneLocomotionRuntime();
   const attackerFeet = createLaneLocomotionRuntime();
   // R19C.2: the attacker's gait, driven by the distance the ledger actually moved them rather than
@@ -59,8 +65,13 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   }
 
   function apply() {
-    labScene.setLanePositions(ground.report);
-    return ground.report;
+    const report = ground.report;
+    labScene.setLanePositions({
+      ...report,
+      attackerFacingRadians: attackerBaseFacing.facingRadians,
+      defenderFacingRadians: defenderBaseFacing.facingRadians,
+    });
+    return report;
   }
 
   return Object.freeze({
@@ -93,6 +104,12 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       // logic writes a fresh plan each frame it runs; the runtime treats a repeated plan object as
       // "the exchange is over" and stands the body back down, so nobody has to remember to stop.
       labScene.setDefenderYawOffset(guardFacingTurn.update(guardFacingPlan, deltaSeconds));
+      // R19T.1: base facings chase the live bearings, the attacker's frozen while a swing is
+      // committed so a sidestep mid-swing is stepped AWAY from, not tracked. On the line the
+      // bearings never move and both integrators sit at them - the golden grid holds that case.
+      const bearings = ground.report;
+      attackerBaseFacing.update(bearings.attackerFacingRadians, deltaSeconds, { frozen: swingLive });
+      defenderBaseFacing.update(bearings.defenderFacingRadians, deltaSeconds);
       const defenderStep = defenderFeet.update({ deltaSeconds, separationMeters: ground.separationMeters });
       if (defenderStep.meters !== 0) ground.moveDefender(defenderStep.meters);
       // R19B.1: the attacker's feet stop while a swing is still travelling. The step into the blow
@@ -111,7 +128,9 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       if (attackerStep) attackerGait.advance({ travelledMeters: -attackerStep.meters, deltaSeconds });
       else attackerGait.settle();
       defenderGait.advance({ travelledMeters: -defenderStep.meters, deltaSeconds });
-      if (defenderStep.meters !== 0 || attackerStep?.meters) apply();
+      // Stamped every frame rather than only on movement: a facing can still be turning while
+      // both pairs of feet are planted, and the stamp is absolute and idempotent.
+      apply();
       return Object.freeze({ defenderStep, attackerStep });
     },
     get defenderIntent() { return defenderFeet.intent; },
@@ -181,6 +200,9 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     resetLane() {
       guardFacingTurn.reset();
       labScene.setDefenderYawOffset(0);
+      // The lane reset teleports the fighters back to stance; facing teleports with them.
+      attackerBaseFacing.snapTo(0);
+      defenderBaseFacing.snapTo(Math.PI);
       swingLive = false;
       exchangeSettled = false;
       advance.reset();
