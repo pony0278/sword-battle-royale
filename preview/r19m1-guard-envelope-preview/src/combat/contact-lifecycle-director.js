@@ -1,6 +1,7 @@
 import { probeSweptSwordBucklerContact } from './swept-sword-buckler-contact.js';
 import { evaluateSweptContactTemporalEligibility } from './swept-contact-temporal-eligibility.js';
 import { probeHiltClangContact, buildHiltPolyline } from './hilt-clang-contact.js';
+import { decideContactDepthOrder } from './contact-depth-order.js';
 import { LONGSWORD_ATTACK_PHASES } from './longsword-directional-attack-runtime.js';
 import { GUARD_STATES } from './guard-state-machine.js';
 import {
@@ -94,6 +95,8 @@ export function createContactLifecycleDirector({
   readCanonicalContactPose,
   readDefenderHurtbox,
   readAttackerHiltPoint,
+  readAttackerRootPoint,
+  readDefenderBodyPoint,
   readCloseRangePosture,
   fallbackIncomingVelocity,
   releaseReachOwnership,
@@ -390,6 +393,29 @@ export function createContactLifecycleDirector({
           fallbackEligible: attackSnapshot.phase === LONGSWORD_ATTACK_PHASES.ACTIVE,
         });
         if (clangEvaluation.contact) contactEvaluation = clangEvaluation;
+      }
+    }
+    // R19Y.1: a shield behind the body guards nothing. "Asked first" always carried the premise
+    // that the shield is between the blade and the body; when the attacker and the body stand on
+    // the same side of the shield plane, that premise is false and any shield contact - blade or
+    // clang alike - is the back-turned artifact the B3 investigation measured (4/4 phantom
+    // blocks through the defender's own torso). The evaluation is flipped to a non-contact with
+    // its reason stated, and the ordinary no-contact path then asks the body, so a backstab
+    // lands through the very code that always handled a missed shield.
+    if (contactEvaluation.contact) {
+      const depthOrder = decideContactDepthOrder({
+        attackerPoint: readAttackerRootPoint?.(),
+        bodyPoint: readDefenderBodyPoint?.(),
+        shieldSurface: currentShieldSurface,
+      });
+      if (depthOrder.order === 'body-first') {
+        contactEvaluation = Object.freeze({
+          ...contactEvaluation,
+          contact: false,
+          eligible: contactEvaluation.eligible,
+          reason: 'shield-behind-the-body-guards-nothing',
+          depthOrder,
+        });
       }
     }
     // Announced before the contact branch, because the caller's whiff diagnostics read the parry
