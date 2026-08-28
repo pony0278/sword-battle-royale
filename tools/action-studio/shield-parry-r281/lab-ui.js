@@ -286,6 +286,12 @@ export function createShieldParryLabUi(elements) {
 // owns WASD, and a key that both flies the camera and walks a fighter is a key that does neither
 // legibly.
 const LANE_KEYS = Object.freeze({ ArrowUp: -1, ArrowDown: 1 });
+// R19V.1: the sidestep keys. Left/right arrows rather than A/D, because WASD already belongs to
+// the free camera and stealing half of it would leave both crippled. Body-relative - ArrowLeft
+// steps to the defender's own left, ArrowRight their right - and defender-only: Shift hands the
+// arrows to the attacker, but the attacker has no lateral verb yet, so held Shift zeroes the
+// sidestep rather than redirecting it.
+const LATERAL_KEYS = Object.freeze({ ArrowLeft: -1, ArrowRight: 1 });
 
 function laneIntentFrom(held) {
   let intent = 0;
@@ -305,6 +311,13 @@ function laneIntentsFor(held, attackerModifier) {
     : { defender: intent, attacker: 0 };
 }
 
+function lateralIntentFrom(held, attackerModifier) {
+  if (attackerModifier) return 0;
+  let intent = 0;
+  for (const code of held) intent += LATERAL_KEYS[code] || 0;
+  return Math.sign(intent);
+}
+
 function isParryKey(event) {
   return event?.code === 'KeyF'
     || String(event?.key || '').toLowerCase() === 'f'
@@ -321,11 +334,38 @@ export function bindShieldParryLabUiEvents({
   let parryKeyDownObserved = false;
   const heldLaneKeys = new Set();
   let attackerModifierHeld = false;
+  const heldLateralKeys = new Set();
   function publishLaneIntent() {
     const intents = laneIntentsFor(heldLaneKeys, attackerModifierHeld);
     handlers.onDefenderIntent?.(intents.defender);
     handlers.onAttackerIntent?.(intents.attacker);
+    handlers.onDefenderLateralIntent?.(lateralIntentFrom(heldLateralKeys, attackerModifierHeld));
   }
+  // R19W.1: the touch pad. Each button is a virtual arrow key: press puts its key code into the
+  // same held-set the keyboard path uses, release takes it out, and everything downstream - the
+  // Shift rules, the publish, the intents - is literally the keyboard code running unchanged.
+  // Pointer events cover mouse and touch alike; capture keeps a finger that slides off the
+  // button from leaving a phantom held key behind.
+  documentRef.querySelectorAll('[data-move]').forEach((button) => {
+    const code = button.dataset.move;
+    const held = LANE_KEYS[code] !== undefined ? heldLaneKeys : heldLateralKeys;
+    const press = (event) => {
+      event.preventDefault();
+      // Capture keeps a sliding finger from leaving a phantom held key, but a pointer that is
+      // already gone by the time capture is requested THROWS - an ultra-quick tap can do it -
+      // and an uncaught throw here would abort before the intent ever registers.
+      try { button.setPointerCapture(event.pointerId); } catch { /* capture is best-effort */ }
+      held.add(code); publishLaneIntent();
+    };
+    const release = (event) => {
+      event.preventDefault();
+      held.delete(code); publishLaneIntent();
+    };
+    button.addEventListener('pointerdown', press);
+    button.addEventListener('pointerup', release);
+    button.addEventListener('pointercancel', release);
+    button.addEventListener('contextmenu', (event) => event.preventDefault());
+  });
   documentRef.querySelectorAll('[data-attack]').forEach((button) =>
     button.addEventListener('click', () => handlers.onAttack(button.dataset.attack)));
   documentRef.querySelectorAll('[data-mode]').forEach((button) =>
@@ -350,6 +390,11 @@ export function bindShieldParryLabUiEvents({
       if (!event.repeat) { heldLaneKeys.add(event.code); publishLaneIntent(); }
       return;
     }
+    if (LATERAL_KEYS[event.code] !== undefined) {
+      event.preventDefault();
+      if (!event.repeat) { heldLateralKeys.add(event.code); publishLaneIntent(); }
+      return;
+    }
     if (!isParryKey(event) || event.repeat) return;
     parryKeyDownObserved = true;
     event.preventDefault();
@@ -364,6 +409,12 @@ export function bindShieldParryLabUiEvents({
     if (LANE_KEYS[event.code] !== undefined) {
       event.preventDefault();
       heldLaneKeys.delete(event.code);
+      publishLaneIntent();
+      return;
+    }
+    if (LATERAL_KEYS[event.code] !== undefined) {
+      event.preventDefault();
+      heldLateralKeys.delete(event.code);
       publishLaneIntent();
       return;
     }

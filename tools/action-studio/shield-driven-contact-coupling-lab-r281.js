@@ -518,8 +518,8 @@ bindShieldParryLabUiEvents({
     onRetryAttack: () => restartAttack(selectedDirection),
     onDebugApplyRetry: () => restartAttack(selectedDirection),
     onDebugResetDefaults: resetDebugStanceDefaults,
-    onDefenderIntent: (intent) => laneController.setDefenderIntent(intent),
-    onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
+    onDefenderIntent: (intent) => laneController.setDefenderIntent(intent), onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
+    onDefenderLateralIntent: (intent) => laneController.setDefenderLateralIntent(intent), // R19V.1 A/D
     onShowSurface: (checked) => buckler.setParrySurfaceVisible(checked),
     onResize: resize,
   },

@@ -1,7 +1,7 @@
 import { PARRY_ROOT_DISPLACEMENT_PROFILES, BLOCK_ROOT_DISPLACEMENT_PROFILES } from './parry-root-displacement.js';
 import { MINIMUM_ENGAGEMENT_SEPARATION_METERS } from './lane-locomotion.js';
 
-export const ENGAGEMENT_GROUND_STAGE = 'R19S.1';
+export const ENGAGEMENT_GROUND_STAGE = 'R19U.1';
 
 // R18Z.1: who is standing where, after everything that has happened to them.
 //
@@ -73,36 +73,71 @@ export function createEngagementGround(options = {}) {
   ));
   let attackerGroundMeters = 0;
   let defenderGroundMeters = 0;
+  // R19U.1 (stage B2): the lateral axis. Kept as separate x scalars beside the z scalars rather
+  // than folding both into vectors, for a reason the golden replay enforces at zero tolerance:
+  // the z arithmetic below is the exact float-op sequence every calibration was measured against,
+  // and a vector refactor would reorder additions and drift last bits. Off-axis operations
+  // decompose into (z, x) components; on the axis the components are m*1 and m*0 and the z math
+  // is bit-identical to the day it was measured.
+  let attackerLateralMeters = 0;
+  let defenderLateralMeters = 0;
   // The attacker's step is separate from their ground because it is still being spent: it grows
   // through the swing and is only banked once the exchange resolves. Keeping it apart is what lets
   // a whiffed attack be undone without unwinding the ground a previous blow moved.
   let attackerSwingMeters = 0;
+  // The swing's lateral component, alongside its z component above: a swing along a frozen
+  // off-axis facing spends its metres in both. On the axis this stays exactly zero.
+  let attackerSwingLateralMeters = 0;
+
+  // The gap decomposed into the fixed frame. Longitudinal is the legacy scalar formula, exact;
+  // lateral is the x gap; separation prefers the legacy path whenever the fight is on the axis.
+  function gapParts() {
+    const longitudinal = startSeparationMeters + defenderGroundMeters
+      - (attackerGroundMeters + attackerSwingMeters);
+    const lateral = (defenderLateralMeters) - (attackerLateralMeters + attackerSwingLateralMeters);
+    return {
+      longitudinal,
+      lateral,
+      separation: lateral === 0 ? longitudinal : Math.hypot(longitudinal, lateral),
+    };
+  }
 
   function report() {
     const attackerMeters = attackerGroundMeters + attackerSwingMeters;
     // Symmetric about the origin, matching the stance planner's geometry: the attacker's ground
-    // gained carries them toward +z, the defender's ground given carries them the same way.
-    const attackerPosition = Object.freeze({ x: 0, z: -startSeparationMeters / 2 + attackerMeters });
-    const defenderPosition = Object.freeze({ x: 0, z: startSeparationMeters / 2 + defenderGroundMeters });
-    const dx = defenderPosition.x - attackerPosition.x;
-    const dz = defenderPosition.z - attackerPosition.z;
-    // Bearing from each fighter to the other; at zero range the last honest answer is the lane's.
-    const facingDefined = Math.hypot(dx, dz) > 1e-9;
+    // gained carries them toward +z, the defender's ground given carries them the same way, and
+    // the lateral scalars are their x outright.
+    const gap = gapParts();
+    const attackerPosition = Object.freeze({
+      x: attackerLateralMeters + attackerSwingLateralMeters,
+      z: -startSeparationMeters / 2 + attackerMeters,
+    });
+    const defenderPosition = Object.freeze({
+      x: defenderLateralMeters,
+      z: startSeparationMeters / 2 + defenderGroundMeters,
+    });
+    // Bearing from each fighter to the other, from the same exact gap parts separation uses; at
+    // zero range the last honest answer is the lane's.
+    const facingDefined = gap.separation > 1e-9;
     return Object.freeze({
       stage: ENGAGEMENT_GROUND_STAGE,
       attackerMeters,
       defenderMeters: defenderGroundMeters,
       attackerGroundMeters,
       attackerSwingMeters,
+      attackerLateralMeters: attackerPosition.x,
+      defenderLateralMeters,
+      lateralGapMeters: gap.lateral,
       // Positive is still apart. The defender retreating opens the gap, the attacker advancing
-      // closes it, and this is the number every coverage band is a fact about.
-      separationMeters: startSeparationMeters + defenderGroundMeters - attackerMeters,
+      // closes it, and this is the number every coverage band is a fact about - now the euclidean
+      // distance, which on the axis is the same number it always was.
+      separationMeters: gap.separation,
       startSeparationMeters,
       minimumSeparationMeters,
       attackerPosition,
       defenderPosition,
-      attackerFacingRadians: facingDefined ? Math.atan2(dx, dz) : 0,
-      defenderFacingRadians: facingDefined ? Math.atan2(-dx, -dz) : Math.PI,
+      attackerFacingRadians: facingDefined ? Math.atan2(gap.lateral, gap.longitudinal) : 0,
+      defenderFacingRadians: facingDefined ? Math.atan2(-gap.lateral, -gap.longitudinal) : Math.PI,
       authority: 'lane-position-ledger-no-contact-authority',
     });
   }
@@ -117,12 +152,47 @@ export function createEngagementGround(options = {}) {
   // "back off half a metre" is +z for one of them and -z for the other. Callers pass what they mean
   // - how the gap should change - and the sign lives here.
   function moveDefender(separationDeltaMeters) {
-    defenderGroundMeters += finite(separationDeltaMeters);
+    const delta = finite(separationDeltaMeters);
+    const gap = gapParts();
+    if (gap.lateral === 0 || !(gap.separation > 1e-9)) {
+      defenderGroundMeters += delta;
+    } else {
+      // Off the axis, opening the gap means walking along the line between them, wherever it
+      // currently points - the same "change in separation" the caller always meant.
+      defenderGroundMeters += delta * (gap.longitudinal / gap.separation);
+      defenderLateralMeters += delta * (gap.lateral / gap.separation);
+    }
     return report();
   }
 
   function moveAttacker(separationDeltaMeters) {
-    attackerGroundMeters -= finite(separationDeltaMeters);
+    const delta = finite(separationDeltaMeters);
+    const gap = gapParts();
+    if (gap.lateral === 0 || !(gap.separation > 1e-9)) {
+      attackerGroundMeters -= delta;
+    } else {
+      attackerGroundMeters -= delta * (gap.longitudinal / gap.separation);
+      attackerLateralMeters -= delta * (gap.lateral / gap.separation);
+    }
+    return report();
+  }
+
+  // R19U.1: the lateral verb. A sidestep is perpendicular to the line between the fighters, so
+  // to first order it never closes the gap - geometrically it always opens it slightly - which
+  // is why it needs no pushbox clamp of its own. Positive steps to the defender's own left when
+  // facing the attacker (+x while square on the lane).
+  function moveDefenderLateral(meters) {
+    const step = finite(meters);
+    if (step === 0) return report();
+    const gap = gapParts();
+    if (gap.lateral === 0 || !(gap.separation > 1e-9)) {
+      defenderLateralMeters += step;
+    } else {
+      // Perpendicular of the current axis, so strafing CIRCLES the opponent rather than sliding
+      // along the world's x forever.
+      defenderLateralMeters += step * (gap.longitudinal / gap.separation);
+      defenderGroundMeters += step * (-gap.lateral / gap.separation);
+    }
     return report();
   }
 
@@ -130,28 +200,76 @@ export function createEngagementGround(options = {}) {
   // floor applies here too and not only once the step is banked: a lunge is the one movement that
   // can carry someone inside their opponent, and clamping it only at settle left the attacker
   // visibly standing in the defender for the length of every over-committed swing.
-  function setAttackerSwing(meters) {
+  function setAttackerSwing(meters, facingRadians) {
     const requested = finite(meters);
-    const roomToClose = Math.max(0, startSeparationMeters + defenderGroundMeters
-      - attackerGroundMeters - minimumSeparationMeters);
-    attackerSwingMeters = Math.min(requested, roomToClose);
+    const facing = finite(facingRadians, 0);
+    // Along the axis (the only case before stage B2, and the exact-math case after it) the clamp
+    // is the legacy linear one, bit-for-bit. cos(0) and sin(0) are exact, so a caller passing a
+    // frozen facing of zero still lands here.
+    const ux = Math.sin(facing);
+    if (ux === 0 && defenderLateralMeters === attackerLateralMeters) {
+      const roomToClose = Math.max(0, startSeparationMeters + defenderGroundMeters
+        - attackerGroundMeters - minimumSeparationMeters);
+      attackerSwingMeters = Math.min(requested, roomToClose);
+      attackerSwingLateralMeters = 0;
+      return report();
+    }
+    // Off the axis the swing is a ray from the attacker's banked position along their frozen
+    // facing, and the pushbox is a disc around the defender: the swing is clamped where the ray
+    // would enter the disc, and NOT clamped at all when it passes wide - lunging past somebody
+    // is stage B's whole point.
+    const uz = Math.cos(facing);
+    const toDefZ = (startSeparationMeters + defenderGroundMeters) - attackerGroundMeters;
+    const toDefX = defenderLateralMeters - attackerLateralMeters;
+    const along = toDefZ * uz + toDefX * ux;
+    const perpendicular = Math.hypot(toDefZ - along * uz, toDefX - along * ux);
+    let allowed = Math.max(0, requested);
+    if (perpendicular < minimumSeparationMeters && along > 0) {
+      const entry = along - Math.sqrt(
+        minimumSeparationMeters * minimumSeparationMeters - perpendicular * perpendicular,
+      );
+      allowed = Math.min(allowed, Math.max(0, entry));
+    }
+    attackerSwingMeters = allowed * uz;
+    attackerSwingLateralMeters = allowed * ux;
     return report();
   }
 
   // Nobody ends a step standing inside anybody. Applied to the attacker because they are the one
   // whose movement can overrun: the defender's own feet are clamped before they travel.
   function holdMinimumSeparation() {
-    const overrun = minimumSeparationMeters - report().separationMeters;
-    if (overrun > 0) attackerGroundMeters -= overrun;
+    const gap = gapParts();
+    const overrun = minimumSeparationMeters - gap.separation;
+    if (overrun <= 0) return;
+    if (gap.lateral === 0 || !(gap.separation > 1e-9)) {
+      attackerGroundMeters -= overrun;
+    } else {
+      attackerGroundMeters -= overrun * (gap.longitudinal / gap.separation);
+      attackerLateralMeters -= overrun * (gap.lateral / gap.separation);
+    }
   }
 
   // Banks the step that has been spent and applies what the blow did to both fighters.
   function settleImpact(outcome) {
     const transfer = resolveGroundTransfer(outcome);
     if (!transfer) return null;
-    attackerGroundMeters += attackerSwingMeters + transfer.attackerMeters;
-    defenderGroundMeters += transfer.defenderMeters;
+    const gap = gapParts();
+    if (gap.lateral === 0 || !(gap.separation > 1e-9)) {
+      attackerGroundMeters += attackerSwingMeters + transfer.attackerMeters;
+      defenderGroundMeters += transfer.defenderMeters;
+    } else {
+      // The blow's throw is along the line between them at the moment it lands, wherever that
+      // line points: the attacker is thrown back down it, the defender gives ground up it.
+      attackerGroundMeters += attackerSwingMeters
+        + transfer.attackerMeters * (gap.longitudinal / gap.separation);
+      attackerLateralMeters += attackerSwingLateralMeters
+        + transfer.attackerMeters * (gap.lateral / gap.separation);
+      defenderGroundMeters += transfer.defenderMeters * (gap.longitudinal / gap.separation);
+      defenderLateralMeters += transfer.defenderMeters * (gap.lateral / gap.separation);
+    }
+    if (gap.lateral === 0) attackerLateralMeters += attackerSwingLateralMeters;
     attackerSwingMeters = 0;
+    attackerSwingLateralMeters = 0;
     holdMinimumSeparation();
     return Object.freeze({ ...report(), transfer });
   }
@@ -163,7 +281,9 @@ export function createEngagementGround(options = {}) {
   // position is the price of a whiff rather than something to be spared.
   function settleWhiff() {
     attackerGroundMeters += attackerSwingMeters;
+    attackerLateralMeters += attackerSwingLateralMeters;
     attackerSwingMeters = 0;
+    attackerSwingLateralMeters = 0;
     holdMinimumSeparation();
     return report();
   }
@@ -172,6 +292,9 @@ export function createEngagementGround(options = {}) {
     attackerGroundMeters = 0;
     defenderGroundMeters = 0;
     attackerSwingMeters = 0;
+    attackerSwingLateralMeters = 0;
+    attackerLateralMeters = 0;
+    defenderLateralMeters = 0;
     return report();
   }
 
@@ -189,6 +312,7 @@ export function createEngagementGround(options = {}) {
   return Object.freeze({
     moveAttacker,
     moveDefender,
+    moveDefenderLateral,
     setAttackerSwing,
     settleImpact,
     settleWhiff,
