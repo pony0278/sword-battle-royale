@@ -45,6 +45,12 @@ export function createShieldParryLabUi(elements) {
       showParryCue('wait', 'LOADING…', '等待 Lab 與動作資料完成');
       return;
     }
+    // R19I.1: three states, not two - nothing chosen is its own thing, and saying "BLOCK MODE"
+    // for it would name a choice the player never made.
+    if (!selectedMode) {
+      showParryCue('idle', 'NO DEFENCE CHOSEN', '雙方都在待機；選 BLOCK 或 PARRY 才會架防禦');
+      return;
+    }
     if (selectedMode !== 'parry') {
       showParryCue('idle', 'BLOCK MODE', '切換到 PARRY 才會顯示按鍵窗口');
       return;
@@ -180,7 +186,7 @@ export function createShieldParryLabUi(elements) {
             : 'Block mode';
 
     const reviewRate = parryReviewActive ? parryReviewRate : 1;
-    hudAttack.textContent = `Requested: ${requestedOutcome.toUpperCase()} · Actual: ${String(outcome).toUpperCase()} · ${snapshot.phase} · committed ${committed ? 'YES' : 'NO'} · TTC ${ttcSeconds == null ? '—' : `${Math.max(0, ttcSeconds) * 1000 | 0}ms`} · review ${reviewRate.toFixed(2)}×${parryPromptHeld ? ' · VALID WINDOW HELD' : ''}`;
+    hudAttack.textContent = `Requested: ${requestedOutcome ? requestedOutcome.toUpperCase() : 'NONE'} · Actual: ${String(outcome).toUpperCase()} · ${snapshot.phase} · committed ${committed ? 'YES' : 'NO'} · TTC ${ttcSeconds == null ? '—' : `${Math.max(0, ttcSeconds) * 1000 | 0}ms`} · review ${reviewRate.toFixed(2)}×${parryPromptHeld ? ' · VALID WINDOW HELD' : ''}`;
     const contactGeometry = describeContactGeometry(firstContact);
     const whiffGeometry = formatWhiffDiagnostic(latestParryWhiff, { debugMode: debugMode });
     hudContact.textContent = contactGeometry

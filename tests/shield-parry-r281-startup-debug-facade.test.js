@@ -24,13 +24,16 @@ test('R18M.C5 entry delegates asset bootstrap while retaining ready and initial 
   const mainEnd = source.indexOf('\n}\n\nbindShieldParryLabUiEvents', mainStart);
   assert.ok(mainStart >= 0 && mainEnd > mainStart);
   const main = source.slice(mainStart, mainEnd);
+  // R19I.1: boot no longer raises a guard or fires a demo attack - the lab opens neutral and the
+  // first decision is the player's - so those two steps left the ordering. What remains still has
+  // to happen in order: assets, then the shield surface baseline, then ready, then the report.
   const boot = main.indexOf('await bootstrapShieldParryLabAssets({');
-  const enterGuard = main.indexOf('enterGuard();', boot);
-  const surface = main.indexOf('exchangeState.previousShieldLeadSurface = cloneSurface', enterGuard);
+  const surface = main.indexOf('exchangeState.previousShieldLeadSurface = cloneSurface', boot);
   const ready = main.indexOf('ready = true;', surface);
   const report = main.indexOf('buildReport();', ready);
-  const initialAttack = main.indexOf("startAttack('right');", report);
-  assert.ok(boot >= 0 && enterGuard > boot && surface > enterGuard && ready > surface && report > ready && initialAttack > report);
+  assert.ok(boot >= 0 && surface > boot && ready > surface && report > ready);
+  assert.doesNotMatch(main, /enterGuard\(\);/, 'the defender must not be holding a guard nobody asked for');
+  assert.doesNotMatch(main, /startAttack\(/, 'the lab must not open by attacking on its own');
 });
 
 test('R18M.C5 bootstrap owns only async asset registration and defender weapon bind initialization', () => {
