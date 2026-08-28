@@ -8,5 +8,8 @@
     "probe:skyrim-hkx": "node tools/skyrim-hkx-bridge/inspect-hkx.mjs",
     "validate:skyrim-bake-pair": "node tools/skyrim-hkx-bridge/real-bake-contract.mjs",
     "extract:kaykit": "node build/extract-kaykit-assets.mjs && node build/extract-v3-sword-geometry.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
   }
 }

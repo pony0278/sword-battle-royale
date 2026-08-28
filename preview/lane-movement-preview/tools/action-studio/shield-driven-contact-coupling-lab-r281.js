@@ -46,7 +46,7 @@ import {
 import {
   measureAttackerRecoilWorldSilhouette,
 } from '../../src/combat/attacker-recoil-world-silhouette.js?v=g43b5r281-closed-loop-old-b3-r18i5';
-
+import { maybeStartParryGateProbe } from './shield-parry-r281/parry-gate-probe.js';
 import {
   compactInterceptDriveTelemetry,
   compactInterceptDriveTraceFrame,
@@ -89,8 +89,7 @@ const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
 const THREE = window.THREE;
 if (!THREE?.WebGLRenderer || !THREE?.GLTFLoader) throw new Error(`${LAB_STAGE} requires Three.js r128 + GLTFLoader`);
 
-const HUD_INTERVAL_MS = 50;
-const REPORT_INTERVAL_MS = 240;
+const HUD_INTERVAL_MS = 50; const REPORT_INTERVAL_MS = 240;
 const MAX_REPORT_DOM_CHARACTERS = 60000;
 const RECENT_COMPACT_TRACE_FRAMES = 8;
 const PARRY_REVIEW_RATE = 0.12;
@@ -657,3 +656,4 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
   getDebugStanceProfile: () => debugStanceProfile,
   getExchangeState: () => exchangeState,
 });
+maybeStartParryGateProbe({ api: window.__G43B5R281_LAB__, windowRef: window, documentRef: document }); // R19G.1 CI gate
