@@ -23,14 +23,28 @@ export const GUARD_FACING_TURN_STAGE = 'R19Q.1';
 // verdict there (5/8) - it is RIGHT's knife-edge stance, where contact lands exactly on the
 // geometric boundary. A rate beating a measured zero is the honest claim; "fixed" is not.
 //
-// TOP and LEFT stay at zero until a measurement says otherwise: TOP's arc travels the centre
-// line a turn would rotate the shield away from, and LEFT already blocks everywhere the chase
-// runs. Turning is also gated to the chase posture - the close-range clang corridors (R19P.1)
-// were measured against an unturned body, and a hold-posture turn would move them unmeasured.
+// R19Q.2 measured the other two directions the same way, dynamically (the body turning during
+// the exchange, fresh page per trial), and each has its own story:
+//
+//   TOP at its 2.0m rate stance (5/6 shipping):   -25/-15 deg -> 0/3, every swing LANDS
+//                                                  +15 deg    -> 8/8   +25 deg -> 8/8
+//   LEFT at its 1.6m knife-edge (1/6 shipping):   +10..+40 -> 0/3     -10 -> 0/3
+//                                                  -30 -> 6/8   -45 -> 8/8   far stances 12/12
+//
+// Three findings worth their space. The sign is per-direction because the arcs arrive on
+// opposite sides - LEFT turns the body the other way from RIGHT. TOP takes the SMALLER of its
+// two working angles, because both saturate and the wrong sign is catastrophic rather than
+// merely useless: -15 deg does not degrade TOP, it hands every swing to the body, so staying
+// close to square keeps the cliff at a distance. And the angles are not one number: 40/-45/15
+// are each that direction's own measured crossing, which is exactly what "the guard covers the
+// committed direction" should mean for a body and not just an arm.
+//
+// Turning stays gated to the chase posture - the close-range clang corridors (R19P.1) were
+// measured against an unturned body, and a hold-posture turn would move them unmeasured.
 export const MEASURED_GUARD_FACING_TURN_RADIANS = Object.freeze({
-  top: 0,
+  top: (15 * Math.PI) / 180,
   right: (40 * Math.PI) / 180,
-  left: 0,
+  left: (-45 * Math.PI) / 180,
 });
 
 // The premise test pre-turned the body; live, the turn must finish before the sweep arrives.
