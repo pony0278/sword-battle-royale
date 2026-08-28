@@ -7,6 +7,8 @@ import {
 } from '../../../src/combat/parry-top-direction-compatibility-probe.js';
 import { createTopPrepReadabilityHoldRuntime } from '../../../src/combat/parry-top-prep-readability-hold.js';
 import { createGuardCoverageDirector } from '../../../src/combat/guard-coverage-director.js';
+import { assessSwingThreatRelevance } from '../../../src/combat/swing-threat-relevance.js';
+import { planCloseRangeGuardPosture } from '../../../src/combat/close-range-guard-hold.js';
 import { createParryInterceptDirector } from '../../../src/combat/parry-intercept-director.js';
 
 const TOP_DIRECTION_PROBE_ARM_BONES = Object.freeze(['upperarm.l', 'lowerarm.l']);
@@ -94,10 +96,30 @@ export function createShieldParryPreContactController({
 
   function zeroBracePlan() { return planArticulatedImpactBracing({ mode: 'off' }); }
 
+  let closeRangePosture = null;
   function updateBlockPreContact(snapshot, currentBlade, deltaSeconds, context) {
-    const { previousBlade, defenderSword } = context;
+    const { previousBlade, defenderSword, separationMeters } = context;
+    // R19N.1: a swing that cannot reach the defender is nobody's problem. The gate sits on
+    // commitment rather than inside the director so that an irrelevant attack is simply never
+    // committed to: the latch stays quiet, the anchors never apply, and the arm eases home at its
+    // return speed instead of performing coverage for a blow landing metres short.
+    const relevance = assessSwingThreatRelevance({ direction: snapshot.direction, separationMeters });
+    exchangeState.latestSwingRelevance = relevance;
+    // R19O.1: and a swing arriving inside the working floor meets a shield that stays in front.
+    // Decided once per exchange from the separation at commitment - a per-frame flip between
+    // chase and hold would shake the arm at exactly the range that already looks worst.
+    if (closeRangePosture?.sequence !== snapshot.sequence) {
+      closeRangePosture = Object.freeze({
+        sequence: snapshot.sequence,
+        plan: planCloseRangeGuardPosture({ direction: snapshot.direction, separationMeters }),
+      });
+    }
+    exchangeState.latestCloseRangePosture = closeRangePosture.plan;
     const baselineSurface = buckler.getWorldParrySurface();
-    const bracePlan = previousBlade && snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
+    const engaged = snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
+      && relevance.relevant
+      && closeRangePosture.plan.posture !== 'hold-at-neutral';
+    const bracePlan = previousBlade && engaged
       ? planArticulatedImpactBracing({
           mode: 'brace-fine', attackDirection: snapshot.direction,
           previousBlade, currentBlade, bucklerSurface: baselineSurface, deltaSeconds,
@@ -107,7 +129,7 @@ export function createShieldParryPreContactController({
     const coverage = guardCoverageDirector.update({
       sequence: snapshot.sequence,
       direction: snapshot.direction,
-      committed: snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED,
+      committed: engaged,
       previousBlade,
       currentBlade,
       deltaSeconds,

@@ -35,7 +35,7 @@ test('R18M.6 entry delegates contact/release ownership while preserving frame or
 test('R18M.6 real swept Sword × Shield contact remains the only Parry success authority', () => {
   indexOrder(director, [
     'const geometricContact = probeSweptSwordBucklerContact({',
-    'const contactEvaluation = evaluateSweptContactTemporalEligibility({',
+    'let contactEvaluation = evaluateSweptContactTemporalEligibility({',
     'if (!contactEvaluation.contact) {',
     'confirmParry({ attackSnapshot, contact: contactEvaluation })',
     'combatResult = resolveCombat({',

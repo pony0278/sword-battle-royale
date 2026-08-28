@@ -1,5 +1,6 @@
 import { probeSweptSwordBucklerContact } from './swept-sword-buckler-contact.js';
 import { evaluateSweptContactTemporalEligibility } from './swept-contact-temporal-eligibility.js';
+import { probeHiltClangContact, buildHiltPolyline } from './hilt-clang-contact.js';
 import { LONGSWORD_ATTACK_PHASES } from './longsword-directional-attack-runtime.js';
 import { GUARD_STATES } from './guard-state-machine.js';
 import {
@@ -92,6 +93,8 @@ export function createContactLifecycleDirector({
   takePredictiveHandoff,
   readCanonicalContactPose,
   readDefenderHurtbox,
+  readAttackerHiltPoint,
+  readCloseRangePosture,
   fallbackIncomingVelocity,
   releaseReachOwnership,
   observe = {},
@@ -114,6 +117,7 @@ export function createContactLifecycleDirector({
   // solve below was silently inert in BLOCK mode - the one mode where the shield does most of its
   // travelling. The director measures its own now.
   let previousShieldCenter = null;
+  let previousHiltPoint = null;
   let lastDeltaMs = 0;
 
   function ownsLiveContact() {
@@ -347,7 +351,7 @@ export function createContactLifecycleDirector({
           authority: 'observer-only-relative-translation-sweep',
         })
       : null;
-    const contactEvaluation = evaluateSweptContactTemporalEligibility({
+    let contactEvaluation = evaluateSweptContactTemporalEligibility({
       contactReport: Object.freeze({
         ...geometricContact,
         diagnostics: Object.freeze({
@@ -359,6 +363,35 @@ export function createContactLifecycleDirector({
       deltaSeconds,
       fallbackEligible: attackSnapshot.phase === LONGSWORD_ATTACK_PHASES.ACTIVE,
     });
+    // R19P.1: when the blade misses a shield that is deliberately holding in front (the close
+    // posture), the hilt gets its turn before the body does. Same swept solver, same temporal
+    // eligibility, authored zone - and only in block mode, because a parry is a committed action
+    // with its own contract. On a clang the evaluation is replaced wholesale, so everything
+    // downstream - the whiff observer, the combat resolution, the block reaction, the recoil and
+    // the ground transfer - runs the ordinary shield-contact path without knowing the difference.
+    const currentHiltPoint = readAttackerHiltPoint?.() || null;
+    const hiltPointBefore = previousHiltPoint;
+    previousHiltPoint = currentHiltPoint;
+    if (!contactEvaluation.contact
+      && selectedMode !== 'parry'
+      && readCloseRangePosture?.()?.posture === 'hold-at-neutral') {
+      const clangReport = probeHiltClangContact({
+        previousHilt: buildHiltPolyline(hiltPointBefore, previousBlade[0]),
+        currentHilt: buildHiltPolyline(currentHiltPoint, currentBlade?.[0]),
+        bucklerSurface: currentShieldSurface,
+        deltaSeconds,
+      });
+      observe.hiltClangProbed?.(clangReport, attackSnapshot);
+      if (clangReport?.hiltClang) {
+        const clangEvaluation = evaluateSweptContactTemporalEligibility({
+          contactReport: clangReport,
+          attackSnapshot,
+          deltaSeconds,
+          fallbackEligible: attackSnapshot.phase === LONGSWORD_ATTACK_PHASES.ACTIVE,
+        });
+        if (clangEvaluation.contact) contactEvaluation = clangEvaluation;
+      }
+    }
     // Announced before the contact branch, because the caller's whiff diagnostics read the parry
     // gate's armed state and the confirmation below is what consumes it.
     observe.contactEvaluated?.(contactEvaluation, attackSnapshot);
