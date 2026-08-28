@@ -76,6 +76,22 @@ export function createShieldParryContactHandoffController({
       return { x: world.x, y: world.y, z: world.z };
     },
     readCloseRangePosture: () => exchangeState.latestCloseRangePosture,
+    // R19Y.1: the two points the depth order compares - both read live, like the hurtbox, so a
+    // displaced or turned fighter is judged where they actually stand.
+    readAttackerRootPoint: () => {
+      const bone = attacker?.rig?.bones?.hips;
+      const THREE_ = globalThis.THREE;
+      if (!bone?.getWorldPosition || !THREE_?.Vector3) return null;
+      const world = bone.getWorldPosition(new THREE_.Vector3());
+      return { x: world.x, y: world.y, z: world.z };
+    },
+    readDefenderBodyPoint: () => {
+      const bone = defender?.rig?.bones?.chest || defender?.rig?.bones?.hips;
+      const THREE_ = globalThis.THREE;
+      if (!bone?.getWorldPosition || !THREE_?.Vector3) return null;
+      const world = bone.getWorldPosition(new THREE_.Vector3());
+      return { x: world.x, y: world.y, z: world.z };
+    },
     fallbackIncomingVelocity: (direction) => diagnosticIncomingVelocity(direction),
     releaseReachOwnership: () => {
       fineTrackingRuntime.reset();
