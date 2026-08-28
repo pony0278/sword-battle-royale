@@ -5,6 +5,10 @@ import {
   PARRY_BLADE_FIRST_FRACTION_FLOOR,
   PARRY_BLADE_FIRST_FRACTION_PENALTY_PER_UNIT,
 } from './parry-lunge-reach.js';
+import {
+  GUARD_TRACKING_TRAVEL_BUDGET_METERS,
+  GUARD_TRACKING_SPEED_MPS,
+} from './guard-tracking-envelope.js';
 
 export const GUARD_THREAT_TRACKING_STAGE = 'G4.3A.1';
 export const GUARD_THREAT_RESIDUAL_REFINEMENT_STAGE = 'G4.3B.5R.3.5';
@@ -21,9 +25,14 @@ export const GUARD_THREAT_TRACKING_PROFILES = Object.freeze({
   // R18R.1: Guard is the omnidirectional stance, so it looks further ahead and is allowed a
   // wider shield-arm correction than the old cosmetic 12cm nudge. It stays slower than Parry:
   // Guard covers a direction it has time to read, Parry buys the frames a fast attack denies it.
+  // R19M.1: the travel envelope moved to guard-tracking-envelope. R18R.1's 0.34m/1.55mps were
+  // calibrated before attacks carried a step - the same staleness R19F.1 fixed for Parry and
+  // deliberately left here. The joint limits were measured not to bind, so they are untouched.
   guard: Object.freeze({
-    mode: 'guard', horizonSeconds: 0.16, maxCorrectionMeters: 0.34, comfortRadiusRatio: 0.55,
-    maxTrackingSpeedMps: 1.55, returnSpeedMps: 1.0, upperArmMaxDegrees: 34, lowerArmMaxDegrees: 42,
+    mode: 'guard', horizonSeconds: 0.16,
+    maxCorrectionMeters: GUARD_TRACKING_TRAVEL_BUDGET_METERS, comfortRadiusRatio: 0.55,
+    maxTrackingSpeedMps: GUARD_TRACKING_SPEED_MPS,
+    returnSpeedMps: 1.0, upperArmMaxDegrees: 34, lowerArmMaxDegrees: 42,
     threatSelection: 'disc-distance', threatExtrapolation: 'rigid',
   }),
   // R19F.1: Parry's reach envelope comes from parry-lunge-reach - the attack advance moved the

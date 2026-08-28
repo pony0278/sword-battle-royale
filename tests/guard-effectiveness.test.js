@@ -11,15 +11,15 @@ import {
 } from '../src/combat/guard-effectiveness.js';
 
 test('R19L.1 the guard saves the defender three times out of twenty-seven', () => {
-  assert.equal(GUARD_EFFECTIVENESS_STAGE, 'R19L.1');
+  assert.equal(GUARD_EFFECTIVENESS_STAGE, 'R19L.2');
   assert.equal(GUARD_EFFECTIVENESS_SUMMARY.trialCount, 27);
   assert.equal(GUARD_EFFECTIVENESS_SUMMARY.guardMattersCount, 3);
   // The rest of the blocks are against swings that were missing anyway. Counting those as a
   // working guard is what hid this for so long, so the two are counted separately here.
   assert.equal(GUARD_EFFECTIVENESS_SUMMARY.theatreCount, 7);
-  // Twelve pairs where the blade lands and the guard does nothing about it - four times as many
-  // as the guard actually answers.
-  assert.equal(GUARD_EFFECTIVENESS_SUMMARY.unansweredCount, 12);
+  // Thirteen pairs where the blade lands and the guard does nothing about it - more than four
+  // times as many as the guard actually answers. R19L.2's clean re-run moved one cell here.
+  assert.equal(GUARD_EFFECTIVENESS_SUMMARY.unansweredCount, 13);
   assert.ok(GUARD_EFFECTIVENESS_SUMMARY.unansweredCount > GUARD_EFFECTIVENESS_SUMMARY.guardMattersCount * 3);
   assert.equal(
     GUARD_EFFECTIVENESS_SUMMARY.guardMattersCount
