@@ -29,7 +29,8 @@ export async function bootstrapShieldParryLabAssets({ THREE, attacker, defender,
     // R19C.2: locomotion. These are KayKit's own clips on KayKit's own rig, so they need no
     // retarget - which is why they are loaded straight rather than through one of the fitted
     // libraries above.
-    loadKayKitAnimationLibrary(new THREE.GLTFLoader(), { packIds: ['basic', 'advanced'] }),
+    // R19K.1 adds 'general', which is where the Hit_A / Hit_B / Melee_Block_Hit reactions live.
+    loadKayKitAnimationLibrary(new THREE.GLTFLoader(), { packIds: ['basic', 'advanced', 'general'] }),
     // R19I.1: the defender's out-of-combat idle. A second fitted copy rather than sharing the
     // attacker's, because the UAL libraries are retargeted onto the rig they are loaded with -
     // that is exactly why KayKit below could be shared and these cannot.
