@@ -5,6 +5,7 @@ import { SHIELD_PARRY_LAB_REQUIRED_DOM_IDS } from '../tools/action-studio/shield
 
 const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
 const ui = await readFile(new URL('../tools/action-studio/shield-parry-r281/lab-ui.js', import.meta.url), 'utf8');
+const frameReporting = await readFile(new URL('../tools/action-studio/shield-parry-r281/frame-reporting.js', import.meta.url), 'utf8');
 const stance = await readFile(new URL('../tools/action-studio/shield-parry-r281/stance-debug-controls.js', import.meta.url), 'utf8');
 
 test('R18M.3 entry delegates DOM, stance debug, Parry cue, HUD, and input bindings', () => {
@@ -16,8 +17,12 @@ test('R18M.3 entry delegates DOM, stance debug, Parry cue, HUD, and input bindin
   assert.doesNotMatch(entry, /hudAttack\.textContent/);
   assert.doesNotMatch(entry, /function isParryKey\(/);
   assert.doesNotMatch(entry, /document\.addEventListener\('keydown'/);
-  assert.match(entry, /labUi\.updateParryCue\(\{/);
-  assert.match(entry, /labUi\.updateHud\(\{/);
+  // R18V.3: the cue and HUD view models are assembled in frame-reporting.js now. The delegation
+  // this test exists to protect got stronger, not weaker - the entry no longer even gathers them.
+  assert.match(entry, /shield-parry-r281\/frame-reporting\.js/);
+  assert.match(frameReporting, /labUi\.updateParryCue\(\{/);
+  assert.match(frameReporting, /labUi\.updateHud\(\{/);
+  assert.doesNotMatch(entry, /latestGripConstraintReport: exchangeState\.latestGripConstraintReport/);
   assert.match(entry, /bindShieldParryLabUiEvents\(\{/);
   assert.ok(entry.split('\n').length < 1850, 'R281 entry should become materially smaller after UI extraction');
 });

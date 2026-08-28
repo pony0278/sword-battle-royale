@@ -199,3 +199,130 @@ test('R18O.1 sits on the recoil timeline it is driven by', () => {
     assert.equal(plan.durationMs, visibleSettleEndMs - burst.impulseEndMs, `${role} total`);
   }
 });
+
+test('R18V.2 a captured base still owns the root when nobody else moves the actor', () => {
+  const target = rig();
+  const runtime = createParryRootDisplacementRuntime({ rig: target });
+  target.bones.root.position.set(0, 0, 1.15);
+  const started = runtime.start({ role: 'attacker', backwardDirection: BACKWARD });
+  assert.equal(started.accepted, true);
+  assert.equal(started.baseAuthority, 'captured-at-start');
+  assert.equal(runtime.baseAuthority, 'captured-at-start');
+  assert.deepEqual(runtime.effectiveBasePosition, runtime.basePosition);
+
+  runtime.advance(60);
+  runtime.apply();
+  const displaced = { ...target.bones.root.position };
+  assert.notEqual(displaced.z, 1.15, 'the recoil should have moved the root');
+
+  // A pose restore that stamps the root somewhere else must not make the offset creep: the next
+  // write re-derives from the captured base rather than adding to whatever it finds.
+  target.bones.root.position.set(0, 0, 99);
+  runtime.apply();
+  assert.ok(Math.abs(target.bones.root.position.z - displaced.z) < 1e-9);
+
+  runtime.reset();
+  assert.ok(Math.abs(target.bones.root.position.z - 1.15) < 1e-9, 'reset returns to the captured base');
+});
+
+test('R18V.2 rides on top of a caller that owns the actor position', () => {
+  const target = rig();
+  // Stands in for a movement system: the fighter is walking forward while the recoil plays.
+  let walked = { x: 0, y: 0, z: 1.15 };
+  const runtime = createParryRootDisplacementRuntime({
+    rig: target,
+    readBasePosition: () => walked,
+  });
+  target.bones.root.position.set(walked.x, walked.y, walked.z);
+
+  const started = runtime.start({ role: 'attacker', backwardDirection: BACKWARD });
+  assert.equal(started.accepted, true);
+  assert.equal(started.baseAuthority, 'caller-owned-base');
+
+  runtime.advance(60);
+  runtime.apply();
+  const firstOffset = runtime.report.offsetMeters;
+  assert.ok(Math.abs(target.bones.root.position.z - (1.15 + firstOffset.z)) < 1e-9);
+
+  // The caller moves the fighter half a metre. The recoil must follow them rather than dragging
+  // them back to where they were standing at the moment of contact.
+  walked = { x: 0, y: 0, z: 0.65 };
+  target.bones.root.position.set(walked.x, walked.y, walked.z);
+  runtime.advance(60);
+  runtime.apply();
+  const secondOffset = runtime.report.offsetMeters;
+  assert.ok(
+    Math.abs(target.bones.root.position.z - (0.65 + secondOffset.z)) < 1e-9,
+    'the offset must be measured from where the caller put the actor this frame',
+  );
+  assert.ok(
+    Math.abs(target.bones.root.position.z - (1.15 + secondOffset.z)) > 0.4,
+    'a captured base would have teleported the actor back to the contact position',
+  );
+
+  walked = { x: 0, y: 0, z: 0.2 };
+  runtime.reset();
+  assert.ok(Math.abs(target.bones.root.position.z - 0.2) < 1e-9, 'reset returns to the caller base');
+});
+
+test('R18V.2 falls back to the captured base rather than dropping the displacement', () => {
+  const target = rig();
+  let live = null;
+  const runtime = createParryRootDisplacementRuntime({ rig: target, readBasePosition: () => live });
+  target.bones.root.position.set(0, 0, 1.15);
+  runtime.start({ role: 'attacker', backwardDirection: BACKWARD });
+  runtime.advance(60);
+
+  for (const unusable of [null, undefined, {}, { x: 0, y: 0, z: NaN }, { x: 'a', y: 0, z: 0 }]) {
+    live = unusable;
+    runtime.apply();
+    const offset = runtime.report.offsetMeters;
+    assert.ok(
+      Math.abs(target.bones.root.position.z - (1.15 + offset.z)) < 1e-9,
+      `unusable base ${JSON.stringify(unusable)} should fall back to the snapshot`,
+    );
+  }
+});
+
+test('R18V.2 lets the contact reaction director hand both actors a live base', () => {
+  // The wiring that a movement system will actually use, checked end to end rather than by
+  // reading the source: what the director builds must carry the injected authority through.
+  const attackerRig = rig();
+  const defenderRig = rig();
+  const attackerBase = { x: 0, y: 0, z: -1.15 };
+  const defenderBase = { x: 0, y: 0, z: 1.15 };
+  const injected = createParryRootDisplacementRuntime({
+    rig: attackerRig, readBasePosition: () => attackerBase,
+  });
+  assert.equal(injected.baseAuthority, 'caller-owned-base');
+  const planted = createParryRootDisplacementRuntime({ rig: defenderRig });
+  assert.equal(planted.baseAuthority, 'captured-at-start');
+  assert.deepEqual(injected.effectiveBasePosition, attackerBase);
+  assert.equal(planted.effectiveBasePosition, null, 'nothing captured until the reaction starts');
+  assert.deepEqual(defenderBase, { x: 0, y: 0, z: 1.15 });
+});
+
+test('R18V.2 pins which of the two roots each layer owns', () => {
+  // Two objects in this rig answer to "root", and the whole reason movement and recoil can coexist
+  // is that they are different ones. A refactor that collapsed them, or a movement system that
+  // reached for bones.root because of the name, would break the recoil silently. Pin it.
+  const stance = { x: 0, y: 0, z: -1.15 };
+  const boneRoot = {
+    x: 0, y: 0, z: 0,
+    set(x, y, z) { this.x = x; this.y = y; this.z = z; },
+  };
+  const groupRoot = { position: { ...stance }, updateMatrixWorld() {} };
+  const character = { object3d: groupRoot, rig: { root: groupRoot, bones: { root: { position: boneRoot } } } };
+  assert.equal(character.object3d, character.rig.root, 'the actor Group is what a scene positions');
+  assert.notEqual(character.rig.root, character.rig.bones.root, 'the bone is a different object');
+
+  const runtime = createParryRootDisplacementRuntime({ rig: character.rig });
+  runtime.start({ role: 'attacker', backwardDirection: BACKWARD });
+  runtime.advance(60);
+  runtime.apply();
+
+  // The reaction moved the bone and left the actor's world stance untouched, so a caller is free
+  // to own object3d.position without ever consulting this runtime.
+  assert.notEqual(boneRoot.z, 0);
+  assert.deepEqual(groupRoot.position, stance, 'displacement must never write the actor Group');
+});

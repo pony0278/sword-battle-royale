@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
+const frameReporting = await readFile(new URL('../tools/action-studio/shield-parry-r281/frame-reporting.js', import.meta.url), 'utf8');
 const reportSource = await readFile(new URL('../tools/action-studio/shield-parry-r281/verification-report.js', import.meta.url), 'utf8');
 const { buildShieldParryVerificationReport } = await import('../tools/action-studio/shield-parry-r281/verification-report.js');
 
@@ -40,16 +41,24 @@ function minimalExchangeState() {
   };
 }
 
-test('R18M.C3 entry delegates report assembly but retains publication and DOM budget ownership', () => {
+test('R18M.C3 report assembly is delegated and the entry still owns the DOM budget', () => {
+  // R18V.3 moved the gathering and publication into frame-reporting.js. What has to stay true is
+  // the split it was protecting: the schema is built by the verification-report module, the budget
+  // that caps DOM work is a constant the entry owns and hands down, and nobody assembles a report
+  // object by hand.
   assert.match(entry, /shield-parry-r281\/verification-report\.js/);
-  assert.match(entry, /buildShieldParryVerificationReport\(\{/);
-  assert.doesNotMatch(entry, /const report = \{\s*stage: LAB_STAGE/);
+  assert.match(entry, /shield-parry-r281\/frame-reporting\.js/);
   assert.match(entry, /const MAX_REPORT_DOM_CHARACTERS = 60000;/);
-  assert.match(entry, /serializeVerificationReport\(\{/);
-  assert.match(entry, /maxCharacters: MAX_REPORT_DOM_CHARACTERS/);
-  assert.match(entry, /reportNode\.textContent = publication\.displayText/);
-  assert.match(entry, /window\.__G43B5R281_RESULT__ = report/);
-  assert.match(entry, /window\.__G43B5R281_PERF__ = publication\.perf/);
+  assert.match(entry, /maxReportCharacters: MAX_REPORT_DOM_CHARACTERS/);
+  assert.doesNotMatch(entry, /const report = \{\s*stage: LAB_STAGE/);
+  assert.doesNotMatch(frameReporting, /const report = \{\s*stage: labStage/);
+
+  assert.match(frameReporting, /buildShieldParryVerificationReport\(\{/);
+  assert.match(frameReporting, /serializeVerificationReport\(\{/);
+  assert.match(frameReporting, /maxCharacters: maxReportCharacters/);
+  assert.match(frameReporting, /reportNode\.textContent = publication\.displayText/);
+  assert.match(frameReporting, /windowRef\.__G43B5R281_RESULT__ = report/);
+  assert.match(frameReporting, /windowRef\.__G43B5R281_PERF__ = publication\.perf/);
 });
 
 test('R18M.C3 builder owns the verification schema without importing runtime authority', () => {

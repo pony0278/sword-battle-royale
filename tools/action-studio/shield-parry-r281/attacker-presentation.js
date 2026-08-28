@@ -108,7 +108,24 @@ export function createAttackerPresentationAdapter({
     return { direction, elapsedMs: 0, sourcePose, targetPose };
   }
 
-  function sampleBase({ snapshot, deltaMs, recovery, idleClockSeconds, idleDuration }) {
+  function sampleBase({ snapshot, deltaMs, recovery, idleClockSeconds, idleDuration, walkSample }) {
+    // R19C.2: walking replaces the idle as the base clip rather than layering over it. Sampling a
+    // clip restores the whole rig to rest first, so two clips cannot be mixed here - but the
+    // procedural corrections that run after this still compose on top either way, which is what
+    // makes a base-clip swap the right seam for locomotion.
+    //
+    // Which clip and at what time is decided upstream: this module is a presentation adapter and
+    // deliberately imports no combat rule, so it is handed a sample rather than a gait to reason
+    // about.
+    if (!snapshot.action && !recovery && walkSample) {
+      attacker.sampleAnimation(walkSample.clipId, walkSample.timeSeconds, {
+        loop: true,
+        inPlace: true,
+        rootRotationPolicy: 'lock',
+      });
+      attacker.update(0, camera);
+      return { recovery, idleClockSeconds };
+    }
     if (snapshot.action) {
       const profile = snapshot.action.runtime;
       attacker.sampleAnimation(

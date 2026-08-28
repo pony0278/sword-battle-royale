@@ -30,6 +30,10 @@ const labUiSource = readFileSync(
   new URL('../tools/action-studio/shield-parry-r281/lab-ui.js', import.meta.url),
   'utf8',
 );
+const frameReportingSource = readFileSync(
+  new URL('../tools/action-studio/shield-parry-r281/frame-reporting.js', import.meta.url),
+  'utf8',
+);
 const diagnosticFormattersSource = readFileSync(
   new URL('../tools/action-studio/shield-parry-r281/diagnostic-formatters.js', import.meta.url),
   'utf8',
@@ -114,7 +118,7 @@ test('Step 3A exposes an explicit live contact inspection state and markers', ()
 test('Step 3A provides a free inspection camera without changing combat time', () => {
   assert.match(sceneCompositionSource, /createFreeInspectionCameraControls/);
   assert.match(source, /freeCamera\.update\(rawDeltaMs \/ 1000\)/);
-  assert.match(source, /inspectionCameraSnapshot: freeCamera\.snapshot\(\)/);
+  assert.match(frameReportingSource, /inspectionCameraSnapshot: freeCamera\.snapshot\(\)/);
   assert.match(verificationReportSource, /inspectionCamera: inspectionCameraSnapshot/);
   assert.match(html, /Free inspection camera/);
   assert.match(html, /W A S D · Q down · E up/);
@@ -502,6 +506,6 @@ test('R18I keeps Parry review telemetry compact and caps Verification DOM work',
   assert.match(verificationReportSource, /interceptTarget: compactReachableInterceptTarget\(exchangeState\.latestReachableInterceptTarget\)/);
   assert.match(reportSerializationSource, /reportText\.length <= maxCharacters/);
   assert.match(reportSerializationSource, /reason: 'verification-report-exceeded-dom-budget'/);
-  assert.match(source, /window\.__G43B5R281_PERF__/);
+  assert.match(frameReportingSource, /windowRef\.__G43B5R281_PERF__/);
   assert.match(html, /Verification report .* 60,000 characters.*compact scalar frames only/);
 });

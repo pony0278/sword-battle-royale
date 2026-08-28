@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from '../src/combat/parry-lunge-reach.js';
 import {
   ACTIVE_PARRY_INTERCEPT_INTENT_STAGE,
   createActiveParryInterceptIntent,
@@ -34,18 +35,20 @@ test('R18N.1 clamps the F-latched intercept to a reachable visible lead instead 
   assert.equal(armed.accepted, true);
   assert.equal(armed.intent.stage, ACTIVE_PARRY_INTERCEPT_INTENT_STAGE);
   assert.equal(armed.intent.rawRequiredDistanceMeters, 1.44);
-  assert.equal(armed.intent.leadMeters, 0.18);
+  // R19F.1: the clamp is the shared lunge-reach travel budget - the raw prediction is still
+  // never preserved, the visible lead is just allowed the journey the attack advance created.
+  assert.equal(armed.intent.leadMeters, PARRY_LUNGE_TRAVEL_BUDGET_METERS);
   assert.ok(Math.abs(magnitude({
     x: armed.intent.targetCenter.x - armed.intent.originCenter.x,
     y: armed.intent.targetCenter.y - armed.intent.originCenter.y,
     z: armed.intent.targetCenter.z - armed.intent.originCenter.z,
-  }) - 0.18) < 1e-9);
+  }) - PARRY_LUNGE_TRAVEL_BUDGET_METERS) < 1e-9);
 
   const plan = intent.plan({ sequence: 2, bucklerSurface: surface });
   assert.equal(plan.reason, 'latched-active-shield-intercept');
   assert.equal(plan.reachable, true);
-  assert.ok(Math.abs(plan.requiredDistance - 0.18) < 1e-9);
-  assert.ok(Math.abs(plan.appliedDistance - 0.18) < 1e-9);
+  assert.ok(Math.abs(plan.requiredDistance - PARRY_LUNGE_TRAVEL_BUDGET_METERS) < 1e-9);
+  assert.ok(Math.abs(plan.appliedDistance - PARRY_LUNGE_TRAVEL_BUDGET_METERS) < 1e-9);
 });
 
 test('R18N.1 preserves one fixed world-space target while remaining correction shrinks as the shield advances', () => {

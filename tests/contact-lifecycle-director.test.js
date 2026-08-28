@@ -58,8 +58,9 @@ function harness({ confirmAccepted = true, outcome = 'parry', guardState = GUARD
     advanceDefender: () => ({ repaintRequired: false, torsoLeanReport: null, rootDisplacementReport: null }),
     reset: () => calls.push('reactionReset'),
   };
-  const surface = Object.freeze({
-    center: Object.freeze({ x: 0, y: 1, z: 0.5 }),
+  const shieldCenter = { x: 0, y: 1, z: 0.5 };
+  const shieldSurface = () => Object.freeze({
+    center: Object.freeze({ ...shieldCenter }),
     normal: Object.freeze({ x: 0, y: 0, z: 1 }),
     radius: 0.26,
     thickness: 0.075,
@@ -94,7 +95,7 @@ function harness({ confirmAccepted = true, outcome = 'parry', guardState = GUARD
       return { recoilUpdate: null, justCompleted: false };
     },
     readCombatSnapshot: () => ({ attackerRecoil: { sample: { weights: { torsoWeight: 1 } }, phaseClock: { latchPointMs: 120 } } }),
-    readShieldSurface: () => surface,
+    readShieldSurface: shieldSurface,
     readGuardReport: () => ({ state: guardState, sourceTimeSeconds: 9 }),
     takePredictiveHandoff: () => ({ accepted: true, defenderPresentationOffsetSeconds: 0.04 }),
     readCanonicalContactPose: () => ({}),
@@ -106,17 +107,17 @@ function harness({ confirmAccepted = true, outcome = 'parry', guardState = GUARD
       attackerPresentationRefreshed: () => calls.push('observe:presentation'),
     },
   });
-  return { director, calls };
+  return { director, calls, moveShield(dx, dy, dz) { shieldCenter.x += dx; shieldCenter.y += dy; shieldCenter.z += dz; } };
 }
 
-function resolve(director, { selectedMode = 'parry' } = {}) {
+function resolve(director, { selectedMode = 'parry', shieldLeadMotion = null } = {}) {
   return director.resolveContact({
     ...crossingBlades(),
     deltaSeconds: 1 / 60,
     attackSnapshot: ATTACK_SNAPSHOT,
     selectedMode,
     selectedDirection: 'right',
-    shieldLeadMotion: null,
+    shieldLeadMotion,
   });
 }
 
@@ -247,4 +248,54 @@ test('R18S.4 the lab keeps presentation and words, and no state transition of it
   // What it keeps is its own: publishing, repaints, and the status vocabulary.
   assert.match(controller, /publishStatus\(\{/);
   assert.match(controller, /exchangeState\.step3AContactTransfer = lifecycleDirector\.transfer/);
+});
+
+test('R18W.2 the moving-shield solve measures its own translation when nothing hands it one', () => {
+  // The relative solve was written for Parry, which is handed a shield translation by the lead
+  // motion sampler. Guard has no sampler, so in BLOCK mode shieldLeadMotion is null and the solve
+  // was silently inert -- in the one mode where the shield does most of its travelling. Measured
+  // in the lab: it fired 0/12 on every direction in BLOCK before this, 12/12 on TOP and RIGHT
+  // after. It stays observer-only either way; nothing reads it to decide a contact.
+  const { director, moveShield } = harness();
+  const miss = () => director.resolveContact({
+    ...missingBlades(), deltaSeconds: 1 / 60, attackSnapshot: ATTACK_SNAPSHOT,
+    selectedMode: 'block', selectedDirection: 'left', shieldLeadMotion: null,
+  });
+
+  // Nothing to compare against on the very first resolve.
+  assert.equal(miss().contactEvaluation.diagnostics?.relativeMovingShieldTranslation ?? null, null);
+
+  moveShield(0.03, 0, 0);
+  const solve = miss().contactEvaluation.diagnostics?.relativeMovingShieldTranslation;
+  assert.ok(solve, 'a guard-mode resolve must still produce the moving-shield solve');
+  assert.equal(solve.translationSource, 'director-measured');
+  assert.ok(Math.abs(solve.shieldTranslationMeters - 0.03) < 1e-9);
+  assert.deepEqual({ ...solve.shieldTranslation }, { x: 0.03, y: 0, z: 0 });
+  assert.match(solve.authority, /observer-only/);
+});
+
+test('R18W.2 a supplied parry translation still wins, and reset forgets where the shield was', () => {
+  const { director, moveShield } = harness();
+  director.resolveContact({
+    ...missingBlades(), deltaSeconds: 1 / 60, attackSnapshot: ATTACK_SNAPSHOT,
+    selectedMode: 'block', selectedDirection: 'left', shieldLeadMotion: null,
+  });
+  moveShield(0.03, 0, 0);
+  const led = director.resolveContact({
+    ...missingBlades(), deltaSeconds: 1 / 60, attackSnapshot: ATTACK_SNAPSHOT,
+    selectedMode: 'parry', selectedDirection: 'left',
+    shieldLeadMotion: { translation: { x: 0.11, y: 0, z: 0 } },
+  });
+  const solve = led.contactEvaluation.diagnostics.relativeMovingShieldTranslation;
+  assert.equal(solve.translationSource, 'parry-lead-sampler');
+  assert.ok(Math.abs(solve.shieldTranslationMeters - 0.11) < 1e-9);
+
+  // A centre left over across a reset would invent a translation the shield never made.
+  director.reset();
+  moveShield(0.5, 0, 0);
+  const afterReset = director.resolveContact({
+    ...missingBlades(), deltaSeconds: 1 / 60, attackSnapshot: ATTACK_SNAPSHOT,
+    selectedMode: 'block', selectedDirection: 'left', shieldLeadMotion: null,
+  });
+  assert.equal(afterReset.contactEvaluation.diagnostics?.relativeMovingShieldTranslation ?? null, null);
 });

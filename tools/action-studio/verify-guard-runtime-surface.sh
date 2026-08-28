@@ -68,3 +68,14 @@ if grep -Eq 'data-template="(guard|parry|counter)"' "$DOM_FILE"; then
 fi
 
 echo "Action Studio Guard Runtime browser gate passed · bundle-http · G3.6.5 Skyrim Full Source Hold + G3.6.3 D recovery ${SOURCE_MS}ms · 5 static buttons · controller bound."
+
+# --- R19G.1 parry composition gate -------------------------------------------------------------
+# The R19F regression sailed through a fully green unit suite: every module held its constants
+# while the composed exchange broke (TOP unparryable at the shipping stance, chaotic release
+# directions). This section replays the composition: the shield lab boots with ?parryGate=1, its
+# probe plays one parry per direction at the calibrated stance and stamps verdicts judged by
+# src/combat/parry-gate-verdict.js onto the DOM. The lab simulates continuously on
+# requestAnimationFrame, which Chrome's --virtual-time-budget --dump-dom stops pumping shortly
+# after load, so this gate runs in real time through playwright-core against the same browser.
+node tools/action-studio/verify-shield-parry-gate.mjs "$BROWSER" "$BASE" \
+  || fail 'shield parry composition gate did not pass'

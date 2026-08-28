@@ -56,7 +56,9 @@ function createFakeRecoil() {
 
 test('G4.3B.5R.2.3 locks rhythm intent inside the requested authoritative grade', () => {
   assert.equal(RECOIL_PRESENTATION_AUTHORITY_STAGE, 'G4.3B.5R.2.3');
-  assert.equal(getLockedRhythmGuardIntentAgeMs('parry'), 135);
+  // R19F.1: the canonical prompt moved to the input-window edge (180ms), so the locked intent
+  // age the rhythm grade carries moved with it.
+  assert.equal(getLockedRhythmGuardIntentAgeMs('parry'), 180);
   assert.equal(getLockedRhythmGuardIntentAgeMs('perfect'), 65);
   assert.equal(getLockedRhythmGuardIntentAgeMs('parry', { normalTriggerTtcSeconds: 0.04 }), 76);
   assert.equal(getLockedRhythmGuardIntentAgeMs('parry', { normalTriggerTtcSeconds: 0.24 }), 180);

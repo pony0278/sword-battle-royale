@@ -1,5 +1,6 @@
 import { createContactReactionDirector } from '../../../src/combat/contact-reaction-director.js';
 import { createContactLifecycleDirector } from '../../../src/combat/contact-lifecycle-director.js';
+import { buildBodyHurtbox } from '../../../src/combat/body-hurtbox.js';
 import { diagnosticIncomingVelocity } from './direct-old-b3-diagnostic.js';
 
 export function createShieldParryContactHandoffController({
@@ -53,6 +54,18 @@ export function createShieldParryContactHandoffController({
     readGuardReport: () => guardRuntime.report,
     takePredictiveHandoff: () => (predictivePresentation.active ? predictivePresentation.handoff() : null),
     readCanonicalContactPose: () => exchangeState.canonicalAttackerOldB3Pose,
+    // Built from the defender's own bones every frame, so a crouched, leaning or displaced
+    // fighter is hit where they actually are.
+    readDefenderHurtbox: () => buildBodyHurtbox({
+      readBonePosition: (boneId) => {
+        const bone = defender?.rig?.bones?.[boneId];
+        const THREE_ = globalThis.THREE;
+        if (!bone?.getWorldPosition || !THREE_?.Vector3) return null;
+        const world = bone.getWorldPosition(new THREE_.Vector3());
+        return { x: world.x, y: world.y, z: world.z };
+      },
+      facing: attackerFacingFromDefender(),
+    }),
     fallbackIncomingVelocity: (direction) => diagnosticIncomingVelocity(direction),
     releaseReachOwnership: () => {
       fineTrackingRuntime.reset();
@@ -74,6 +87,17 @@ export function createShieldParryContactHandoffController({
       attackerPresentationRefreshed: () => attackerSword.update(),
     },
   });
+
+  // The horizontal direction from the defender toward the attacker: the bands face the threat.
+  function attackerFacingFromDefender() {
+    const THREE_ = globalThis.THREE;
+    const attackerHips = attacker?.rig?.bones?.hips;
+    const defenderHips = defender?.rig?.bones?.hips;
+    if (!THREE_?.Vector3 || !attackerHips?.getWorldPosition || !defenderHips?.getWorldPosition) return null;
+    const a = attackerHips.getWorldPosition(new THREE_.Vector3());
+    const d = defenderHips.getWorldPosition(new THREE_.Vector3());
+    return { x: a.x - d.x, y: 0, z: a.z - d.z };
+  }
 
   function publishArmedReaction(reports) {
     exchangeState.latestArmFling = reports.armFling;
@@ -164,7 +188,16 @@ export function createShieldParryContactHandoffController({
       selectedDirection,
       shieldLeadMotion: exchangeState.latestShieldLeadMotion,
     });
-    if (!result || !result.contacted) return;
+    if (!result) return;
+    if (!result.contacted) {
+      exchangeState.latestBodyHit = lifecycleDirector.bodyHit;
+      if (result.event?.type !== 'body-struck') return;
+      publishStatus({
+        text: `HIT · ${selectedDirection.toUpperCase()} reached the ${result.event.band} · the guard was not there`,
+        className: 'bad',
+      });
+      return;
+    }
 
     exchangeState.firstContact = result.contactEvaluation;
     exchangeState.latestLiveSurfaceAtContact = result.surfaceAtContact;

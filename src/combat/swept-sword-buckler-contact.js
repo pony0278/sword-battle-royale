@@ -1,6 +1,21 @@
 export const SWEPT_SWORD_BUCKLER_CONTACT_STAGE = 'G4.3A';
 export const DEFAULT_SWORD_SWEEP_EPSILON = 1e-7;
 
+// R18X.1: how far a blade endpoint may travel inside one swept step before the step is subdivided.
+//
+// The swept test builds a straight quad from the previous blade to the current one. A swinging
+// blade travels an arc, and the quad is its chord, so everything between the two frames is tested
+// in the wrong place. That is tolerable while the blade is slow and the chord hugs the arc. It is
+// not tolerable at contact speed: measured off the R281 lab on LEFT, blade endpoints cover 1.5-2m
+// in a single frame and the chord's midpoint sits a median of 0.44m away from where the blade
+// actually was. Offline replay of ten missed blocks: the chord put the closest approach at 11cm
+// while the arc put it at 1.6cm, on the same frames.
+//
+// Subdividing costs nothing where the chord was already adequate - a frame under this threshold
+// resolves to exactly one step, which is the original test unchanged, byte for byte.
+export const SWORD_SWEEP_SUBSTEP_TRAVEL_METERS = 0.25;
+export const MAX_SWORD_SWEEP_SUBSTEPS = 16;
+
 function finite(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -14,6 +29,9 @@ function add(a, b) { return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }; }
 function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }; }
 function mul(a, scalar) { return { x: a.x * scalar, y: a.y * scalar, z: a.z * scalar }; }
 function dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+function cross(a, b) {
+  return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
+}
 function lengthSq(a) { return dot(a, a); }
 function length(a) { return Math.sqrt(lengthSq(a)); }
 function lerp(a, b, t) { return add(a, mul(sub(b, a), t)); }
@@ -305,22 +323,54 @@ function makeNoContact(previous, current, surface, options, diagnostics = {}) {
   });
 }
 
-export function probeSweptSwordBucklerContact(input = {}) {
-  const previous = normalizeSwordSweepPolyline(input.previousBlade);
-  const current = normalizeSwordSweepPolyline(input.currentBlade);
-  if (previous.length !== current.length) throw new Error('G4.3A previous/current blade polylines must have matching point counts');
-  const surface = normalizeBucklerParrySurface(input.bucklerSurface);
-  const epsilon = Math.max(1e-10, finite(input.epsilon, DEFAULT_SWORD_SWEEP_EPSILON));
-  const deltaSeconds = Math.max(1e-6, finite(input.deltaSeconds, 1 / 60));
-  const active = input.active !== false;
-  const closestApproach = measureSweptSwordBucklerClosestApproach({
-    previousBlade: previous,
-    currentBlade: current,
-    bucklerSurface: surface,
-    timeSamples: input.closestApproachTimeSamples,
-    bladeSamplesPerSection: input.closestApproachBladeSamples,
-  });
+// A three-node blade polyline is collinear, so the only motion it can carry between two frames is
+// its base's translation plus a rotation of its axis. Roll about the axis moves no point of a
+// segment, so this is not an approximation of the blade's motion - for sweep purposes it is all of
+// it. The rotation is taken about the common perpendicular of the two axes.
+function fitBladeAxisMotion(previous, current) {
+  const from = normalize(sub(previous[previous.length - 1], previous[0]));
+  const to = normalize(sub(current[current.length - 1], current[0]));
+  const perpendicular = cross(from, to);
+  const sin = length(perpendicular);
+  const cos = Math.max(-1, Math.min(1, dot(from, to)));
+  return {
+    axis: sin > 1e-9 ? mul(perpendicular, 1 / sin) : { x: 0, y: 1, z: 0 },
+    angle: Math.atan2(sin, cos),
+  };
+}
 
+function rotateAboutAxis(value, axis, angle) {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return add(
+    add(mul(value, c), mul(cross(axis, value), s)),
+    mul(axis, dot(axis, value) * (1 - c)),
+  );
+}
+
+function bladeAtFraction(previous, current, alpha, motion) {
+  if (alpha <= 0) return previous;
+  if (alpha >= 1) return current;
+  const pivotFrom = previous[0];
+  const pivot = add(pivotFrom, mul(sub(current[0], pivotFrom), alpha));
+  return previous.map((point) => add(pivot, rotateAboutAxis(sub(point, pivotFrom), motion.axis, motion.angle * alpha)));
+}
+
+// How many steps this frame's travel needs. One step is the original chord test.
+export function resolveSweptContactSubsteps(previous, current, override) {
+  if (override != null) {
+    const requested = Math.floor(finite(override, 1));
+    return Math.max(1, Math.min(MAX_SWORD_SWEEP_SUBSTEPS, requested));
+  }
+  let travel = 0;
+  for (let index = 0; index < current.length; index += 1) {
+    travel = Math.max(travel, length(sub(current[index], previous[index])));
+  }
+  const needed = Math.ceil(travel / SWORD_SWEEP_SUBSTEP_TRAVEL_METERS);
+  return Math.max(1, Math.min(MAX_SWORD_SWEEP_SUBSTEPS, needed));
+}
+
+function scanSectionsForContact(previous, current, surface, epsilon, alphaOffset, alphaScale) {
   let best = null;
   const sectionCount = current.length - 1;
   for (let index = 0; index < sectionCount; index += 1) {
@@ -339,11 +389,43 @@ export function probeSweptSwordBucklerContact(input = {}) {
     });
     for (const candidate of [staticPrevious, swept, staticCurrent]) {
       if (!candidate) continue;
-      if (!best || candidate.sweepAlpha < best.sweepAlpha
-        || (Math.abs(candidate.sweepAlpha - best.sweepAlpha) <= epsilon && candidate.radialDistance < best.radialDistance)) {
-        best = candidate;
+      // Substep alphas are local to their slice; lift them back onto the frame's own timeline so
+      // sweepAlpha keeps meaning the same thing to the temporal eligibility gate.
+      const lifted = candidate.sweepAlpha * alphaScale + alphaOffset;
+      const scaled = lifted === candidate.sweepAlpha ? candidate : { ...candidate, sweepAlpha: lifted };
+      if (!best || scaled.sweepAlpha < best.sweepAlpha
+        || (Math.abs(scaled.sweepAlpha - best.sweepAlpha) <= epsilon && scaled.radialDistance < best.radialDistance)) {
+        best = scaled;
       }
     }
+  }
+  return best;
+}
+
+export function probeSweptSwordBucklerContact(input = {}) {
+  const previous = normalizeSwordSweepPolyline(input.previousBlade);
+  const current = normalizeSwordSweepPolyline(input.currentBlade);
+  if (previous.length !== current.length) throw new Error('G4.3A previous/current blade polylines must have matching point counts');
+  const surface = normalizeBucklerParrySurface(input.bucklerSurface);
+  const epsilon = Math.max(1e-10, finite(input.epsilon, DEFAULT_SWORD_SWEEP_EPSILON));
+  const deltaSeconds = Math.max(1e-6, finite(input.deltaSeconds, 1 / 60));
+  const active = input.active !== false;
+  const closestApproach = measureSweptSwordBucklerClosestApproach({
+    previousBlade: previous,
+    currentBlade: current,
+    bucklerSurface: surface,
+    timeSamples: input.closestApproachTimeSamples,
+    bladeSamplesPerSection: input.closestApproachBladeSamples,
+  });
+
+  const sectionCount = current.length - 1;
+  const substeps = resolveSweptContactSubsteps(previous, current, input.sweepSubsteps);
+  const motion = substeps > 1 ? fitBladeAxisMotion(previous, current) : null;
+  let best = null;
+  for (let step = 0; step < substeps && !best; step += 1) {
+    const from = substeps === 1 ? previous : bladeAtFraction(previous, current, step / substeps, motion);
+    const to = substeps === 1 ? current : bladeAtFraction(previous, current, (step + 1) / substeps, motion);
+    best = scanSectionsForContact(from, to, surface, epsilon, step / substeps, 1 / substeps);
   }
 
   if (!best) {
@@ -351,6 +433,7 @@ export function probeSweptSwordBucklerContact(input = {}) {
     return makeNoContact(previous, current, surface, { active }, {
       maxEndpointTravel: Math.max(...endpointTravel),
       closestApproach,
+      substeps,
       reason: 'no-swept-intersection',
     });
   }
@@ -384,6 +467,7 @@ export function probeSweptSwordBucklerContact(input = {}) {
       previousRadialDistance: radialDistance(previousAtContact, surface.center, surface.normal),
       currentRadialDistance: radialDistance(currentAtContact, surface.center, surface.normal),
       closestApproach: exactContactApproach(best),
+      substeps,
     }),
   });
 }

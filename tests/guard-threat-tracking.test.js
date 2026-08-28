@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from '../src/combat/parry-lunge-reach.js';
 import {
   GUARD_THREAT_TRACKING_STAGE,
   getGuardThreatTrackingProfile,
@@ -20,18 +21,20 @@ function close(actual, expected, epsilon = 1e-6) {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${actual} != ${expected}`);
 }
 
-test('G4.3A.1 profiles keep Guard correction smaller than Parry correction', () => {
+test('G4.3A.1 profiles bind Parry to the lunge-reach envelope and leave Guard on its measured own', () => {
   assert.equal(GUARD_THREAT_TRACKING_STAGE, 'G4.3A.1');
   const guard = getGuardThreatTrackingProfile('guard');
   const parry = getGuardThreatTrackingProfile('parry');
-  // R18R.1: Guard now reaches further than Parry (it has to cover every direction from one
-  // stance) but moves slower, and reads further ahead to pay for that slower travel.
+  // R18R.1 gave Guard the wider-but-slower correction; R19F.1 then moved Parry's whole envelope
+  // to parry-lunge-reach because the attack advance made the parry journey longer than any hand
+  // correction. Guard's numbers are untouched - every coverage band was measured on them.
   assert.equal(guard.maxCorrectionMeters, 0.34);
-  assert.equal(parry.maxCorrectionMeters, 0.18);
+  assert.equal(parry.maxCorrectionMeters, PARRY_LUNGE_TRAVEL_BUDGET_METERS);
+  assert.ok(parry.maxCorrectionMeters > guard.maxCorrectionMeters,
+    'the lunge journey outgrew even the omnidirectional guard reach');
   assert.ok(guard.maxTrackingSpeedMps < parry.maxTrackingSpeedMps);
-  assert.ok(guard.horizonSeconds > parry.horizonSeconds);
   assert.equal(guard.threatSelection, 'disc-distance');
-  assert.equal(parry.threatSelection, 'plane-first');
+  assert.equal(parry.threatSelection, 'blade-first');
 });
 
 test('G4.3A.1 predicts the future low attack near the Buckler plane', () => {

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from '../src/combat/parry-lunge-reach.js';
 import {
   COMMITTED_PARRY_CONTACT_GATE_PROFILE,
   confirmCommittedParryContact,
@@ -66,7 +67,7 @@ test('manual Parry uses a 60–180ms TTC window after commitment', () => {
 test('predictive geometry guides clamped shield tracking but cannot veto valid manual Parry timing', () => {
   const outOfReach = evaluateCommittedParryInput({
     attackSnapshot: attack(0.12),
-    predictiveAnalysis: predictive({ requiredDistance: 0.181 }),
+    predictiveAnalysis: predictive({ requiredDistance: PARRY_LUNGE_TRAVEL_BUDGET_METERS + 0.001 }),
   });
   const outsidePlane = evaluateCommittedParryInput({
     attackSnapshot: attack(0.12),

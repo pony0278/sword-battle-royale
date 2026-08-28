@@ -1,6 +1,7 @@
 // R18M.3 — presentation-only Parry cue/HUD rendering and DOM event binding.
 // Callers provide snapshots/callbacks. This module never decides combat success.
 
+import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from '../../../src/combat/parry-lunge-reach.js';
 import {
   describeContactGeometry,
   formatAllInspectionGates,
@@ -123,7 +124,7 @@ export function createShieldParryLabUi(elements) {
       const reachCm = opportunity.requiredShieldTravelMeters == null
         ? '—'
         : (opportunity.requiredShieldTravelMeters * 100).toFixed(1);
-      const tracking = opportunity.gates.trackingClamped ? `tracking ${reachCm}cm → clamp 18cm` : `shield travel ${reachCm}cm`;
+      const tracking = opportunity.gates.trackingClamped ? `tracking ${reachCm}cm → clamp ${(PARRY_LUNGE_TRAVEL_BUDGET_METERS * 100).toFixed(0)}cm` : `shield travel ${reachCm}cm`;
       showParryCue('ready', 'PARRY NOW! · PRESS F', `commitment + TTC gate 已開 · ${tracking} · review hold 最多 1.5s`);
       return;
     }
@@ -155,6 +156,7 @@ export function createShieldParryLabUi(elements) {
       snapshot, combatSnapshot, latestCombatResult, latestParryWhiff, latestParryConfirmation,
       latestParryInput, selectedMode, requestedOutcome, parryReviewActive, parryReviewRate,
       parryPromptHeld, firstContact, latestFinePlan, latestGuardCoverage, latestReachableInterceptTarget,
+      anchorCoverage,
       latestGripConstraintReport, step3AContactTransfer, defenderReleaseGate,
       step3AOwnsLiveContact, directOldB3Diagnostic, debugMode,
     } = model;
@@ -192,15 +194,24 @@ export function createShieldParryLabUi(elements) {
     const originalPrediction = latestReachableInterceptTarget?.predictedRequiredDistanceMeters;
     const guardAim = latestFinePlan?.threat?.selection || '—';
     const guardCm = (value) => (value == null ? '—' : `${(value * 100).toFixed(1)}cm`);
+    // R18V.1: the anchors and every compensation tuned with them were measured at one separation.
+    // Say so on screen the moment the fighters are standing somewhere those numbers were never
+    // verified, rather than letting a direction quietly stop reaching the guard.
+    const coverageBand = !anchorCoverage
+      ? ''
+      : anchorCoverage.verified
+        ? ` · ${anchorCoverage.direction} verified ${anchorCoverage.band.fromMeters}-${anchorCoverage.band.toMeters}m`
+        : ` · UNVERIFIED AT THIS RANGE: ${anchorCoverage.direction} ${anchorCoverage.reason}`
+          + (anchorCoverage.band ? ` (measured ${anchorCoverage.band.fromMeters}-${anchorCoverage.band.toMeters}m)` : '');
     hudShield.textContent = selectedMode === 'block'
       ? latestGuardCoverage
-        ? `Guard coverage: ${latestGuardCoverage.reason} · aim ${guardAim} · need ${guardCm(latestGuardCoverage.requiredDistance)} · applied ${guardCm(interceptApplied)} · blade gap ${guardCm(latestGuardCoverage.trackedGapMeters)}`
-        : 'Guard coverage: omnidirectional · waits out the reaction delay, then covers the committed direction'
+        ? `Guard coverage: ${latestGuardCoverage.reason} · aim ${guardAim} · need ${guardCm(latestGuardCoverage.requiredDistance)} · applied ${guardCm(interceptApplied)} · blade gap ${guardCm(latestGuardCoverage.trackedGapMeters)}${coverageBand}`
+        : `Guard coverage: omnidirectional · waits out the reaction delay, then covers the committed direction${coverageBand}`
       : latestParryInput
       ? latestReachableInterceptTarget?.fallbackApplied && interceptRequired != null
         ? `Shield intercept: MEASURED SWEEP ${(interceptRequired * 100).toFixed(1)}→${(interceptApplied * 100).toFixed(1)}cm · bad linear prediction ${originalPrediction == null ? '—' : `${(originalPrediction * 100).toFixed(1)}cm`} rejected · real contact still required`
-        : `Shield tracking: ${latestParryInput.requiredShieldTravelMeters == null ? 'path pending' : `${(latestParryInput.requiredShieldTravelMeters * 100).toFixed(1)}cm → ${latestParryInput.gates.trackingClamped ? 'CLAMP 18cm' : 'within 18cm'}`} · geometry cannot veto input · plane ${latestParryInput.predictedPlaneDistanceMeters == null ? '—' : `${(latestParryInput.predictedPlaneDistanceMeters * 100).toFixed(1)}cm`}`
-      : 'Shield tracking: geometry guides a clamped 18cm response; it cannot veto valid timing input';
+        : `Shield tracking: ${latestParryInput.requiredShieldTravelMeters == null ? 'path pending' : `${(latestParryInput.requiredShieldTravelMeters * 100).toFixed(1)}cm → ${latestParryInput.gates.trackingClamped ? `CLAMP ${(PARRY_LUNGE_TRAVEL_BUDGET_METERS * 100).toFixed(0)}cm` : `within ${(PARRY_LUNGE_TRAVEL_BUDGET_METERS * 100).toFixed(0)}cm`}`} · geometry cannot veto input · plane ${latestParryInput.predictedPlaneDistanceMeters == null ? '—' : `${(latestParryInput.predictedPlaneDistanceMeters * 100).toFixed(1)}cm`}`
+      : `Shield tracking: geometry guides a clamped ${(PARRY_LUNGE_TRAVEL_BUDGET_METERS * 100).toFixed(0)}cm response; it cannot veto valid timing input`;
     const centimeters = (value) => value == null ? '—' : (value * 100).toFixed(1);
     const agreement = latestGripConstraintReport?.directionAgreement == null
       ? '—'
@@ -265,6 +276,29 @@ export function createShieldParryLabUi(elements) {
   });
 }
 
+// R19A.1: the defender's feet. Arrows rather than WASD because the free inspection camera already
+// owns WASD, and a key that both flies the camera and walks a fighter is a key that does neither
+// legibly.
+const LANE_KEYS = Object.freeze({ ArrowUp: -1, ArrowDown: 1 });
+
+function laneIntentFrom(held) {
+  let intent = 0;
+  for (const code of held) intent += LANE_KEYS[code] || 0;
+  // Both held at once cancels, which is what pressing two opposite directions should do.
+  return Math.sign(intent);
+}
+
+// R19B.1: which fighter the arrows are driving. Shift picks the attacker rather than giving them
+// their own pair of keys, so there is one thing to learn - up closes, down backs off - and a
+// modifier saying who is doing it. Only one of them walks at a time, which is what a single player
+// at a single keyboard can honestly do anyway.
+function laneIntentsFor(held, attackerModifier) {
+  const intent = laneIntentFrom(held);
+  return attackerModifier
+    ? { defender: 0, attacker: intent }
+    : { defender: intent, attacker: 0 };
+}
+
 function isParryKey(event) {
   return event?.code === 'KeyF'
     || String(event?.key || '').toLowerCase() === 'f'
@@ -279,6 +313,13 @@ export function bindShieldParryLabUiEvents({
   handlers,
 }) {
   let parryKeyDownObserved = false;
+  const heldLaneKeys = new Set();
+  let attackerModifierHeld = false;
+  function publishLaneIntent() {
+    const intents = laneIntentsFor(heldLaneKeys, attackerModifierHeld);
+    handlers.onDefenderIntent?.(intents.defender);
+    handlers.onAttackerIntent?.(intents.attacker);
+  }
   documentRef.querySelectorAll('[data-attack]').forEach((button) =>
     button.addEventListener('click', () => handlers.onAttack(button.dataset.attack)));
   documentRef.querySelectorAll('[data-mode]').forEach((button) =>
@@ -292,6 +333,17 @@ export function bindShieldParryLabUiEvents({
   elements.debugResetDefaults.addEventListener('click', handlers.onDebugResetDefaults);
 
   documentRef.addEventListener('keydown', (event) => {
+    // Shift can be pressed or released while an arrow is already held, so the fighter it is
+    // driving has to be able to change mid-hold rather than only at the next arrow press.
+    if (event.shiftKey !== attackerModifierHeld) {
+      attackerModifierHeld = event.shiftKey;
+      publishLaneIntent();
+    }
+    if (LANE_KEYS[event.code] !== undefined) {
+      event.preventDefault();
+      if (!event.repeat) { heldLaneKeys.add(event.code); publishLaneIntent(); }
+      return;
+    }
     if (!isParryKey(event) || event.repeat) return;
     parryKeyDownObserved = true;
     event.preventDefault();
@@ -299,13 +351,30 @@ export function bindShieldParryLabUiEvents({
     handlers.onParryInput('keyboard-f', event);
   }, true);
   documentRef.addEventListener('keyup', (event) => {
+    if (event.shiftKey !== attackerModifierHeld) {
+      attackerModifierHeld = event.shiftKey;
+      publishLaneIntent();
+    }
+    if (LANE_KEYS[event.code] !== undefined) {
+      event.preventDefault();
+      heldLaneKeys.delete(event.code);
+      publishLaneIntent();
+      return;
+    }
     if (!isParryKey(event)) return;
     event.preventDefault();
     event.stopPropagation();
     if (!parryKeyDownObserved) handlers.onParryInput('keyboard-f-keyup-fallback', event);
     parryKeyDownObserved = false;
   }, true);
-  windowRef.addEventListener('blur', () => { parryKeyDownObserved = false; });
+  // A key held when the window loses focus never reports its keyup, so the fighter would walk off
+  // on their own until the key was pressed and released again.
+  windowRef.addEventListener('blur', () => {
+    parryKeyDownObserved = false;
+    heldLaneKeys.clear();
+    attackerModifierHeld = false;
+    publishLaneIntent();
+  });
   canvas.addEventListener('pointerdown', () => canvas.focus({ preventScroll: true }));
   elements.showSurface.addEventListener('change', () => handlers.onShowSurface(elements.showSurface.checked));
   windowRef.addEventListener('resize', handlers.onResize);

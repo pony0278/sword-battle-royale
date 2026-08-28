@@ -6,17 +6,33 @@ import { DEFAULT_KAYKIT_SWORD_MOUNT } from '../../../src/character/default-chara
 import { loadUal1AnimationLibrary } from '../../../src/animation/ual1-animation-library.js';
 import { loadUal2AnimationLibrary } from '../../../src/animation/ual2-animation-library.js';
 import { loadSkyrimConvertedAnimationLibrary } from '../../../src/animation/skyrim-converted-animation-library.js';
+import { loadKayKitAnimationLibrary } from '../../../src/animation/kaykit-animation-library.js';
 import { composeSkyrimWeaponMountCalibration } from '../../../src/animation/skyrim-weapon-bind-calibration.js';
 
+// The two directions are different clips rather than one played backwards: a reversed walk reads
+// as a moonwalk, because the foot that plants is the wrong one.
+export const ATTACKER_WALK_CLIPS = Object.freeze({
+  forward: 'Walking_A',
+  backward: 'Walking_Backwards',
+});
+
 export async function bootstrapShieldParryLabAssets({ THREE, attacker, defender, labStage }) {
-  const [ual1, ual2, skyrim] = await Promise.all([
+  const [ual1, ual2, skyrim, kaykit] = await Promise.all([
     loadUal1AnimationLibrary(new THREE.GLTFLoader(), { THREE, rig: attacker.rig, fps: 30 }),
     loadUal2AnimationLibrary(new THREE.GLTFLoader(), { THREE, rig: attacker.rig, fps: 30 }),
     loadSkyrimConvertedAnimationLibrary(new THREE.GLTFLoader(), { THREE, rig: defender.rig, fps: 30 }),
+    // R19C.2: locomotion. These are KayKit's own clips on KayKit's own rig, so they need no
+    // retarget - which is why they are loaded straight rather than through one of the fitted
+    // libraries above.
+    loadKayKitAnimationLibrary(new THREE.GLTFLoader(), { packIds: ['basic', 'advanced'] }),
   ]);
   attacker.registerAnimations(ual1);
   attacker.registerAnimations(ual2);
+  attacker.registerAnimations(kaykit);
   defender.registerAnimations(skyrim);
+  // R19E.1: the defender walks too - their legs borrow the same locomotion clips the attacker
+  // uses, overlaid under the Skyrim guard rather than replacing it.
+  defender.registerAnimations(kaykit);
 
   const attackerIdleDuration = attacker.getAnimationDuration('UAL1/Sword_Idle') || 1;
   const idle = skyrim.clips.get('SKYRIM_GUARD/shd_blockidle');
@@ -30,5 +46,7 @@ export async function bootstrapShieldParryLabAssets({ THREE, attacker, defender,
     composeSkyrimWeaponMountCalibration(THREE, DEFAULT_KAYKIT_SWORD_MOUNT, bind),
   );
 
-  return Object.freeze({ attackerIdleDuration, defenderSword });
+  const walkForwardDuration = attacker.getAnimationDuration(ATTACKER_WALK_CLIPS.forward) || 1;
+  const walkBackwardDuration = attacker.getAnimationDuration(ATTACKER_WALK_CLIPS.backward) || 1;
+  return Object.freeze({ attackerIdleDuration, walkForwardDuration, walkBackwardDuration, defenderSword });
 }

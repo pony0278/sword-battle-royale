@@ -1,7 +1,15 @@
+import {
+  PARRY_LUNGE_TRAVEL_BUDGET_METERS,
+  PARRY_LUNGE_TRACKING_SPEED_MPS,
+  PARRY_LUNGE_HORIZON_SECONDS,
+  PARRY_BLADE_FIRST_FRACTION_FLOOR,
+  PARRY_BLADE_FIRST_FRACTION_PENALTY_PER_UNIT,
+} from './parry-lunge-reach.js';
+
 export const GUARD_THREAT_TRACKING_STAGE = 'G4.3A.1';
 export const GUARD_THREAT_RESIDUAL_REFINEMENT_STAGE = 'G4.3B.5R.3.5';
 export const GUARD_THREAT_TRACKING_MODES = Object.freeze(['off', 'guard', 'parry']);
-export const GUARD_THREAT_SELECTION_MODES = Object.freeze(['plane-first', 'disc-distance']);
+export const GUARD_THREAT_SELECTION_MODES = Object.freeze(['plane-first', 'disc-distance', 'blade-first']);
 export const GUARD_THREAT_EXTRAPOLATION_MODES = Object.freeze(['linear', 'rigid']);
 
 export const GUARD_THREAT_TRACKING_PROFILES = Object.freeze({
@@ -18,10 +26,15 @@ export const GUARD_THREAT_TRACKING_PROFILES = Object.freeze({
     maxTrackingSpeedMps: 1.55, returnSpeedMps: 1.0, upperArmMaxDegrees: 34, lowerArmMaxDegrees: 42,
     threatSelection: 'disc-distance', threatExtrapolation: 'rigid',
   }),
+  // R19F.1: Parry's reach envelope comes from parry-lunge-reach - the attack advance moved the
+  // blade's world path up to 0.862m closer, and the old 0.18m/1.6mps envelope missed TOP by 7mm
+  // every time. blade-first selection prefers a crossing on the blade proper over the hilt.
   parry: Object.freeze({
-    mode: 'parry', horizonSeconds: 0.14, maxCorrectionMeters: 0.18, comfortRadiusRatio: 0.60,
-    maxTrackingSpeedMps: 1.6, returnSpeedMps: 1.4, upperArmMaxDegrees: 20, lowerArmMaxDegrees: 26,
-    threatSelection: 'plane-first', threatExtrapolation: 'linear',
+    mode: 'parry', horizonSeconds: PARRY_LUNGE_HORIZON_SECONDS,
+    maxCorrectionMeters: PARRY_LUNGE_TRAVEL_BUDGET_METERS, comfortRadiusRatio: 0.60,
+    maxTrackingSpeedMps: PARRY_LUNGE_TRACKING_SPEED_MPS, returnSpeedMps: 1.4,
+    upperArmMaxDegrees: 20, lowerArmMaxDegrees: 26,
+    threatSelection: 'blade-first', threatExtrapolation: 'linear',
   }),
 });
 
@@ -134,10 +147,18 @@ export function normalizeThreatSelection(selection) {
 // `disc-distance` scores the true Euclidean distance from the blade point to the shield disc, so a
 // low sweep's tip beats a hilt end that merely grazes the plane a metre off the disc. Guard needs
 // that: a "covered" reading against a point the blade never occupies is a false positive.
-function scoreThreatCandidate(selection, planeDistance, outsideDisc, futureSeconds) {
+// R19F.1: `blade-first` is plane-first with a preference for the blade proper: once the attack
+// advance carries the swing deep, the nearest plane crossing is usually the hilt, and a parry
+// planned there releases the arm from degenerate geometry. A candidate below the fraction floor
+// pays for the missing fraction, so a mid-blade crossing wins whenever one exists while a hilt
+// catch remains available when it is the only geometry on offer.
+function scoreThreatCandidate(selection, planeDistance, outsideDisc, futureSeconds, bladeFraction) {
   const timePenalty = futureSeconds * 0.03;
   if (selection === 'disc-distance') return Math.hypot(planeDistance, outsideDisc) + timePenalty;
-  return planeDistance + outsideDisc * 0.65 + timePenalty;
+  const planeScore = planeDistance + outsideDisc * 0.65 + timePenalty;
+  if (selection !== 'blade-first') return planeScore;
+  const missingFraction = Math.max(0, PARRY_BLADE_FIRST_FRACTION_FLOOR - finite(bladeFraction));
+  return planeScore + missingFraction * PARRY_BLADE_FIRST_FRACTION_PENALTY_PER_UNIT;
 }
 
 export function getGuardThreatTrackingProfile(mode = 'guard') {
@@ -187,8 +208,8 @@ export function predictGuardThreat(input = {}) {
       const radial = length(sub(projection.point, surface.center));
       const planeDistance = Math.abs(projection.signedDistance);
       const outsideDisc = Math.max(0, radial - surface.radius);
-      const score = scoreThreatCandidate(selection, planeDistance, outsideDisc, futureSeconds);
       const bladeFraction = (sectionIndex + closestProjected.u) / (blade.length - 1);
+      const score = scoreThreatCandidate(selection, planeDistance, outsideDisc, futureSeconds, bladeFraction);
       const candidate = {
         point: projection.point,
         worldPoint,

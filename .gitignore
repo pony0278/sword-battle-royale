@@ -5,3 +5,7 @@ assets/skyrim/guard/converted/*.glb
 
 # Local dev dependencies (three.js is loaded from a CDN at runtime; npm install is only for headless probes).
 node_modules/
+
+# Headless probe entry: the published lab loads three.js from a CDN, this local copy rewrites
+# those two script tags to node_modules so a sandboxed browser can boot the same lab.
+tools/action-studio/probe.lab.html

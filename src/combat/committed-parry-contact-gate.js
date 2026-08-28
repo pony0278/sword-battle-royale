@@ -1,13 +1,16 @@
 import {
   SWEPT_CONTACT_TEMPORAL_ELIGIBILITY_AUTHORITY,
 } from './swept-contact-temporal-eligibility.js';
+import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from './parry-lunge-reach.js';
 
 export const COMMITTED_PARRY_CONTACT_GATE_STAGE = 'G4.3B.5R.3';
 
 export const COMMITTED_PARRY_CONTACT_GATE_PROFILE = Object.freeze({
   earliestInputTtcSeconds: 0.18,
   latestInputTtcSeconds: 0.06,
-  maxShieldTravelMeters: 0.18,
+  // R19F.1: the clamp follows the lunge-reach envelope - the attack advance made the parry's
+  // journey longer than the old 0.18m hand correction, while the input window above is untouched.
+  maxShieldTravelMeters: PARRY_LUNGE_TRAVEL_BUDGET_METERS,
   planeCaptureMeters: 0.055,
   commitmentMarker: 'movementStartSeconds',
   authority: 'manual-input-after-authored-commitment-and-ttc-plus-real-swept-contact; predictive-geometry-guides-clamped-motion-only',

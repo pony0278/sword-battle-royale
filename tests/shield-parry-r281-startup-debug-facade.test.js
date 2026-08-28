@@ -60,7 +60,7 @@ test('R18M.C5 bootstrap owns only async asset registration and defender weapon b
 
 test('R18M.C5 bootstrap relative imports resolve to real repository files', () => {
   const imports = [...bootstrapSource.matchAll(/from\s+['"](\.\.\/[^'"]+)['"]/g)].map((match) => match[1]);
-  assert.equal(imports.length, 6);
+  assert.equal(imports.length, 7);
   for (const specifier of imports) {
     const resolved = new URL(specifier, bootstrapUrl);
     assert.ok(existsSync(resolved), `${specifier} must resolve from lab-bootstrap.js`);
@@ -72,12 +72,13 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
   const exchangeState = {
     directOldB3Diagnostic: 'direct', latestPredictiveReport: 'predictive', latestShieldLeadMotion: 'lead',
     latestLeadHandoff: 'handoff', latestCombatResult: 'combat-result', latestParryInput: 'input',
-    latestParryOpportunity: 'opportunity', latestContact: 'contact', latestParryConfirmation: 'confirmation',
+    latestParryOpportunity: 'opportunity', latestContact: 'contact', latestBodyHit: 'body-hit', latestParryConfirmation: 'confirmation',
     step3AContactTransfer: 'transfer', latestGripConstraintReport: 'grip',
     latestFinePlan: 'fine-plan', latestFineTracking: 'fine-tracking',
     latestGuardCoverage: 'guard-coverage', latestGuardResidual: 'guard-residual', latestGuardStanceReach: 'guard-stance', latestParryWhiff: 'whiff',
     latestInterceptDriveReport: 'drive', latestVisualOwnershipBaseline: 'visual-baseline',
     visualOwnershipTrace: ['visual-trace'], latestInputSignal: 'signal',
+    latestEngagementGround: 'lane-ledger',
     latestRootDisplacement: 'root-plan', latestAttackerRootDisplacement: 'attacker-root',
     latestDefenderRootDisplacement: 'defender-root',
     latestArmFling: 'arm-fling', latestArmFlingReport: 'arm-fling-report',
@@ -87,11 +88,13 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
   const runtimes = {
     combat: {}, attackRuntime: {}, guardMachine: {}, predictivePresentation: {}, parryGate: {}, freeCamera: {},
     residualBodyReachRuntime: {}, residualStanceReachRuntime: {}, swordGripConstraint: {},
+    labScene: { engagementStance: { separationMeters: 2.3 } },
   };
   const api = createShieldParryDebugApi({
     actions: {
       startAttack: noop, restartAttack: noop, setMode: noop, refreshDebugStanceProfile: noop,
       resetDebugStanceDefaults: noop, triggerParryNow: noop, dispatchParryInput: noop, forceOldTwoActorB3: noop,
+      setEngagementSeparation: noop,
     },
     runtimes,
     debugMode: true,
@@ -102,13 +105,17 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
     'startAttack', 'restartAttack', 'setMode', 'combat', 'attackRuntime', 'guardMachine',
     'predictivePresentation', 'parryGate', 'freeCamera', 'residualBodyReachRuntime',
     'residualStanceReachRuntime', 'debugMode', 'debugStanceProfile', 'refreshDebugStanceProfile',
-    'resetDebugStanceDefaults', 'swordGripConstraint', 'triggerParryNow', 'dispatchParryInput',
+    'resetDebugStanceDefaults', 'swordGripConstraint', 'setEngagementSeparation', 'resetLane',
+    'captureBladeGeometry',
+    'laneGround', 'laneDefenderIntent', 'laneAttackerIntent', 'laneAttackerGait', 'laneDefenderGait',
+    'laneAttackerWalkSample', 'engagementStance',
+    'triggerParryNow', 'dispatchParryInput',
     'forceOldTwoActorB3', 'directOldB3Diagnostic', 'latestPredictiveReport', 'latestShieldLeadMotion',
-    'latestLeadHandoff', 'latestCombatResult', 'latestParryInput', 'latestParryOpportunity', 'latestContact',
+    'latestLeadHandoff', 'latestCombatResult', 'latestParryInput', 'latestParryOpportunity', 'latestContact', 'latestBodyHit',
     'latestParryConfirmation', 'step3AContactTransfer', 'latestGripConstraintReport',
     'latestFinePlan', 'latestFineTracking', 'latestGuardCoverage', 'latestGuardResidual', 'latestGuardStanceReach', 'latestParryWhiff',
     'latestInterceptDriveReport', 'latestVisualOwnershipBaseline', 'visualOwnershipTrace',
-    'latestInputSignal', 'latestRootDisplacement', 'latestAttackerRootDisplacement',
+    'latestInputSignal', 'latestEngagementGround', 'latestRootDisplacement', 'latestAttackerRootDisplacement',
     'latestDefenderRootDisplacement', 'latestArmFling', 'latestArmFlingReport',
     'latestTorsoLean', 'latestTorsoLeanReport', 'latestDefenderTorsoLeanReport', 'blockReaction',
     'activeParryInterceptDiagnosis',

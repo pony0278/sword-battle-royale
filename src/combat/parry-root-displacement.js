@@ -286,11 +286,32 @@ export function sampleParryRootDisplacement(plan, elapsedMs = 0) {
 }
 
 // Owns one actor's displacement clock and writes the offset onto the rig root.
-// The root position is re-derived from a captured base every frame, so the
-// caller's own pose restore (frozen contact pose, or a rebuilt guard clip)
-// cannot accumulate the offset.
+// The root position is re-derived from a base every frame rather than accumulated onto, so the
+// caller's own pose restore (frozen contact pose, or a rebuilt guard clip) cannot make the offset
+// creep.
+//
+// R18V.2: which base, though, is the caller's to decide.
+//
+// Two different objects in this rig are called root, and it is worth being explicit about which
+// one this runtime writes, because a movement system will have to pick the other:
+//   character.object3d === rig.root   the actor's Group, i.e. where the fighter is standing. The
+//                                     scene sets it once from planEngagementStance, and this is
+//                                     where walking belongs.
+//   rig.bones.root                    a Bone inside it. That is what this runtime writes, and it
+//                                     is the only writer of it in the codebase.
+// They compose through the scene graph, so movement at the object3d level and recoil at the bone
+// level do not fight, and the snapshot below is safe today for exactly that reason - not because
+// re-deriving from a captured position is safe in general.
+//
+// It is not safe in general. Anything else that drives bones.root - a root-motion clip is the
+// obvious candidate, and the animation library ships Root_Motion variants - would be overwritten
+// on the next frame, silently, for the few hundred milliseconds the reaction lasts. So the base is
+// now injectable: pass `readBasePosition` and this runtime becomes a relative offset applied on
+// top of whatever that owner wrote this frame; omit it and it captures at start exactly as before.
+// The displacement never owns the base either way, it only ever adds to it.
 export function createParryRootDisplacementRuntime(options = {}) {
   const rig = options.rig || null;
+  const readBasePosition = typeof options.readBasePosition === 'function' ? options.readBasePosition : null;
   let plan = null;
   let basePosition = null;
   let elapsedMs = 0;
@@ -310,16 +331,35 @@ export function createParryRootDisplacementRuntime(options = {}) {
     });
   }
 
+  // The base this frame's offset is measured from. An injected reader is asked every frame, so a
+  // caller that moves the actor keeps its authority over where they are; a reader that returns
+  // nothing usable falls back to the snapshot rather than dropping the displacement.
+  function currentBase() {
+    if (!readBasePosition) return basePosition;
+    const live = readBasePosition();
+    if (!live) return basePosition;
+    const x = Number(live.x);
+    const y = Number(live.y);
+    const z = Number(live.z);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return basePosition;
+    return Object.freeze({ x, y, z });
+  }
+
   function writeRoot(offset) {
     const bone = rootBone();
-    if (!bone?.position || !basePosition) return false;
-    const x = basePosition.x + finite(offset?.x);
-    const y = basePosition.y + finite(offset?.y);
-    const z = basePosition.z + finite(offset?.z);
+    const base = currentBase();
+    if (!bone?.position || !base) return false;
+    const x = base.x + finite(offset?.x);
+    const y = base.y + finite(offset?.y);
+    const z = base.z + finite(offset?.z);
     if (typeof bone.position.set === 'function') bone.position.set(x, y, z);
     else { bone.position.x = x; bone.position.y = y; bone.position.z = z; }
     rig?.root?.updateMatrixWorld?.(true);
     return true;
+  }
+
+  function baseAuthority() {
+    return readBasePosition ? 'caller-owned-base' : 'captured-at-start';
   }
 
   function reset() {
@@ -345,7 +385,7 @@ export function createParryRootDisplacementRuntime(options = {}) {
     basePosition = readBase();
     elapsedMs = 0;
     lastSample = sampleParryRootDisplacement(plan, 0);
-    return Object.freeze({ ...planned, basePosition });
+    return Object.freeze({ ...planned, basePosition, baseAuthority: baseAuthority() });
   }
 
   // Advancing and applying are separate so one shared clock can drive both
@@ -373,5 +413,9 @@ export function createParryRootDisplacementRuntime(options = {}) {
     get plan() { return plan; },
     get report() { return lastSample; },
     get basePosition() { return basePosition; },
+    // What the root will be re-derived from on the next write. Equal to basePosition when nothing
+    // else owns the actor's position, and the caller's live position when something does.
+    get effectiveBasePosition() { return currentBase(); },
+    get baseAuthority() { return baseAuthority(); },
   });
 }

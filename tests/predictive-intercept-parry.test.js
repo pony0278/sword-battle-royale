@@ -10,6 +10,7 @@ import {
   getCanonicalAttackTimeToContactSeconds,
   getPredictiveParryTriggerTtcSeconds,
 } from '../src/combat/predictive-intercept-parry.js';
+import { PARRY_LUNGE_TRAVEL_BUDGET_METERS, PARRY_LUNGE_PROMPT_TTC_SECONDS } from '../src/combat/parry-lunge-reach.js';
 
 const surface = {
   center: { x: 0, y: 0, z: 0 },
@@ -56,7 +57,9 @@ test('G4.3B.5R.1 derives rhythm TTC from the authored attack contact time', () =
   assert.equal(getCanonicalAttackTimeToContactSeconds({ elapsedSeconds: 0.1 }), null);
 });
 
-test('G4.3B.5R.1 normal Parry starts at canonical 135ms TTC regardless of geometry', () => {
+test('G4.3B.5R.1 normal Parry starts at the input-window edge TTC regardless of geometry', () => {
+  // R19F.1: the canonical trigger moved from 135ms to the committed gate's earliest legal input
+  // edge - a lunge-length shield journey spends every legal frame the window offers.
   const rhythm = analyzeRhythmParryTrigger({
     attackSnapshot: attackSnapshot(0.165),
     requestedGrade: 'parry',
@@ -65,7 +68,7 @@ test('G4.3B.5R.1 normal Parry starts at canonical 135ms TTC regardless of geomet
   assert.equal(rhythm.shouldTrigger, true);
   assert.equal(rhythm.reason, 'rhythm-trigger-window');
   close(rhythm.timeToContactSeconds, 0.135, 1e-9);
-  close(rhythm.triggerTtcSeconds, 0.135, 1e-9);
+  close(rhythm.triggerTtcSeconds, PARRY_LUNGE_PROMPT_TTC_SECONDS, 1e-9);
 });
 
 test('G4.3B.5R.1 Perfect starts at canonical 65ms TTC inside the authoritative 75ms window', () => {
@@ -92,8 +95,8 @@ test('G4.3B.5R.1 waits before the rhythm trigger window', () => {
 test('G4.3B.5R.1 geometry guides tracking but reachable=false cannot veto Parry start', () => {
   const plan = analyzePredictiveInterceptParry({
     attackSnapshot: attackSnapshot(0.20),
-    previousBlade: blade(0.20, 0.55),
-    currentBlade: blade(0.10, 0.55),
+    previousBlade: blade(0.20, 1.05),
+    currentBlade: blade(0.10, 1.05),
     bucklerSurface: surface,
     deltaSeconds: 0.10,
     requestedGrade: 'parry',
@@ -102,7 +105,7 @@ test('G4.3B.5R.1 geometry guides tracking but reachable=false cannot veto Parry 
   assert.equal(plan.shouldTrigger, true);
   assert.equal(plan.interceptable, false);
   assert.equal(plan.trackingPlan.reachable, false);
-  assert.equal(plan.trackingPlan.appliedDistance, 0.18);
+  assert.equal(plan.trackingPlan.appliedDistance, PARRY_LUNGE_TRAVEL_BUDGET_METERS);
   assert.equal(plan.reason, 'rhythm-trigger-reach-independent');
   assert.equal(plan.geometryReason, 'predicted-intercept-out-of-parry-reach');
 });
@@ -130,7 +133,7 @@ test('G4.3B.5R.1 still exposes trackable geometry when it is available', () => {
 
   assert.equal(plan.shouldTrigger, true);
   assert.equal(plan.trackingPlan.mode, 'parry');
-  assert.equal(plan.parryTrackingProfile.maxCorrectionMeters, 0.18);
+  assert.equal(plan.parryTrackingProfile.maxCorrectionMeters, PARRY_LUNGE_TRAVEL_BUDGET_METERS);
   assert.ok(plan.trackingPlan.requiredDistance > 0.15);
-  assert.ok(plan.trackingPlan.requiredDistance <= 0.18 + 1e-6);
+  assert.ok(plan.trackingPlan.requiredDistance <= PARRY_LUNGE_TRAVEL_BUDGET_METERS + 1e-6);
 });

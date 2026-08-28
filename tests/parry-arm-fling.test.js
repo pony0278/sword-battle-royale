@@ -146,3 +146,28 @@ test('R18P.1 knock-aside carries a vertical chop upward and a horizontal cut acr
   assert.ok(side.carryDirection.x > 0, 'the leftward cut is knocked back to the right');
   assert.ok(Math.abs(side.carryDirection.y) < 0.4);
 });
+
+test('R19H.1 the carry opposes the strike itself and shrugs off a contaminated sweep peak', () => {
+  // Proven on this function before the fix: a downward sweep peak of 3-5 mps walked RIGHT's
+  // carry from (-0.82, 0.23) to (-0.36, -0.70) and onward to the ~3% straight-down releases
+  // seen in sequenced exchanges - the peak tracker cannot tell the defender's parry sweep from
+  // the guard still descending out of the previous exchange's recovery. The throw's direction
+  // is the strike's own; the sweep keeps its influence in closing speed and tangential drag.
+  const right = {
+    outcome: 'parry',
+    surfaceNormal: { x: -0.58, y: -0.35, z: -0.74 },
+    normalSideHint: { x: 0.05, y: 0, z: -1 },
+    incomingVelocity: { x: 4.8, y: -0.4, z: 2.0 },
+    momentum: 1,
+  };
+  const clean = computeParryArmFlingImpulse({ ...right, shieldSweepVelocity: { x: 0, y: 0, z: 0 } });
+  const contaminated = computeParryArmFlingImpulse({ ...right, shieldSweepVelocity: { x: 0.3, y: -5, z: 0.5 } });
+  for (const axis of ['x', 'y', 'z']) {
+    assert.ok(Math.abs(clean.carryDirection[axis] - contaminated.carryDirection[axis]) < 1e-9,
+      'the carry direction must not depend on the shield sweep');
+  }
+  assert.ok(clean.carryDirection.y > -0.35, 'the across throw must never read as a downward slam');
+  // The sweep still matters where it should: the same contamination changes the impulse.
+  assert.ok(Math.abs(clean.impulse.y - contaminated.impulse.y) > 1,
+    'closing speed and drag still carry the relative motion');
+});

@@ -46,7 +46,7 @@ import {
 import {
   measureAttackerRecoilWorldSilhouette,
 } from '../../src/combat/attacker-recoil-world-silhouette.js?v=g43b5r281-closed-loop-old-b3-r18i5';
-
+import { maybeStartParryGateProbe } from './shield-parry-r281/parry-gate-probe.js';
 import {
   compactInterceptDriveTelemetry,
   compactInterceptDriveTraceFrame,
@@ -75,20 +75,21 @@ import {
 import { createShieldParryPreContactController } from './shield-parry-r281/pre-contact-controller.js';
 import { createShieldParryContactHandoffController } from './shield-parry-r281/contact-handoff-controller.js';
 import { createShieldParryLabScene } from './shield-parry-r281/lab-scene.js';
+import { cloneSurface, magnitude, createBladePolylineSampler } from './shield-parry-r281/lab-geometry.js';
+import { createShieldParryFrameReporting } from './shield-parry-r281/frame-reporting.js';
+import { createShieldParryLaneController } from './shield-parry-r281/lane-controller.js';
 import { createShieldParryInspectionOverlay } from './shield-parry-r281/inspection-overlay.js';
 import { createAttackerPresentationAdapter } from './shield-parry-r281/attacker-presentation.js';
 import { createDirectOldB3DiagnosticController } from './shield-parry-r281/direct-old-b3-diagnostic.js';
-import { bootstrapShieldParryLabAssets } from './shield-parry-r281/lab-bootstrap.js';
+import { ATTACKER_WALK_CLIPS, bootstrapShieldParryLabAssets } from './shield-parry-r281/lab-bootstrap.js';
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
-
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
 const THREE = window.THREE;
 if (!THREE?.WebGLRenderer || !THREE?.GLTFLoader) throw new Error(`${LAB_STAGE} requires Three.js r128 + GLTFLoader`);
 
-const HUD_INTERVAL_MS = 50;
-const REPORT_INTERVAL_MS = 240;
+const HUD_INTERVAL_MS = 50; const REPORT_INTERVAL_MS = 240;
 const MAX_REPORT_DOM_CHARACTERS = 60000;
 const RECENT_COMPACT_TRACE_FRAMES = 8;
 const PARRY_REVIEW_RATE = 0.12;
@@ -96,7 +97,10 @@ const PARRY_PROMPT_HOLD_MS = 1500;
 const DEBUG_QUERY = new URLSearchParams(window.location.search);
 const DEBUG_MODE = DEBUG_QUERY.get('debug') === '1';
 
-const labScene = createShieldParryLabScene({ THREE, documentRef: document, windowRef: window });
+const labScene = createShieldParryLabScene({
+  THREE, documentRef: document, windowRef: window,
+  separationMeters: DEBUG_QUERY.has('spacing') ? Number(DEBUG_QUERY.get('spacing')) : undefined,
+});
 const {
   canvas, renderer, scene, camera, freeCamera, attacker, defender, attackerSword, buckler, resize, setView,
 } = labScene;
@@ -113,6 +117,8 @@ const residualStanceReachRuntime = createGuardResidualStanceReachRuntime(THREE, 
 const predictivePresentation = createPredictiveInterceptParryPresentationRuntime(THREE, { character: defender });
 const activeParryInterceptIntent = createActiveParryInterceptIntent();
 const parryGate = createCommittedParryContactGate();
+const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
+  labScene, walkClips: ATTACKER_WALK_CLIPS, services: { captureRigPose, applyRigPose } });
 const exchangeState = createShieldParryExchangeState();
 
 const attackerPresentation = createAttackerPresentationAdapter({
@@ -173,6 +179,7 @@ let attackerIdleDuration = 1;
 let attackerIdleClockSeconds = 0;
 let attackerRecovery = null;
 let repeatCooldownMs = 0;
+let bootExchangePending = false; // R19D.1: the boot demo must not spend the player's opening ground
 let previousBlade = null;
 let hudClockMs = HUD_INTERVAL_MS;
 let reportClockMs = REPORT_INTERVAL_MS;
@@ -273,48 +280,40 @@ const directOldB3DiagnosticController = createDirectOldB3DiagnosticController({
       status.textContent = text;
       status.className = className;
     },
-    buildReport,
+    // Bound lazily on purpose: the reporting is constructed below because it needs this very
+    // controller, so the binding cannot exist yet. The arrow is only ever called after both do.
+    buildReport: (combatSnapshot) => buildReport(combatSnapshot),
   },
 });
 
-const bladeNodes = [attackerSword.bladeBase, attackerSword.bladeMid, attackerSword.tip];
-const bladeScratch = bladeNodes.map(() => new THREE.Vector3());
-const bladeBuffers = [0, 1].map(() => bladeNodes.map(() => ({ x: 0, y: 0, z: 0 })));
-let bladeBufferIndex = 0;
+const captureBladePolyline = createBladePolylineSampler(THREE, attackerSword);
 
-function captureBladePolyline() {
-  attackerSword.object3d.updateMatrixWorld(true);
-  const buffer = bladeBuffers[bladeBufferIndex];
-  bladeBufferIndex = 1 - bladeBufferIndex;
-  for (let i = 0; i < bladeNodes.length; i += 1) {
-    bladeNodes[i].getWorldPosition(bladeScratch[i]);
-    buffer[i].x = bladeScratch[i].x;
-    buffer[i].y = bladeScratch[i].y;
-    buffer[i].z = bladeScratch[i].z;
-  }
-  return buffer;
-}
-
-function cloneSurface(surface = {}) {
-  return {
-    center: {
-      x: Number(surface.center?.x) || 0,
-      y: Number(surface.center?.y) || 0,
-      z: Number(surface.center?.z) || 0,
-    },
-    normal: {
-      x: Number(surface.normal?.x) || 0,
-      y: Number(surface.normal?.y) || 0,
-      z: Number(surface.normal?.z) || -1,
-    },
-    radius: Number(surface.radius) || 0,
-    thickness: Number(surface.thickness) || 0,
-  };
-}
-
-function magnitude(v) {
-  return v ? Math.hypot(Number(v.x) || 0, Number(v.y) || 0, Number(v.z) || 0) : 0;
-}
+// Gathering only, and constructed here because every accessor below reads a `let` this file owns.
+const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporting({
+  labUi,
+  exchangeState,
+  documentRef: document,
+  windowRef: window,
+  reportNode,
+  runtimes: { combat, attackRuntime, parryGate, freeCamera, contactHandoffController, labScene },
+  services: { buildShieldParryVerificationReport, serializeVerificationReport },
+  constants: {
+    labStage: LAB_STAGE,
+    recoilStage: RECOIL_STAGE,
+    parryReviewRate: PARRY_REVIEW_RATE,
+    maxReportCharacters: MAX_REPORT_DOM_CHARACTERS,
+    recentCompactTraceFrames: RECENT_COMPACT_TRACE_FRAMES,
+    liveContactPhaseLatch: TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES.LIVE_CONTACT_IMPULSE_PEAK,
+    debugMode: DEBUG_MODE,
+  },
+  read: {
+    ready: () => ready,
+    selectedMode: () => selectedMode,
+    selectedDirection: () => selectedDirection,
+    debugStanceProfile: () => debugStanceProfile,
+    parryReviewActive: (snapshot) => isParryPreContactReviewActive(snapshot),
+  },
+});
 
 function enterGuard() {
   guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera);
@@ -333,11 +332,13 @@ function sampleAttackerBase(snapshot, deltaMs) {
     recovery: attackerRecovery,
     idleClockSeconds: attackerIdleClockSeconds,
     idleDuration: attackerIdleDuration,
+    walkSample: laneController.attackerWalkSample,
   });
   attackerRecovery = presentationState.recovery;
   attackerIdleClockSeconds = presentationState.idleClockSeconds;
 }
 function resetExchange() {
+  laneController.endExchange();
   parryGate.reset();
   swordGripConstraint.reset();
   bracingRuntime.resetImpact(); fineTrackingRuntime.reset();
@@ -387,7 +388,7 @@ function triggerParryNow(source = 'button') {
     });
     const trackingDistance = exchangeState.latestParryInput.requiredShieldTravelMeters == null
       ? 'path pending'
-      : `${(exchangeState.latestParryInput.requiredShieldTravelMeters * 100).toFixed(1)}cm${exchangeState.latestParryInput.gates.trackingClamped ? ' → CLAMP 18cm' : ''}`;
+      : `${(exchangeState.latestParryInput.requiredShieldTravelMeters * 100).toFixed(1)}cm${exchangeState.latestParryInput.gates.trackingClamped ? ' → CLAMPED' : ''}`;
     status.textContent = `PARRY ARMED · TTC ${(exchangeState.latestParryInput.timeToContactSeconds * 1000).toFixed(0)}ms · tracking ${trackingDistance} · waiting for real Sword × Shield contact`;
     status.className = 'good';
   } else {
@@ -426,6 +427,7 @@ function startAttack(direction = selectedDirection) {
   repeatCooldownMs = 0;
   const started = combat.startAttack(direction);
   if (!started.accepted) return false;
+  laneController.startAttack(direction, attackRuntime.snapshot?.action?.runtime?.contactSeconds);
   status.textContent = `ATTACK ${direction.toUpperCase()} · wait for committed YES, then press PARRY NOW or F`;
   status.className = 'warn';
   document.querySelectorAll('[data-attack]').forEach((button) => button.classList.toggle('active', button.dataset.attack === direction));
@@ -468,88 +470,16 @@ function isParryPreContactReviewActive(snapshot = attackRuntime.snapshot) {
 
 
 function resolveContact(snapshot, currentBlade, deltaSeconds) {
-  return contactHandoffController.resolveContact(snapshot, currentBlade, deltaSeconds, {
+  const resolved = contactHandoffController.resolveContact(snapshot, currentBlade, deltaSeconds, {
     previousBlade,
     selectedMode,
     selectedDirection,
   });
+  const settled = laneController.settle(exchangeState.latestCombatResult?.resolution?.outcome);
+  if (settled) exchangeState.latestEngagementGround = settled;
+  return resolved;
 }
 
-function updateParryCue(snapshot = attackRuntime.snapshot) {
-  return labUi.updateParryCue({
-    snapshot,
-    ready,
-    selectedMode,
-    step3AContactTransfer: exchangeState.step3AContactTransfer,
-    latestGripConstraintReport: exchangeState.latestGripConstraintReport,
-    selectedDirection,
-    latestParryConfirmation: exchangeState.latestParryConfirmation,
-    latestParryWhiff: exchangeState.latestParryWhiff,
-    parryAttempt: parryGate.attempt,
-    firstContact: exchangeState.firstContact,
-    latestParryOpportunity: exchangeState.latestParryOpportunity,
-    parryReviewActive: isParryPreContactReviewActive(snapshot),
-    parryReviewRate: PARRY_REVIEW_RATE,
-    debugMode: DEBUG_MODE,
-  });
-}
-
-function updateHud(snapshot, combatSnapshot) {
-  return labUi.updateHud({
-    snapshot,
-    combatSnapshot,
-    latestCombatResult: exchangeState.latestCombatResult,
-    latestParryWhiff: exchangeState.latestParryWhiff,
-    latestParryConfirmation: exchangeState.latestParryConfirmation,
-    latestParryInput: exchangeState.latestParryInput,
-    selectedMode,
-    requestedOutcome: selectedMode,
-    parryReviewActive: isParryPreContactReviewActive(snapshot),
-    parryReviewRate: PARRY_REVIEW_RATE,
-    parryPromptHeld: Boolean(exchangeState.parryPromptHold),
-    firstContact: exchangeState.firstContact,
-    latestFinePlan: exchangeState.latestFinePlan,
-    latestFineTracking: exchangeState.latestFineTracking, latestGuardCoverage: exchangeState.latestGuardCoverage,
-    latestReachableInterceptTarget: exchangeState.latestReachableInterceptTarget,
-    latestGripConstraintReport: exchangeState.latestGripConstraintReport,
-    step3AContactTransfer: exchangeState.step3AContactTransfer,
-    defenderReleaseGate: contactHandoffController.defenderDeflectReleaseGate(),
-    step3AOwnsLiveContact: contactHandoffController.ownsLiveContact(),
-    directOldB3Diagnostic: exchangeState.directOldB3Diagnostic,
-    debugMode: DEBUG_MODE,
-  });
-}
-
-function buildReport(combatSnapshot = combat.snapshot) {
-  const report = buildShieldParryVerificationReport({
-    combatSnapshot,
-    exchangeState,
-    labStage: LAB_STAGE,
-    recoilStage: RECOIL_STAGE,
-    ready,
-    selectedDirection,
-    selectedMode,
-    parryProfile: parryGate.profile,
-    defenderReleaseGate: contactHandoffController.defenderDeflectReleaseGate(),
-    ownsLiveContact: contactHandoffController.ownsLiveContact(),
-    inspectionCameraSnapshot: freeCamera.snapshot(),
-    debugMode: DEBUG_MODE,
-    debugStanceProfile,
-    recentCompactTraceFrames: RECENT_COMPACT_TRACE_FRAMES,
-    liveContactPhaseLatch: TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES.LIVE_CONTACT_IMPULSE_PEAK,
-  });
-  const publication = serializeVerificationReport({
-    report,
-    maxCharacters: MAX_REPORT_DOM_CHARACTERS,
-    traceFrames: exchangeState.interceptDriveTrace.length,
-    recentTraceFrames: Math.min(exchangeState.interceptDriveTrace.length, RECENT_COMPACT_TRACE_FRAMES),
-  });
-  reportNode.textContent = publication.displayText;
-  document.documentElement.dataset.g43b5r281 = report.pass ? 'pass' : 'fail';
-  window.__G43B5R281_RESULT__ = report;
-  window.__G43B5R281_PERF__ = publication.perf;
-  return report;
-}
 async function main() {
   status.textContent = `Loading UAL attacks + Skyrim Guard + ${LAB_STAGE}…`;
   const bootstrap = await bootstrapShieldParryLabAssets({
@@ -559,6 +489,7 @@ async function main() {
     labStage: LAB_STAGE,
   });
   attackerIdleDuration = bootstrap.attackerIdleDuration;
+  laneController.setWalkDurations({ forward: bootstrap.walkForwardDuration, backward: bootstrap.walkBackwardDuration });
   defenderSword = bootstrap.defenderSword;
   enterGuard();
   exchangeState.previousShieldLeadSurface = cloneSurface(buckler.getWorldParrySurface());
@@ -567,6 +498,7 @@ async function main() {
   status.className = 'good';
   buildReport();
   startAttack('right');
+  bootExchangePending = true;
 }
 
 bindShieldParryLabUiEvents({
@@ -583,6 +515,8 @@ bindShieldParryLabUiEvents({
     onRetryAttack: () => restartAttack(selectedDirection),
     onDebugApplyRetry: () => restartAttack(selectedDirection),
     onDebugResetDefaults: resetDebugStanceDefaults,
+    onDefenderIntent: (intent) => laneController.setDefenderIntent(intent),
+    onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
     onShowSurface: (checked) => buckler.setParrySurfaceVisible(checked),
     onResize: resize,
   },
@@ -604,6 +538,7 @@ function frame(timestamp) {
   const deltaSeconds = Math.max(1e-5, deltaMs / 1000);
   lastTimestamp = timestamp;
   freeCamera.update(rawDeltaMs / 1000);
+  laneController.walk(rawDeltaMs / 1000); // real seconds, not the review-scaled clock
   if (ready) {
     const snapshot = attackRuntime.update(deltaMs);
 
@@ -625,6 +560,8 @@ function frame(timestamp) {
       status.className = 'bad';
     }
 
+    laneController.update(snapshot.elapsedSeconds, Boolean(snapshot.action));
+
     const contactFrame = contactHandoffController.updateCombatBeforeGuard({
       deltaSeconds,
       deltaMs,
@@ -634,7 +571,9 @@ function frame(timestamp) {
     });
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
 
+    laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active);
     guardRuntime.update(deltaMs, camera);
+    laneController.overlayDefenderWalkLegs();
     contactHandoffController.updateDefenderDeflectReleaseGate();
     contactHandoffController.updateLiveConstraintAfterGuard({
       deltaSeconds,
@@ -656,6 +595,11 @@ function frame(timestamp) {
     if (hudClockMs >= HUD_INTERVAL_MS) { hudClockMs %= HUD_INTERVAL_MS; updateHud(snapshot, combatSnapshot); }
     if (reportClockMs >= REPORT_INTERVAL_MS) { reportClockMs %= REPORT_INTERVAL_MS; buildReport(combatSnapshot); }
 
+    // The startup attack is a demo; once it finishes, hand the player the calibrated stance.
+    if (bootExchangePending && !combat.active && !attackRuntime.active && !attackerRecovery) {
+      bootExchangePending = false;
+      laneController.resetLane();
+    }
     if (!combat.active && !attackRuntime.active && !attackerRecovery && guardMachine.state === GUARD_STATES.HOLD && autoRepeat.checked) {
       repeatCooldownMs += deltaMs;
       if (repeatCooldownMs >= 700) startAttack(selectedDirection);
@@ -683,8 +627,20 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     triggerParryNow,
     dispatchParryInput,
     forceOldTwoActorB3,
+    resetLane: () => (combat.active || attackRuntime.active ? null : laneController.resetLane()),
+    captureBladeGeometry: () => ({ blade: captureBladePolyline(), surface: buckler.getWorldParrySurface() }),
+    setEngagementSeparation: (meters) => {
+      // Between exchanges only: moving either actor mid-exchange would move the geometry the
+      // swept contact probe is measuring.
+      if (combat.active || attackRuntime.active) return null;
+      const stance = labScene.setEngagementSeparation(meters);
+      resetExchange();
+      laneController.resetLane(); // the ledger's base must follow the stance
+      return stance;
+    },
   },
   runtimes: {
+    laneController,
     combat,
     attackRuntime,
     guardMachine,
@@ -694,8 +650,10 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     residualBodyReachRuntime,
     residualStanceReachRuntime,
     swordGripConstraint,
+    labScene,
   },
   debugMode: DEBUG_MODE,
   getDebugStanceProfile: () => debugStanceProfile,
   getExchangeState: () => exchangeState,
 });
+maybeStartParryGateProbe({ api: window.__G43B5R281_LAB__, windowRef: window, documentRef: document }); // R19G.1 CI gate
