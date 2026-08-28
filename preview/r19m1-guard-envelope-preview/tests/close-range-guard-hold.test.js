@@ -11,7 +11,7 @@ import { ATTACK_ADVANCE_PROFILES } from '../src/combat/attack-advance.js';
 import { GUARD_TRACKING_TRAVEL_BUDGET_METERS } from '../src/combat/guard-tracking-envelope.js';
 
 test('R19O.1 inside the working floor the shield holds; at it, the chase runs', () => {
-  assert.equal(CLOSE_RANGE_GUARD_HOLD_STAGE, 'R19O.1');
+  assert.equal(CLOSE_RANGE_GUARD_HOLD_STAGE, 'R19R.1');
   // TOP from 1.4m arrives at the pushbox: hold. TOP from 2.0m arrives at 1.138m - the stance
   // R19M.1 measured the chase converting 12/12 - so it must keep chasing.
   const near = planCloseRangeGuardPosture({ direction: 'top', separationMeters: 1.4 });
@@ -20,19 +20,34 @@ test('R19O.1 inside the working floor the shield holds; at it, the chase runs', 
 
   const working = planCloseRangeGuardPosture({ direction: 'top', separationMeters: 2.0 });
   assert.equal(working.posture, 'chase');
-  assert.ok(working.predictedContactSeparationMeters >= CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS);
+  assert.ok(working.predictedContactSeparationMeters >= CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS.top);
+});
+
+test('R19R.1 RIGHT\'s knife-edge belongs to the clang, and the boundary cells around it stay put', () => {
+  // The 1.8m stance (contact 1.137m) was dissected before it moved: no static angle blocks it,
+  // the coin flip was frame jitter timing a rotating shield, and the clang answers it 8/8. The
+  // floor that hands it over is RIGHT's alone - TOP at 2.0m and LEFT at 1.6m sit centimetres
+  // from these boundaries on the chase side, and both are 8/8 under their measured turns.
+  assert.equal(planCloseRangeGuardPosture({ direction: 'right', separationMeters: 1.8 }).posture,
+    'hold-at-neutral');
+  assert.equal(planCloseRangeGuardPosture({ direction: 'top', separationMeters: 2.0 }).posture, 'chase');
+  assert.equal(planCloseRangeGuardPosture({ direction: 'left', separationMeters: 1.6 }).posture, 'chase');
+  assert.ok(CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS.right > CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS.top,
+    'only RIGHT surrenders extra ground to the hold');
 });
 
 test('R19O.1 the floor sits between the measured nothing and the measured 12/12', () => {
   // Chase converts no blocks below 1.1m of contact separation (0/6 at every nearer stance) and
-  // first converts them at 1.14m. A floor outside that window would either hold away real blocks
-  // or keep chasing where chasing was measured to do nothing.
-  assert.ok(CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS > 0.9);
-  assert.ok(CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS < 1.14);
-  // And each direction flips exactly where its own advance says it should.
+  // first converts them at 1.14m. TOP and LEFT keep the floor in that window; RIGHT's sits above
+  // it because its 1.14m cell was measured to belong to the clang, not the chase.
+  for (const direction of ['top', 'right', 'left']) {
+    assert.ok(CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS[direction] > 0.9, direction);
+    assert.ok(CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS[direction] <= 1.2, direction);
+  }
+  // And each direction flips exactly where its own advance and its own floor say it should.
   for (const direction of ['top', 'right', 'left']) {
     const advance = ATTACK_ADVANCE_PROFILES[direction].metersByContact;
-    const boundary = CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS + advance;
+    const boundary = CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS[direction] + advance;
     assert.equal(planCloseRangeGuardPosture({ direction, separationMeters: boundary - 0.01 }).posture,
       'hold-at-neutral', `${direction} just inside its boundary`);
     assert.equal(planCloseRangeGuardPosture({ direction, separationMeters: boundary + 0.01 }).posture,

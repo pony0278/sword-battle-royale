@@ -2,7 +2,7 @@ import { ATTACK_ADVANCE_PROFILES } from './attack-advance.js';
 import { MINIMUM_ENGAGEMENT_SEPARATION_METERS } from './lane-locomotion.js';
 import { effectiveSeparationAtContact } from './engagement-spacing.js';
 
-export const CLOSE_RANGE_GUARD_HOLD_STAGE = 'R19O.1';
+export const CLOSE_RANGE_GUARD_HOLD_STAGE = 'R19R.1';
 
 // R19O.1: at close range the guard stops chasing and holds its shield in front.
 //
@@ -20,10 +20,27 @@ export const CLOSE_RANGE_GUARD_HOLD_STAGE = 'R19O.1';
 // the separation at commitment minus the direction's authored advance, floored at the pushbox.
 // Below the floor the guard holds - coverage is never committed, the latch stays quiet, the arm
 // stays home where the hilt path is - and at or above it the chase runs exactly as R19M.1 tuned
-// it. The floor is the boundary R19M.1 measured: the chase first converts a landing swing into a
-// block at 1.14m of contact separation (12/12), and below 1.1m it converts nothing (0/6 at every
-// nearer stance). Holding costs those stances no blocks, because there were none to cost.
-export const CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS = 1.1;
+// it. The base floor is the boundary R19M.1 measured: the chase first converts a landing swing
+// into a block at 1.14m of contact separation (12/12), and below 1.1m it converts nothing (0/6
+// at every nearer stance). Holding costs those stances no blocks, because there were none to
+// cost.
+//
+// R19R.1 made the floor per-direction, for RIGHT's knife-edge (the 1.8m stance, contact at
+// 1.137m - three centimetres into chase territory). That cell was dissected before it was moved:
+// no static body angle blocks it (0/15/20/25 degrees scored 0-2 in 6; the shipped 40 pooled
+// 14/24), because what connects there is a shield still in rotational MOTION when the arc
+// arrives - and that timing belonged to frame jitter, not to design. Slowing the turn so the
+// sweep crosses the window deliberately (120-200 deg/s) stayed a coin flip; the phase is jitter
+// all the way down. Raising RIGHT's floor to 1.2 hands the cell to the clang instead: 8/8, no
+// body hits, deterministic. The other floors do not move, and must not move casually - TOP at
+// 2.0m (contact 1.138m) and LEFT at 1.6m (contact 1.15m) sit centimetres from these boundaries
+// and both are 8/8 under their measured turns; a global raise would trade that certainty for
+// unmeasured clang corridors.
+export const CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS = Object.freeze({
+  top: 1.1,
+  right: 1.2,
+  left: 1.1,
+});
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -49,14 +66,18 @@ export function planCloseRangeGuardPosture(input = {}) {
     MINIMUM_ENGAGEMENT_SEPARATION_METERS,
     effectiveSeparationAtContact(separationMeters, advance),
   );
-  const hold = predictedContactSeparationMeters < CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS;
+  const contactFloorMeters = finite(
+    CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS[direction],
+    Math.min(...Object.values(CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS)),
+  );
+  const hold = predictedContactSeparationMeters < contactFloorMeters;
   return Object.freeze({
     stage: CLOSE_RANGE_GUARD_HOLD_STAGE,
     direction,
     posture: hold ? 'hold-at-neutral' : 'chase',
     separationMeters,
     predictedContactSeparationMeters,
-    contactFloorMeters: CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS,
+    contactFloorMeters,
     reason: hold
       ? 'blade-arrives-behind-the-shield-plane-so-the-shield-stays-in-front'
       : 'chase-converts-blocks-at-this-range',
