@@ -1,7 +1,7 @@
 import { PARRY_ROOT_DISPLACEMENT_PROFILES, BLOCK_ROOT_DISPLACEMENT_PROFILES } from './parry-root-displacement.js';
 import { MINIMUM_ENGAGEMENT_SEPARATION_METERS } from './lane-locomotion.js';
 
-export const ENGAGEMENT_GROUND_STAGE = 'R18Z.1';
+export const ENGAGEMENT_GROUND_STAGE = 'R19S.1';
 
 // R18Z.1: who is standing where, after everything that has happened to them.
 //
@@ -17,6 +17,15 @@ export const ENGAGEMENT_GROUND_STAGE = 'R18Z.1';
 //
 // The lane runs along +z. The attacker starts on the negative side facing the defender, so a
 // positive attacker offset is ground gained and a positive defender offset is ground given up.
+//
+// R19S.1 (stage B1): the ledger now also SAYS where everybody is, as world positions and facing
+// bearings derived from the same scalars - attacker at -start/2 plus ground gained, defender at
+// +start/2 plus ground given, both on x = 0, each facing the other. Nothing about the arithmetic
+// changed and nothing may: the scalars stay the authority the whole calibration record was
+// measured against, the derived fields are how the scene now learns where to put a fighter, and
+// the B1 golden replay holds every number to zero tolerance. What this buys is one seam: when
+// stage B2 gives movement a lateral verb, position and bearing already have an owner, and the
+// bearing-zero case - x at zero, facings at 0 and pi - is exactly this file today.
 //
 // On the recoil peaks being kept in full rather than a fraction of them: the peak is where the
 // blow actually put them, and the settle that follows is a fighter recovering their posture, not
@@ -71,6 +80,14 @@ export function createEngagementGround(options = {}) {
 
   function report() {
     const attackerMeters = attackerGroundMeters + attackerSwingMeters;
+    // Symmetric about the origin, matching the stance planner's geometry: the attacker's ground
+    // gained carries them toward +z, the defender's ground given carries them the same way.
+    const attackerPosition = Object.freeze({ x: 0, z: -startSeparationMeters / 2 + attackerMeters });
+    const defenderPosition = Object.freeze({ x: 0, z: startSeparationMeters / 2 + defenderGroundMeters });
+    const dx = defenderPosition.x - attackerPosition.x;
+    const dz = defenderPosition.z - attackerPosition.z;
+    // Bearing from each fighter to the other; at zero range the last honest answer is the lane's.
+    const facingDefined = Math.hypot(dx, dz) > 1e-9;
     return Object.freeze({
       stage: ENGAGEMENT_GROUND_STAGE,
       attackerMeters,
@@ -82,6 +99,10 @@ export function createEngagementGround(options = {}) {
       separationMeters: startSeparationMeters + defenderGroundMeters - attackerMeters,
       startSeparationMeters,
       minimumSeparationMeters,
+      attackerPosition,
+      defenderPosition,
+      attackerFacingRadians: facingDefined ? Math.atan2(dx, dz) : 0,
+      defenderFacingRadians: facingDefined ? Math.atan2(-dx, -dz) : Math.PI,
       authority: 'lane-position-ledger-no-contact-authority',
     });
   }
