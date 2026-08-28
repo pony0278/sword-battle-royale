@@ -1,6 +1,6 @@
 import { createAttackAdvanceRuntime } from '../../../src/combat/attack-advance.js';
 import { createGuardFacingTurnRuntime } from '../../../src/combat/guard-facing-turn.js';
-import { createBaseFacingRuntime } from '../../../src/combat/base-facing.js';
+import { createBaseFacingRuntime, wrapAngleRadians } from '../../../src/combat/base-facing.js';
 import { createEngagementGround } from '../../../src/combat/engagement-ground.js';
 import { createLaneLocomotionRuntime, planLateralStep } from '../../../src/combat/lane-locomotion.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../../../src/combat/lane-walk-cycle.js';
@@ -213,6 +213,15 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     // the old distance describe a fight that no longer exists. Held keys and the gait's phase
     // survive - only the ground is forgotten.
     get defenderFacingYawRadians() { return guardFacingTurn.yawRadians; },
+    // R19Z.1: how far the defender's body still deviates from square to the attacker - the
+    // integrated base facing against the ledger's instantaneous bearing. Same sign convention
+    // the cone was measured in (base facing and probe yaw add in the same rotation space, so
+    // positive rotates the shield side toward the attacker), and the R19Q guard turn is
+    // excluded because the sweep measured the cone with that turn running on top of exactly
+    // this error. On the line the bearing never moves and this reads zero.
+    get defenderFacingErrorRadians() {
+      return wrapAngleRadians(defenderBaseFacing.facingRadians - ground.report.defenderFacingRadians);
+    },
     resetLane() {
       defenderLateralIntent = 0;
       guardFacingTurn.reset();

@@ -10,6 +10,7 @@ import { createGuardCoverageDirector } from '../../../src/combat/guard-coverage-
 import { assessSwingThreatRelevance } from '../../../src/combat/swing-threat-relevance.js';
 import { planCloseRangeGuardPosture } from '../../../src/combat/close-range-guard-hold.js';
 import { planGuardFacingTurn } from '../../../src/combat/guard-facing-turn.js';
+import { planGuardConeGate } from '../../../src/combat/guard-cone-gate.js';
 import { createParryInterceptDirector } from '../../../src/combat/parry-intercept-director.js';
 
 const TOP_DIRECTION_PROBE_ARM_BONES = Object.freeze(['upperarm.l', 'lowerarm.l']);
@@ -98,8 +99,9 @@ export function createShieldParryPreContactController({
   function zeroBracePlan() { return planArticulatedImpactBracing({ mode: 'off' }); }
 
   let closeRangePosture = null;
+  let coneGate = null;
   function updateBlockPreContact(snapshot, currentBlade, deltaSeconds, context) {
-    const { previousBlade, defenderSword, separationMeters } = context;
+    const { previousBlade, defenderSword, separationMeters, defenderFacingErrorRadians } = context;
     // R19N.1: a swing that cannot reach the defender is nobody's problem. The gate sits on
     // commitment rather than inside the director so that an irrelevant attack is simply never
     // committed to: the latch stays quiet, the anchors never apply, and the arm eases home at its
@@ -116,15 +118,33 @@ export function createShieldParryPreContactController({
       });
     }
     exchangeState.latestCloseRangePosture = closeRangePosture.plan;
+    // R19Z.1: and a swing committed to from outside the measured cone meets no committed
+    // response at all. Decided once per exchange like the posture - the error at commitment is
+    // the angle the sweep was measured at, and a mid-swing flip would re-arm coverage against
+    // an attack the gate already stood down from.
+    if (coneGate?.sequence !== snapshot.sequence) {
+      coneGate = Object.freeze({
+        sequence: snapshot.sequence,
+        plan: planGuardConeGate({
+          direction: snapshot.direction,
+          facingErrorRadians: defenderFacingErrorRadians,
+        }),
+      });
+    }
+    exchangeState.latestConeGate = coneGate.plan;
     const baselineSurface = buckler.getWorldParrySurface();
     const engaged = snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
       && relevance.relevant
+      && coneGate.plan.engaged
       && closeRangePosture.plan.posture !== 'hold-at-neutral';
     // R19Q.1: a fresh plan object every frame is the liveness signal the facing integrator keys
-    // on, so this write doubles as "the exchange is still running" - do not cache it.
+    // on, so this write doubles as "the exchange is still running" - do not cache it. The cone
+    // gate stands the turn down too: the sweep measured turn and coverage running together, and
+    // a turn without its coverage is a configuration nobody measured.
     exchangeState.latestGuardFacingPlan = planGuardFacingTurn({
       direction: snapshot.direction,
-      engaged: snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED && relevance.relevant,
+      engaged: snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
+        && relevance.relevant && coneGate.plan.engaged,
       posture: closeRangePosture.plan.posture,
     });
     const bracePlan = previousBlade && engaged
