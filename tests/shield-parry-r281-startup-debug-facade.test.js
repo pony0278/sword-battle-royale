@@ -116,7 +116,7 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
     'forceOldTwoActorB3', 'directOldB3Diagnostic', 'latestPredictiveReport', 'latestShieldLeadMotion',
     'latestLeadHandoff', 'latestCombatResult', 'latestParryInput', 'latestParryOpportunity', 'latestContact', 'latestBodyHit',
     'latestParryConfirmation', 'step3AContactTransfer', 'latestGripConstraintReport',
-    'latestFinePlan', 'latestFineTracking', 'latestGuardCoverage', 'latestSwingRelevance', 'latestGuardResidual', 'latestGuardStanceReach', 'latestParryWhiff',
+    'latestFinePlan', 'latestFineTracking', 'latestGuardCoverage', 'latestSwingRelevance', 'latestCloseRangePosture', 'latestGuardResidual', 'latestGuardStanceReach', 'latestParryWhiff',
     'latestInterceptDriveReport', 'latestVisualOwnershipBaseline', 'visualOwnershipTrace',
     'latestInputSignal', 'latestEngagementGround', 'latestRootDisplacement', 'latestAttackerRootDisplacement',
     'latestDefenderRootDisplacement', 'latestArmFling', 'latestArmFlingReport',
