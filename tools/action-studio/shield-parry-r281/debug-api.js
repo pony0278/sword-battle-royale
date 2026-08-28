@@ -37,6 +37,7 @@ export function createShieldParryDebugApi({
     get laneDefenderGait() { return runtimes.laneController?.defenderGait ?? null; },
     get laneAttackerWalkSample() { return runtimes.laneController?.attackerWalkSample ?? null; },
     get engagementStance() { return runtimes.labScene?.engagementStance ?? null; },
+    setDefenderYawOffset: (radians) => runtimes.labScene?.setDefenderYawOffset?.(radians) ?? null, // R19Q.1 facing seam (tests drive it directly)
     triggerParryNow: actions.triggerParryNow,
     dispatchParryInput: actions.dispatchParryInput,
     forceOldTwoActorB3: actions.forceOldTwoActorB3,
@@ -58,6 +59,8 @@ export function createShieldParryDebugApi({
     get latestSwingRelevance() { return getExchangeState().latestSwingRelevance; },
     get latestCloseRangePosture() { return getExchangeState().latestCloseRangePosture; },
     get latestHiltClang() { return getExchangeState().latestHiltClang; },
+    get latestGuardFacingPlan() { return getExchangeState().latestGuardFacingPlan; },
+    get defenderFacingYawRadians() { return runtimes.laneController?.defenderFacingYawRadians ?? 0; },
     get latestGuardResidual() { return getExchangeState().latestGuardResidual; },
     get latestGuardStanceReach() { return getExchangeState().latestGuardStanceReach; },
     get latestParryWhiff() { return getExchangeState().latestParryWhiff; },

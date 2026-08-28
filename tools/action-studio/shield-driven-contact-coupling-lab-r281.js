@@ -541,7 +541,7 @@ function frame(timestamp) {
   const deltaSeconds = Math.max(1e-5, deltaMs / 1000);
   lastTimestamp = timestamp;
   freeCamera.update(rawDeltaMs / 1000);
-  laneController.walk(rawDeltaMs / 1000); // real seconds, not the review-scaled clock
+  laneController.walk(rawDeltaMs / 1000, exchangeState.latestGuardFacingPlan); // real seconds; R19Q.1 facing plan rides along
   if (ready) {
     const snapshot = attackRuntime.update(deltaMs);
 

@@ -1,4 +1,5 @@
 import { createAttackAdvanceRuntime } from '../../../src/combat/attack-advance.js';
+import { createGuardFacingTurnRuntime } from '../../../src/combat/guard-facing-turn.js';
 import { createEngagementGround } from '../../../src/combat/engagement-ground.js';
 import { createLaneLocomotionRuntime } from '../../../src/combat/lane-locomotion.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../../../src/combat/lane-walk-cycle.js';
@@ -17,6 +18,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   // Durations arrive after the assets load, so the clips are described here and measured later.
   let walkDurations = { forward: 1, backward: 1 };
   const advance = createAttackAdvanceRuntime();
+  const guardFacingTurn = createGuardFacingTurnRuntime();
   const defenderFeet = createLaneLocomotionRuntime();
   const attackerFeet = createLaneLocomotionRuntime();
   // R19C.2: the attacker's gait, driven by the distance the ledger actually moved them rather than
@@ -86,7 +88,11 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     // Both are stepped against the live gap, so the clamp that stops them walking through each
     // other is checked against where they actually are this frame rather than where they started,
     // and the second one to move sees the ground the first just took.
-    walk(deltaSeconds) {
+    walk(deltaSeconds, guardFacingPlan) {
+      // R19Q.1: body orientation is locomotion state, so the facing integrator lives here. Guard
+      // logic writes a fresh plan each frame it runs; the runtime treats a repeated plan object as
+      // "the exchange is over" and stands the body back down, so nobody has to remember to stop.
+      labScene.setDefenderYawOffset(guardFacingTurn.update(guardFacingPlan, deltaSeconds));
       const defenderStep = defenderFeet.update({ deltaSeconds, separationMeters: ground.separationMeters });
       if (defenderStep.meters !== 0) ground.moveDefender(defenderStep.meters);
       // R19B.1: the attacker's feet stop while a swing is still travelling. The step into the blow
@@ -171,7 +177,10 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     // the player's opening position, and a runtime stance change, after which offsets earned at
     // the old distance describe a fight that no longer exists. Held keys and the gait's phase
     // survive - only the ground is forgotten.
+    get defenderFacingYawRadians() { return guardFacingTurn.yawRadians; },
     resetLane() {
+      guardFacingTurn.reset();
+      labScene.setDefenderYawOffset(0);
       swingLive = false;
       exchangeSettled = false;
       advance.reset();
