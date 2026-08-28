@@ -66,6 +66,7 @@ export function createShieldParryLabScene({
   // than accumulated, so a repeated frame cannot make anyone creep down the lane.
   let attackerAdvanceMeters = 0;
   let defenderAdvanceMeters = 0;
+  let defenderYawOffsetRadians = 0; // R19Q.1: the facing turn, applied with every stamp so a lane write cannot erase it
   function applyEngagementStance(stance) {
     engagementStance = stance;
     attacker.object3d.position.set(
@@ -81,7 +82,7 @@ export function createShieldParryLabScene({
       // The defender is on the far side of the lane, so ground given up is also +z.
       stance.defender.position.z + defenderAdvanceMeters,
     );
-    defender.object3d.rotation.y = stance.defender.facingRadians;
+    defender.object3d.rotation.y = stance.defender.facingRadians + defenderYawOffsetRadians;
     attacker.object3d.updateMatrixWorld(true);
     defender.object3d.updateMatrixWorld(true);
     return stance;
@@ -91,6 +92,10 @@ export function createShieldParryLabScene({
   // callers are expected to do it between exchanges.
   function setEngagementSeparation(meters) {
     return applyEngagementStance(planEngagementStance(meters));
+  }
+  function setDefenderYawOffset(radians) {
+    defenderYawOffsetRadians = Number.isFinite(Number(radians)) ? Number(radians) : 0;
+    return applyEngagementStance(engagementStance);
   }
   function setLanePositions({ attackerMeters, defenderMeters } = {}) {
     const attacker = Number(attackerMeters);
@@ -130,6 +135,7 @@ export function createShieldParryLabScene({
   }
 
   return Object.freeze({
+    setDefenderYawOffset,
     canvas,
     renderer,
     scene,

@@ -27,6 +27,7 @@ const EXPECTED_EXCHANGE_KEYS = [
   'latestSwingRelevance',
   'latestCloseRangePosture',
   'latestHiltClang',
+  'latestGuardFacingPlan',
   'latestGuardResidual',
   'latestGuardStanceReach',
   'latestFineTracking',
