@@ -35,8 +35,14 @@ async function driveOneParry({ api, windowRef, direction }) {
   const settleUntil = windowRef.performance.now() + QUIESCENT_SETTLE_MS;
   while (windowRef.performance.now() < settleUntil) await nextFrame(windowRef);
   api.resetLane?.();
+  // Choosing the mode is also what raises the guard now (R19I.1), so the gate exercises the same
+  // path a person takes rather than assuming a defender who is already holding one.
   api.setMode('parry');
-  if (!api.restartAttack(direction)) return { direction, outcome: 'attack-not-started' };
+  // Readiness is asked for rather than inferred: restartAttack refuses until the assets are in,
+  // so retrying it IS the wait. R19I.1 removed the boot demo attack this used to watch for, and
+  // an unconditional single attempt would simply have raced it.
+  const started = await waitFor(windowRef, () => api.restartAttack(direction), EXCHANGE_TIMEOUT_MS);
+  if (!started) return { direction, outcome: 'attack-not-started' };
 
   let triggered = false;
   let outcome = null;
@@ -94,12 +100,6 @@ export function maybeStartParryGateProbe({ api, windowRef, documentRef }) {
   (async () => {
     const startedAt = windowRef.performance.now();
     root.dataset.parryGateT0 = String(Math.round(startedAt));
-    await waitFor(
-      windowRef,
-      () => api.attackRuntime.active || api.combat.active,
-      GATE_TIMEOUT_MS,
-    );
-    root.dataset.parryGateBootSeenAt = String(Math.round(windowRef.performance.now()));
     const exchanges = [];
     for (const direction of PARRY_GATE_DIRECTIONS) {
       if (windowRef.performance.now() - startedAt > GATE_TIMEOUT_MS) break;

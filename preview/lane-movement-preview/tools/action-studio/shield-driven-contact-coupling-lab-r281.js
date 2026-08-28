@@ -82,6 +82,7 @@ import { createShieldParryInspectionOverlay } from './shield-parry-r281/inspecti
 import { createAttackerPresentationAdapter } from './shield-parry-r281/attacker-presentation.js';
 import { createDirectOldB3DiagnosticController } from './shield-parry-r281/direct-old-b3-diagnostic.js';
 import { ATTACKER_WALK_CLIPS, bootstrapShieldParryLabAssets } from './shield-parry-r281/lab-bootstrap.js';
+import { createNeutralStanceController } from './shield-parry-r281/neutral-stance.js';
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
@@ -120,6 +121,9 @@ const parryGate = createCommittedParryContactGate();
 const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
   labScene, walkClips: ATTACKER_WALK_CLIPS, services: { captureRigPose, applyRigPose } });
 const exchangeState = createShieldParryExchangeState();
+const neutralStance = createNeutralStanceController({
+  defender, camera, readGuardState: () => guardMachine.state,
+});
 
 const attackerPresentation = createAttackerPresentationAdapter({
   THREE,
@@ -173,13 +177,12 @@ const labUi = createShieldParryLabUi(uiElements);
 
 let ready = false;
 let selectedDirection = 'right';
-let selectedMode = 'parry';
+let selectedMode = null; // R19I.1: chosen, never assumed
 let lastTimestamp = performance.now();
 let attackerIdleDuration = 1;
 let attackerIdleClockSeconds = 0;
 let attackerRecovery = null;
 let repeatCooldownMs = 0;
-let bootExchangePending = false; // R19D.1: the boot demo must not spend the player's opening ground
 let previousBlade = null;
 let hudClockMs = HUD_INTERVAL_MS;
 let reportClockMs = REPORT_INTERVAL_MS;
@@ -420,7 +423,7 @@ function forceOldTwoActorB3(direction = selectedDirection) {
 }
 function startAttack(direction = selectedDirection) {
   if (!ready || combat.active || attackRuntime.active || attackerRecovery) return false;
-  if (guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
+  if (selectedMode && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
   selectedDirection = direction;
   resetExchange();
   previousBlade = captureBladePolyline();
@@ -441,7 +444,7 @@ function restartAttack(direction = selectedDirection) {
   }
   combat.reset();
   attackerRecovery = null;
-  enterGuard();
+  if (selectedMode) enterGuard();
   const started = startAttack(direction);
   if (started) {
     hudInput.textContent = 'NEW ATTACK · input available · wait for PARRY NOW prompt';
@@ -452,6 +455,8 @@ function restartAttack(direction = selectedDirection) {
 function setMode(mode) {
   if (!['block', 'parry'].includes(mode)) return;
   selectedMode = mode;
+  // R19I.1: choosing a defence is what raises the guard - before that both fighters just stand.
+  if (guardMachine.state === GUARD_STATES.NEUTRAL) enterGuard();
   if (mode !== 'parry') {
     exchangeState.parryPromptHold = null;
     residualBodyReachRuntime.reset();
@@ -490,15 +495,13 @@ async function main() {
   });
   attackerIdleDuration = bootstrap.attackerIdleDuration;
   laneController.setWalkDurations({ forward: bootstrap.walkForwardDuration, backward: bootstrap.walkBackwardDuration });
+  neutralStance.setIdleDuration(bootstrap.defenderIdleDuration);
   defenderSword = bootstrap.defenderSword;
-  enterGuard();
   exchangeState.previousShieldLeadSurface = cloneSurface(buckler.getWorldParrySurface());
   ready = true;
-  status.textContent = `${LAB_STAGE} READY · start an attack, then press PARRY NOW after commitment and before contact`;
+  status.textContent = `${LAB_STAGE} READY · both fighters idle · choose BLOCK or PARRY, then an attack direction`;
   status.className = 'good';
   buildReport();
-  startAttack('right');
-  bootExchangePending = true;
 }
 
 bindShieldParryLabUiEvents({
@@ -573,6 +576,7 @@ function frame(timestamp) {
 
     laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active);
     guardRuntime.update(deltaMs, camera);
+    neutralStance.sample(deltaMs); // R19I.1: no-op unless the guard is neutral
     laneController.overlayDefenderWalkLegs();
     contactHandoffController.updateDefenderDeflectReleaseGate();
     contactHandoffController.updateLiveConstraintAfterGuard({
@@ -595,11 +599,6 @@ function frame(timestamp) {
     if (hudClockMs >= HUD_INTERVAL_MS) { hudClockMs %= HUD_INTERVAL_MS; updateHud(snapshot, combatSnapshot); }
     if (reportClockMs >= REPORT_INTERVAL_MS) { reportClockMs %= REPORT_INTERVAL_MS; buildReport(combatSnapshot); }
 
-    // The startup attack is a demo; once it finishes, hand the player the calibrated stance.
-    if (bootExchangePending && !combat.active && !attackRuntime.active && !attackerRecovery) {
-      bootExchangePending = false;
-      laneController.resetLane();
-    }
     if (!combat.active && !attackRuntime.active && !attackerRecovery && guardMachine.state === GUARD_STATES.HOLD && autoRepeat.checked) {
       repeatCooldownMs += deltaMs;
       if (repeatCooldownMs >= 700) startAttack(selectedDirection);

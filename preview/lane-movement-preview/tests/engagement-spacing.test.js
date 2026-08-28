@@ -79,10 +79,13 @@ test('R19D.1 the lab returns to the calibrated stance after boot and after a sta
   );
   // The ground ledger persists between exchanges by design, which broke two things silently: the
   // boot demo attack banked ~0.5m before the player touched anything, and a runtime stance change
-  // moved the scene while the ledger kept its old base. Both now reset the lane, and this lock is
-  // the invariant nothing else guards -- the unit suite cannot see composed browser state.
-  assert.match(entry, /bootExchangePending = true;/);
-  assert.match(entry, /if \(bootExchangePending && !combat\.active && !attackRuntime\.active && !attackerRecovery\)/);
+  // moved the scene while the ledger kept its old base. This lock is the invariant nothing else
+  // guards -- the unit suite cannot see composed browser state.
+  //
+  // R19I.1 settled the first half by deletion rather than by compensation: there is no boot demo
+  // attack any more, so nothing can spend the player's opening ground before they touch anything.
+  // Restoring one would need this assertion changed, which is the point of keeping it.
+  assert.doesNotMatch(entry, /startAttack\('right'\);/, 'the lab must not open by attacking on its own');
   const stanceChange = entry.indexOf('labScene.setEngagementSeparation(meters)');
   const laneReset = entry.indexOf('laneController.resetLane()', stanceChange);
   assert.notEqual(stanceChange, -1);
