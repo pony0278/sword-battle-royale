@@ -286,6 +286,12 @@ export function createShieldParryLabUi(elements) {
 // owns WASD, and a key that both flies the camera and walks a fighter is a key that does neither
 // legibly.
 const LANE_KEYS = Object.freeze({ ArrowUp: -1, ArrowDown: 1 });
+// R19V.1: the sidestep keys. Left/right arrows rather than A/D, because WASD already belongs to
+// the free camera and stealing half of it would leave both crippled. Body-relative - ArrowLeft
+// steps to the defender's own left, ArrowRight their right - and defender-only: Shift hands the
+// arrows to the attacker, but the attacker has no lateral verb yet, so held Shift zeroes the
+// sidestep rather than redirecting it.
+const LATERAL_KEYS = Object.freeze({ ArrowLeft: -1, ArrowRight: 1 });
 
 function laneIntentFrom(held) {
   let intent = 0;
@@ -305,6 +311,13 @@ function laneIntentsFor(held, attackerModifier) {
     : { defender: intent, attacker: 0 };
 }
 
+function lateralIntentFrom(held, attackerModifier) {
+  if (attackerModifier) return 0;
+  let intent = 0;
+  for (const code of held) intent += LATERAL_KEYS[code] || 0;
+  return Math.sign(intent);
+}
+
 function isParryKey(event) {
   return event?.code === 'KeyF'
     || String(event?.key || '').toLowerCase() === 'f'
@@ -321,10 +334,12 @@ export function bindShieldParryLabUiEvents({
   let parryKeyDownObserved = false;
   const heldLaneKeys = new Set();
   let attackerModifierHeld = false;
+  const heldLateralKeys = new Set();
   function publishLaneIntent() {
     const intents = laneIntentsFor(heldLaneKeys, attackerModifierHeld);
     handlers.onDefenderIntent?.(intents.defender);
     handlers.onAttackerIntent?.(intents.attacker);
+    handlers.onDefenderLateralIntent?.(lateralIntentFrom(heldLateralKeys, attackerModifierHeld));
   }
   documentRef.querySelectorAll('[data-attack]').forEach((button) =>
     button.addEventListener('click', () => handlers.onAttack(button.dataset.attack)));
@@ -350,6 +365,11 @@ export function bindShieldParryLabUiEvents({
       if (!event.repeat) { heldLaneKeys.add(event.code); publishLaneIntent(); }
       return;
     }
+    if (LATERAL_KEYS[event.code] !== undefined) {
+      event.preventDefault();
+      if (!event.repeat) { heldLateralKeys.add(event.code); publishLaneIntent(); }
+      return;
+    }
     if (!isParryKey(event) || event.repeat) return;
     parryKeyDownObserved = true;
     event.preventDefault();
@@ -364,6 +384,12 @@ export function bindShieldParryLabUiEvents({
     if (LANE_KEYS[event.code] !== undefined) {
       event.preventDefault();
       heldLaneKeys.delete(event.code);
+      publishLaneIntent();
+      return;
+    }
+    if (LATERAL_KEYS[event.code] !== undefined) {
+      event.preventDefault();
+      heldLateralKeys.delete(event.code);
       publishLaneIntent();
       return;
     }
