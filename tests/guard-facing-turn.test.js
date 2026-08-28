@@ -11,15 +11,19 @@ import {
   createGuardFacingTurnRuntime,
 } from '../src/combat/guard-facing-turn.js';
 
-test('R19Q.1 only an engaged chase against RIGHT turns the body', () => {
+test('R19Q.1 only an engaged chase turns the body, each direction toward its own arc', () => {
   assert.equal(GUARD_FACING_TURN_STAGE, 'R19Q.1');
   const turn = planGuardFacingTurn({ direction: 'right', engaged: true, posture: 'chase' });
   assert.equal(turn.targetRadians, MEASURED_GUARD_FACING_TURN_RADIANS.right);
   assert.ok(turn.targetRadians > 0);
 
-  // TOP and LEFT defend square until a measurement says otherwise.
-  assert.equal(planGuardFacingTurn({ direction: 'top', engaged: true, posture: 'chase' }).targetRadians, 0);
-  assert.equal(planGuardFacingTurn({ direction: 'left', engaged: true, posture: 'chase' }).targetRadians, 0);
+  // R19Q.2: the arcs arrive on opposite sides, so the signs differ per direction - RIGHT and TOP
+  // turn one way, LEFT the other. The magnitudes are each direction's measured crossing: the
+  // wrong sign on TOP was measured handing every swing to the body, not merely doing nothing.
+  assert.ok(MEASURED_GUARD_FACING_TURN_RADIANS.top > 0);
+  assert.ok(MEASURED_GUARD_FACING_TURN_RADIANS.left < 0);
+  assert.ok(MEASURED_GUARD_FACING_TURN_RADIANS.top < MEASURED_GUARD_FACING_TURN_RADIANS.right,
+    'TOP stays closest to square: both its angles saturate, and the cliff is on the other sign');
   // The clang corridors were measured against an unturned body, so hold posture never turns.
   const hold = planGuardFacingTurn({ direction: 'right', engaged: true, posture: 'hold-at-neutral' });
   assert.equal(hold.targetRadians, 0);
