@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>G3.6.4 Living Guard Idle A/B/C</title>
+  <style>
+    :root{color-scheme:dark}*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#07101a;color:#e8f0fb;font:14px/1.45 Inter,system-ui,sans-serif}body{padding:18px}main{max-width:1560px;margin:auto}.head{display:flex;gap:18px;justify-content:space-between;align-items:flex-start;margin-bottom:12px}.eyebrow{margin:0;color:#74d8ff;font:700 11px/1.2 ui-monospace,monospace;letter-spacing:.14em}.head h1{margin:4px 0 6px;font-size:24px}.note{margin:0;max-width:1040px;color:#9fb2c9}.good{color:#7ef0ad}.bad{color:#ff8c8c}.stage{position:relative;border:1px solid #26364e;border-radius:12px;overflow:hidden;background:#09111d;height:610px}.stage canvas{display:block;width:100%;height:100%;cursor:grab}.stage canvas:active{cursor:grabbing}.legend{position:absolute;left:14px;top:14px;padding:10px 12px;border-radius:8px;background:#07101acc;border:1px solid #2b3d57;font:12px/1.45 ui-monospace,monospace;color:#b7c8dd}.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}.controls button{border:1px solid #31435e;background:#101b2a;color:#e8f0fb;padding:8px 11px;border-radius:7px;cursor:pointer}.controls button.primary{background:#123a52;border-color:#2e8cb8}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.card{border:1px solid #26364e;background:#0b1522;border-radius:10px;padding:12px}.card b{display:block;font-size:16px;margin-bottom:2px}.card small{display:block;color:#7fdcff;margin-bottom:8px}.card.recommended{border-color:#3a7d67;background:#0b1919}.card.recommended small{color:#8cf3c7}.row{font:12px/1.55 ui-monospace,monospace;color:#bdcbe0}.row strong{color:#fff;font-weight:600}.why{margin-top:12px;border:1px solid #315047;background:#0b1717;border-radius:10px;padding:12px}.why b{color:#8cf3c7}.report{margin-top:12px}pre{white-space:pre-wrap;max-height:420px;overflow:auto;background:#07101a;border:1px solid #26364e;border-radius:10px;padding:12px;font:11px/1.45 ui-monospace,monospace;color:#aebfd4}.foot{margin-top:8px;color:#8195ad;font-size:12px}@media(max-width:900px){.cards{grid-template-columns:1fr}.stage{height:500px}.head{display:block}}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+  <main>
+    <div class="head">
+      <div>
+        <p class="eyebrow">G3.6.4 · LIVING GUARD IDLE</p>
+        <h1>Stable vs Skyrim Full Source vs Living Triangle</h1>
+        <p class="note">A 是現在 G3.6.3 完全穩定的 Guard。B 保留完整 40 秒 Skyrim <b>shd_blockidle</b> 作為 source reference，因此會包含較大的 authored fidget。C 不直接循環整段，而是使用掃描出的 <b>29→31s gentle window</b>，只把其小幅局部旋轉差值疊回現在的 Triangle Guard 輪廓。此頁只做 Probe，production 尚未改動。</p>
+      </div>
+      <div id="status">Loading…</div>
+    </div>
+
+    <section class="stage">
+      <canvas id="canvas"></canvas>
+      <div class="legend">A · Stable G3.6.3<br>B · Skyrim Full 40s Reference<br>C · Living Triangle · 29→31s gentle loop<br><br>CAMERA · Left drag orbit · Wheel zoom · Right drag pan</div>
+    </section>
+
+    <div class="controls">
+      <button id="play" class="primary">❚❚ Pause</button>
+      <button id="reset">Reset Motion</button>
+      <button id="resetCamera">Reset Camera</button>
+      <button data-view="three">Three-quarter</button>
+      <button data-view="front">Front</button>
+      <button data-view="side">Side</button>
+      <button data-view="back">Back</button>
+    </div>
+
+    <section class="cards">
+      <article class="card" data-candidate="stable-g363">
+        <b>A — Stable G3.6.3</b><small>current production reference · canonical 50% pose</small>
+        <div class="row"><strong>Source</strong> · <span data-role="source">—</span></div>
+        <div class="row"><strong>Chest</strong> · <span data-role="chest">—</span></div>
+        <div class="row"><strong>Weapon arm</strong> · <span data-role="arm">—</span></div>
+        <div class="row"><strong>Sword</strong> · <span data-role="sword">—</span></div>
+      </article>
+      <article class="card" data-candidate="skyrim-live">
+        <b>B — Skyrim Full Source</b><small>full 40s corrected reference · contains larger authored fidgets</small>
+        <div class="row"><strong>Source</strong> · <span data-role="source">—</span></div>
+        <div class="row"><strong>Chest</strong> · <span data-role="chest">—</span></div>
+        <div class="row"><strong>Weapon arm</strong> · <span data-role="arm">—</span></div>
+        <div class="row"><strong>Sword</strong> · <span data-role="sword">—</span></div>
+      </article>
+      <article class="card recommended" data-candidate="living-triangle">
+        <b>C — Living Triangle</b><small>current silhouette + restrained raw Skyrim delta · gentle 29→31s loop</small>
+        <div class="row"><strong>Source</strong> · <span data-role="source">—</span></div>
+        <div class="row"><strong>Chest</strong> · <span data-role="chest">—</span></div>
+        <div class="row"><strong>Weapon arm</strong> · <span data-role="arm">—</span></div>
+        <div class="row"><strong>Sword</strong> · <span data-role="sword">—</span></div>
+      </article>
+    </section>
+
+    <section class="why">
+      <b>G3.6.4 acceptance target</b>
+      <div>C 要保留 A 的 root / hips 與防守輪廓，但胸腔、肩膀、持劍手與劍尖持續有小幅 source-authored motion；連續跑至少三個 29→31s loop 時不能出現明顯接縫或 snap。B 只作為完整 Skyrim reference，不是 production candidate。</div>
+    </section>
+
+    <details class="report">
+      <summary>Probe JSON report</summary>
+      <pre id="report">Not run.</pre>
+    </details>
+    <div class="foot">Probe-only. Production remains G3.6.3. Query presets: ?view=three|front|side|back.</div>
+  </main>
+  <script type="module" src="./living-guard-idle-lab.js"></script>
+</body>
+</html>

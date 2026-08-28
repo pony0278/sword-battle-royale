@@ -1,0 +1,37 @@
+{
+  "stage": "G2.3.1",
+  "purpose": "Real HKX Decode / First Source Bake",
+  "capturedFromUserSuppliedFiles": true,
+  "skeleton": {
+    "file": "skeleton.hkx",
+    "byteLength": 74048,
+    "sha256": "16a91abddbdcf4760e922a30f62ac5b1ee053e8ff904fc13470f7b5d52e5b04d",
+    "havokVersion": "hk_2010.2.0-r1",
+    "requiredClass": "hkaSkeleton",
+    "semanticBonesFound": 19,
+    "semanticBonesRequired": 19
+  },
+  "animation": {
+    "file": "shd_blockidle.hkx",
+    "byteLength": 25136,
+    "sha256": "52cfff4846a0f43fe4246e5e6afcb38b0c1ef54ca5e944dce6167404630e22f2",
+    "havokVersion": "hk_2010.2.0-r1",
+    "animationClass": "hkaSplineCompressedAnimation",
+    "bindingClass": "hkaAnimationBinding"
+  },
+  "pairValidation": {
+    "sameHavokGeneration": true,
+    "acceptedForRealBake": true
+  },
+  "output": {
+    "sourceGlb": "shd_blockidle.source.glb",
+    "canonicalClipId": "SKYRIM_GUARD/shd_blockidle",
+    "fps": 30,
+    "preserveSkyrimSourceHierarchy": true,
+    "retargetInBlender": false
+  },
+  "assetPolicy": {
+    "commitRawHkx": false,
+    "commitExperimentalSourceGlb": false
+  }
+}

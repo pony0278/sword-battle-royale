@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>G3.4 Guard Counter Runtime Lab</title>
+  <style>
+    html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}body{display:grid;grid-template-columns:minmax(0,1fr) 420px;overflow:hidden}main{position:relative;min-width:0}canvas{width:100%;height:100%;display:block}.hud{position:absolute;left:16px;top:16px;background:#07101acc;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.45 ui-monospace,monospace}.good{color:#7ef0ad}.bad{color:#ff8c8c}.warn{color:#ffd27a}aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:18px;margin:0 0 6px}h2{font-size:13px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:8px 10px;margin:3px;cursor:pointer}button:hover{background:#22314c}.row{display:flex;flex-wrap:wrap}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px}.note{color:#9eb0c8;font-size:12px}label{display:block;margin:10px 0}input[type=range]{width:100%}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <main>
+    <canvas id="canvas"></canvas>
+    <div class="hud"><b>G3.4 · Guard Counter Runtime</b><div id="hudState">Loading…</div><div id="hudDetail"></div></div>
+  </main>
+  <aside>
+    <h1>Authoritative Guard Counter</h1>
+    <div class="note">Skyrim Guard/Parry → authoritative COUNTER_CONFIRMED → KayKit Melee_Block_Attack → presentation COUNTER_COMPLETE → Skyrim Recover。Counter window 本身不會自動反擊。</div>
+    <h2>Source reaction</h2>
+    <div class="row">
+      <button data-variant="normal">Parry → Counter</button>
+      <button data-variant="perfect">Perfect Parry → Counter</button>
+    </div>
+    <label>Counter elapsed <span id="timeLabel">0 ms</span><input id="timeline" type="range" min="0" max="750" step="1" value="375"></label>
+    <h2>Views</h2>
+    <div class="row"><button data-view="front">Front</button><button data-view="three">3/4</button><button data-view="side">Side</button><button data-view="back">Back</button></div>
+    <h2>Verification</h2>
+    <div id="status" class="warn">Loading Skyrim Guard + KayKit melee…</div>
+    <pre id="report">Not run.</pre>
+  </aside>
+  <script type="module" src="./guard-counter-runtime-lab.js"></script>
+</body>
+</html>

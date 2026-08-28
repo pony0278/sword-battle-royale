@@ -1,0 +1,991 @@
+// punch-studio — parts:部位掛載系統:sockets.json→slot 定義、GLB 掛載(bundle/分檔)、部位面板、預設人偶自動載入
+// 古典 script(非 module):所有 ps/*.js 共享同一個全域作用域,載入順序由 punch-studio.html 決定(見 ps/README.md)。
+// ===== PUNCH STUDIO PART KIT LOADER (方案 B: GetAmped-like detached parts) =====
+// Load static GLB parts exported by export_ranger_parts_for_punch_studio.py and attach them to the existing pose nodes.
+const PART_CFG_STORAGE_KEY = 'PUNCH_STUDIO_PART_KIT_CFG_V3_SOCKETLOCAL_MOUNT';
+const PART_HIDE_STORAGE_KEY = 'PUNCH_STUDIO_PART_KIT_HIDE_DUMMY_V2_14PARTS_AXISFIX';
+// ===== 方案 B-1: sockets.json = 唯一真相,動態生成 PART_SLOT_DEFS =====
+// sockets.json 的 child_part 命名與 PS slot 命名一致(已驗證),L/R 翻轉已被 sockets.json
+// 內部吸收(socket .l 坐 .R 骨)。PS 只保留一張「邏輯 slot -> PS DIM rig 節點」適配表,
+// 其餘 roster(哪些 slot、seam class、load_bearing、相容規則)全部來自 sockets.json。
+// 部位的 socket->bone 由 PS 自己 rig 的 rest pose 自動滿足(零 config 即對位),
+// 不套用 sockets.json 的 skeleton-bone-local 旋轉(那是給 skeleton rig / assembler 用的)。
+
+// (1) 邏輯 slot/childPart -> PS DIM rig 節點存取器(唯一 PS-specific 適配層)
+// 頭戴裝備掛點(item-3b,2026-07-27 對齊遊戲):**avatar 在場時掛 avatar 頭骨**,帽子跟「畫面上真正的頭」走。
+// studio 目前把 avatar 縮到跟素體同高(avatar.js:S = standH/size.y,無放大係數)→ 素體頭 ≈ avatar 頭,
+// 掛哪邊看起來都對;但遊戲的 avatar 帶 AVATAR_SCALE 1.3,素體頭遠在 avatar 頭下方(病 3,已在 item-3b 修)。
+// studio 先把掛點對齊,之後若也要放大 avatar 預覽就不會再踩一次。
+// **關鍵:中間插一層補償 group**,變換 = headBone.matrixWorld⁻¹ × headPivot.matrixWorld
+// → group 內的局部空間與舊的 headPivot 空間**完全等價**:使用者已存的校準值(s/x/y/z/r*)語意不變、
+//    滑桿刻度不變、PROP_LIBRARY.cal 與遊戲的 HAT_CAL_AV 換算全部不用動;只是父節點換成頭骨。
+// 每次取用都重烘矩陣(rebuildCharacter 換過 headPivot 也自動跟上);avatar 不在=回傳 null 退素體 headPivot。
+let HEADGEAR_MOUNT = null;
+function headgearMountNode(){
+  const av = (typeof AVATAR !== 'undefined' && AVATAR && AVATAR.by && AVATAR.by.head && AVATAR.by.head.bone) ? AVATAR : null;
+  const bone = av && av.by.head.bone;
+  if(!bone || !headPivot){
+    if(HEADGEAR_MOUNT && HEADGEAR_MOUNT.parent) HEADGEAR_MOUNT.parent.remove(HEADGEAR_MOUNT);
+    HEADGEAR_MOUNT = null; return null;
+  }
+  if(!HEADGEAR_MOUNT || HEADGEAR_MOUNT.parent !== bone){
+    if(HEADGEAR_MOUNT && HEADGEAR_MOUNT.parent) HEADGEAR_MOUNT.parent.remove(HEADGEAR_MOUNT);
+    HEADGEAR_MOUNT = new THREE.Group(); HEADGEAR_MOUNT.name = 'PS_HEADGEAR_MOUNT';
+    HEADGEAR_MOUNT.matrixAutoUpdate = false;
+    bone.add(HEADGEAR_MOUNT);
+  }
+  if(root) root.updateMatrixWorld(true);
+  HEADGEAR_MOUNT.matrix.copy(bone.matrixWorld).invert().multiply(headPivot.matrixWorld);
+  HEADGEAR_MOUNT.matrixWorldNeedsUpdate = true;
+  return HEADGEAR_MOUNT;
+}
+// avatar 載好/清掉之後把已掛的頭戴道具重掛到新掛點(avatar.js 在本檔之後載入,直接呼叫=安全)
+function remountHeadgear(){
+  const obj = PART_MODELS && PART_MODELS.headgear;
+  if(!obj) return false;
+  try{ attachPart('headgear', obj); return true; }catch(e){ return false; }
+}
+
+const PS_RIG_TARGET = {
+  torso:       ()=>spine,
+  head:        ()=>headPivot,
+  neck:        ()=>spine,                     // neck 掛 spine + y 偏移(對齊可動的 fight demo)
+  upper_arm_l: ()=>armL && armL.sh,
+  forearm_l:   ()=>armL && armL.el,
+  hand_l:      ()=>armL && armL.wr,
+  upper_arm_r: ()=>armR && armR.sh,
+  forearm_r:   ()=>armR && armR.el,
+  hand_r:      ()=>armR && armR.wr,
+  thigh_l:     ()=>legL && legL.hp,
+  calf_l:      ()=>legL && legL.kn,
+  foot_l:      ()=>legL && legL.ankle,
+  thigh_r:     ()=>legR && legR.hp,
+  calf_r:      ()=>legR && legR.kn,
+  foot_r:      ()=>legR && legR.ankle,
+  // 配件(sockets.json equipment_mounts 擺位多為 _todo;PS rig 無 chest 節點,
+  //  沿用 PS 既有掛點,待資產到位再對 sockets.json 收斂)
+  armguard_l:  ()=>armL && armL.el,
+  armguard_r:  ()=>armR && armR.el,
+  cloak:       ()=>headPivot,
+  pouch:       ()=>spine,
+  // bow=右手持/戴裝備:avatar 在場時掛 avatar 手骨(病 3:box 腕是隱形 driver,重定向後可見的手在別處、
+  // 偏差隨姿勢變大=調右手動作道具脫手;掛手骨=永遠貼手,rigged 手同款)。無 avatar 退回假人腕。
+  // typeof 守衛:avatar.js 在本檔之後載入(per-file hoisting),此函式只在掛載時呼叫=安全。
+  bow:         ()=>(typeof AVATAR!=='undefined' && AVATAR && AVATAR.by && AVATAR.by.hand_r && AVATAR.by.hand_r.bone) || (armR && armR.wr),
+  headgear:    ()=>headgearMountNode() || headPivot,   // 頭戴道具(火帽…):avatar 在場=頭骨下的補償 group(校準值語意不變),否則素體 headPivot
+};
+
+// (2) 中文標籤(未列者自動用 slot 名)
+const PS_SLOT_LABEL = {
+  head:'HEAD 頭', neck:'NECK 脖子', torso:'TORSO 身體',
+  upper_arm_l:'UPPER_ARM_L 左大臂', forearm_l:'FOREARM_L 左前臂', hand_l:'HAND_L 左手',
+  upper_arm_r:'UPPER_ARM_R 右大臂', forearm_r:'FOREARM_R 右前臂', hand_r:'HAND_R 右手',
+  thigh_l:'THIGH_L 左大腿', calf_l:'CALF_L 左小腿', foot_l:'FOOT_L 左腳',
+  thigh_r:'THIGH_R 右大腿', calf_r:'CALF_R 右小腿', foot_r:'FOOT_R 右腳',
+  armguard_l:'ARMGUARD_L 左護腕', armguard_r:'ARMGUARD_R 右護腕',
+  cloak:'CLOAK 披風', pouch:'POUCH 腰包', bow:'BOW 弓/武器',
+  headgear:'HEADGEAR 頭戴道具',
+};
+
+// (3) sockets.json 讀取 + slot 推導
+// 資料來自 ps/sockets-data.js 的全域 SOCKETS_JSON_RAW(古典 script,在 parts.js 之前同步載入)。
+function readSocketsJson(){
+  try{
+    if(typeof SOCKETS_JSON_RAW !== 'undefined' && SOCKETS_JSON_RAW) return SOCKETS_JSON_RAW;
+  }catch(e){ console.warn('[B-1] sockets.json 讀取失敗,改用 fallback', e); }
+  return null;
+}
+function socketsToSlotDefs(j){
+  const out = [];
+  const push = (slot, seamClass, kind, extra)=>{
+    const tfn = PS_RIG_TARGET[slot];
+    out.push(Object.assign({
+      slot, label: PS_SLOT_LABEL[slot] || slot,
+      target: tfn || (()=>null), seamClass: seamClass||null, kind
+    }, extra||{}));
+  };
+  if(j.torso_root) push(j.torso_root.part, null, 'root', {bone:j.torso_root.bone, loadBearing:false});
+  (j.sockets||[]).forEach(s=> push(s.child_part, s.class, 'structural',
+    {bone:s.bone, loadBearing:!!s.load_bearing, restLength:s.rest_length, socketId:s.socket_id}));
+  (j.equipment_mounts||[]).forEach(e=> push(e.mount_id.replace(/\./g,'_'), e.overlay_class||null, 'equipment',
+    {bone:e.bone, todo:!!e._todo}));
+  // 僅保留 PS rig 有對應節點的項目(或 torso root)
+  return out.filter(d=> PS_RIG_TARGET[d.slot] || d.kind==='root');
+}
+
+// fallback:萬一內嵌 sockets.json 缺失/解析失敗,沿用原本硬編 19 slot(無 neck)
+const PART_SLOT_DEFS_FALLBACK = [
+  {slot:'head',label:'HEAD 頭',target:()=>headPivot},
+  {slot:'torso',label:'TORSO 身體',target:()=>spine},
+  {slot:'upper_arm_l',label:'UPPER_ARM_L 左大臂',target:()=>armL && armL.sh},
+  {slot:'forearm_l',label:'FOREARM_L 左前臂',target:()=>armL && armL.el},
+  {slot:'hand_l',label:'HAND_L 左手',target:()=>armL && armL.wr},
+  {slot:'upper_arm_r',label:'UPPER_ARM_R 右大臂',target:()=>armR && armR.sh},
+  {slot:'forearm_r',label:'FOREARM_R 右前臂',target:()=>armR && armR.el},
+  {slot:'hand_r',label:'HAND_R 右手',target:()=>armR && armR.wr},
+  {slot:'thigh_l',label:'THIGH_L 左大腿',target:()=>legL && legL.hp},
+  {slot:'calf_l',label:'CALF_L 左小腿',target:()=>legL && legL.kn},
+  {slot:'foot_l',label:'FOOT_L 左腳',target:()=>legL && legL.ankle},
+  {slot:'thigh_r',label:'THIGH_R 右大腿',target:()=>legR && legR.hp},
+  {slot:'calf_r',label:'CALF_R 右小腿',target:()=>legR && legR.kn},
+  {slot:'foot_r',label:'FOOT_R 右腳',target:()=>legR && legR.ankle},
+  {slot:'armguard_l',label:'ARMGUARD_L 左護腕',target:()=>armL && armL.el},
+  {slot:'armguard_r',label:'ARMGUARD_R 右護腕',target:()=>armR && armR.el},
+  {slot:'cloak',label:'CLOAK 披風',target:()=>headPivot},
+  {slot:'pouch',label:'POUCH 腰包',target:()=>spine},
+  {slot:'bow',label:'BOW 弓/武器',target:()=>armR && armR.wr},
+  {slot:'headgear',label:'HEADGEAR 頭戴道具',target:()=>headgearMountNode() || headPivot},
+];
+
+const SOCKETS_DATA = readSocketsJson();
+const PART_SLOT_DEFS = (()=>{
+  if(SOCKETS_DATA){
+    try{
+      const defs = socketsToSlotDefs(SOCKETS_DATA);
+      if(defs.length >= 15){ console.log(`[B-1] PART_SLOT_DEFS 由 sockets.json v${SOCKETS_DATA.version} 動態生成:${defs.length} slot (含 neck)`); return defs; }
+    }catch(e){ console.warn('[B-1] 動態生成失敗,改用 fallback', e); }
+  }
+  console.warn('[B-1] 使用硬編 fallback slot 清單(無 neck)');
+  return PART_SLOT_DEFS_FALLBACK;
+})();
+
+// (4) sockets.json 相容性判定(classMatch AND seamFit),供日後 hot-swap 驗證
+function socketSeamRadius(cls){
+  const t = SOCKETS_DATA && SOCKETS_DATA.seam_table; const e = t && t[cls];
+  return e ? e.radius : null;
+}
+function partSocketCompatible(part, socket){
+  if(!SOCKETS_DATA) return {ok:true, reason:'no-sockets-data'};
+  const aCls=part.class, bCls=socket.class;
+  const classMatch = aCls===bCls || aCls==='universal' || bCls==='universal';
+  if(!classMatch) return {ok:false, reason:'classMismatch'};
+  const sr = socket.radius!=null ? socket.radius : socketSeamRadius(bCls);
+  const pr = part.radius!=null ? part.radius : socketSeamRadius(aCls);
+  if(sr==='any'||pr==='any') return {ok:true, reason:'universal-seam'};
+  if(typeof sr!=='number'||typeof pr!=='number') return {ok:false, reason:'missingRadius'};
+  const ok = Math.abs(pr-sr) <= 0.10*sr;
+  return {ok, reason: ok?'fit':'seamFail', delta:+(pr-sr).toFixed(4)};
+}
+
+// ===== Socket-local 部位的 mount 變換(移植自可動的 fight_demo_v0_modular Plan A)=====
+// GLB 部位是 socket-local(seam 在原點、沿 +Y 生長)。DIM rig 的手臂/腿關節朝 -Y,
+// 軀幹/頭朝 +Y,所以每個部位需要各自的「預設」旋轉/位移才能正確接上,不能用零變換。
+// 這些值是 fight demo 已調好、實機可動的常數;PS 與 fight demo 用同一套 DIM rig,可直接沿用。
+const PART_MOUNT_XFORM = {
+  // 手臂(關節朝 -Y)→ 繞 Z 翻 180;手掌繞 X 翻 180
+  upper_arm_l:{rot:[0,0,180],pos:[0,0,0]}, forearm_l:{rot:[0,0,180],pos:[0,0,0]}, hand_l:{rot:[180,0,0],pos:[0,0,0]},
+  upper_arm_r:{rot:[0,0,180],pos:[0,0,0]}, forearm_r:{rot:[0,0,180],pos:[0,0,0]}, hand_r:{rot:[180,0,0],pos:[0,0,0]},
+  // 腿(關節朝 -Y)→ 繞 Z 翻 180;腳掌繞 X 翻 90
+  thigh_l:{rot:[0,0,180],pos:[0,0,0]}, calf_l:{rot:[0,0,180],pos:[0,0,0]}, foot_l:{rot:[90,0,0],pos:[0,0,0]},
+  thigh_r:{rot:[0,0,180],pos:[0,0,0]}, calf_r:{rot:[0,0,180],pos:[0,0,0]}, foot_r:{rot:[90,0,0],pos:[0,0,0]},
+  // 軀幹/頸/頭(朝 +Y);pos 把 seam 抬到 bone 高度。neck 掛 spine + 大 y 偏移
+  torso:{rot:[0,0,0],pos:[0,0.0222,0]}, neck:{rot:[0,0,0],pos:[0,0.4772,0]}, head:{rot:[0,0,0],pos:[0,0.0944,0]},
+};
+
+// Plan-A DIM:把假人骨長對齊 skeleton rig 真值(armUpper/Lower、legUpper/Lower 來自 socket rest_length)。
+// 不對齊的話關節間距與部位長度不符 → 有縫/錯位。*Thick/fist/shoe/headSize 只餵被隱藏的佔位幾何。
+const PLAN_A_DIM = {
+  headSize:0.50, bodyH:0.4388, bodyW:0.1772, bodyD:0.221,
+  armUpper:0.2456, armLower:0.2047, armThick:0.55, armLenL:1, armLenR:1,
+  legUpper:0.2332, legLower:0.2086, legThick:0.70, fist:1.0, shoe:1.0
+};
+// 髖部側向偏移(rig 非對稱,L/R 不同):leg2() 用 DIM.legSpread 對稱,故載入部位後個別覆蓋。
+const HIP_X = { L:-0.0735, R:0.0761 };
+function applyHipX(){
+  const active = ['thigh_l','calf_l','foot_l','thigh_r','calf_r','foot_r'].some(s=>PART_MODELS[s]||PART_DETACHED[s]);
+  if(!active) return;
+  if(legL && legL.hp) legL.hp.position.x = HIP_X.L;
+  if(legR && legR.hp) legR.hp.position.x = HIP_X.R;
+}
+// socket-local bundle 載入時:DIM 對齊 PLAN_A_DIM(GLB 自帶 extras.dim 則覆蓋),重建 rig 一次。
+function applySocketLocalRig(gltf){
+  let applied=0;
+  Object.keys(PLAN_A_DIM).forEach(k=>{ if(k in DIM){ DIM[k]=PLAN_A_DIM[k]; applied++; } });
+  try{
+    const exDim = gltf && gltf.parser && gltf.parser.json && gltf.parser.json.extras && gltf.parser.json.extras.dim;
+    if(exDim){ Object.keys(exDim).forEach(k=>{ const v=Number(exDim[k]); if(Number.isFinite(v) && (k in DIM)){ DIM[k]=v; applied++; } }); }
+  }catch(e){ console.warn('extras.dim 套用失敗', e); }
+  if(applied){ buildPropPanel(); rebuildCharacter(); if(typeof scheduleAutosave==='function') scheduleAutosave(); }
+}
+// 比照 fight demo mount():載入整包後自動隱藏佔位假人,避免盒狀袖子/拳頭與骨架部位重疊破圖
+function autoHideDummyOnBundle(){
+  PARTS_HIDE_DUMMY = true;
+  try{ localStorage.setItem(PART_HIDE_STORAGE_KEY, '1'); }catch(e){}
+  setSyntheticDummyVisible(false);
+  const b=document.getElementById('partsDummyToggle'); if(b) b.textContent='顯示假人';
+}
+const PART_ALIASES = {
+  'head':'head','region_head':'head','maclass_head':'head',
+  'neck':'neck','part2_neck':'neck','region_neck':'neck','collar':'neck',
+  'torso':'torso','body':'torso','region_torso':'torso','mregion_torso':'torso','maclass_torso':'torso',
+
+  'upper_arm_l':'upper_arm_l','upperarml':'upper_arm_l','leftupperarm':'upper_arm_l','upper_l':'upper_arm_l','uarm_l':'upper_arm_l','arm_l':'upper_arm_l','arml':'upper_arm_l','leftarm':'upper_arm_l','region_upper_arm_l':'upper_arm_l','mregion_upper_arm_l':'upper_arm_l','maclass_upper_arm_l':'upper_arm_l',
+  'forearm_l':'forearm_l','forearml':'forearm_l','lower_arm_l':'forearm_l','lowerarml':'forearm_l','leftforearm':'forearm_l','leftlowerarm':'forearm_l','larm_l':'forearm_l','region_forearm_l':'forearm_l','mregion_forearm_l':'forearm_l','maclass_forearm_l':'forearm_l',
+  'hand_l':'hand_l','handl':'hand_l','lefthand':'hand_l','fist_l':'hand_l','region_hand_l':'hand_l','mregion_hand_l':'hand_l','maclass_hand_l':'hand_l',
+
+  'upper_arm_r':'upper_arm_r','upperarmr':'upper_arm_r','rightupperarm':'upper_arm_r','upper_r':'upper_arm_r','uarm_r':'upper_arm_r','arm_r':'upper_arm_r','armr':'upper_arm_r','rightarm':'upper_arm_r','region_upper_arm_r':'upper_arm_r','mregion_upper_arm_r':'upper_arm_r','maclass_upper_arm_r':'upper_arm_r',
+  'forearm_r':'forearm_r','forearmr':'forearm_r','lower_arm_r':'forearm_r','lowerarmr':'forearm_r','rightforearm':'forearm_r','rightlowerarm':'forearm_r','larm_r':'forearm_r','region_forearm_r':'forearm_r','mregion_forearm_r':'forearm_r','maclass_forearm_r':'forearm_r',
+  'hand_r':'hand_r','handr':'hand_r','righthand':'hand_r','fist_r':'hand_r','region_hand_r':'hand_r','mregion_hand_r':'hand_r','maclass_hand_r':'hand_r',
+
+  'thigh_l':'thigh_l','thighl':'thigh_l','upper_leg_l':'thigh_l','upperlegl':'thigh_l','leftthigh':'thigh_l','leftupperleg':'thigh_l','leg_l':'thigh_l','legl':'thigh_l','leftleg':'thigh_l','region_thigh_l':'thigh_l','mregion_thigh_l':'thigh_l','maclass_thigh_l':'thigh_l',
+  'calf_l':'calf_l','calfl':'calf_l','lower_leg_l':'calf_l','lowerlegl':'calf_l','leftcalf':'calf_l','leftlowerleg':'calf_l','shin_l':'calf_l','region_calf_l':'calf_l','mregion_calf_l':'calf_l','maclass_calf_l':'calf_l',
+  'foot_l':'foot_l','footl':'foot_l','leftfoot':'foot_l','region_foot_l':'foot_l','mregion_foot_l':'foot_l','maclass_foot_l':'foot_l',
+
+  'thigh_r':'thigh_r','thighr':'thigh_r','upper_leg_r':'thigh_r','upperlegr':'thigh_r','rightthigh':'thigh_r','rightupperleg':'thigh_r','leg_r':'thigh_r','legr':'thigh_r','rightleg':'thigh_r','region_thigh_r':'thigh_r','mregion_thigh_r':'thigh_r','maclass_thigh_r':'thigh_r',
+  'calf_r':'calf_r','calfr':'calf_r','lower_leg_r':'calf_r','lowerlegr':'calf_r','rightcalf':'calf_r','rightlowerleg':'calf_r','shin_r':'calf_r','region_calf_r':'calf_r','mregion_calf_r':'calf_r','maclass_calf_r':'calf_r',
+  'foot_r':'foot_r','footr':'foot_r','rightfoot':'foot_r','region_foot_r':'foot_r','mregion_foot_r':'foot_r','maclass_foot_r':'foot_r',
+
+  'armguard_l':'armguard_l','attach_arm_guard_l':'armguard_l','armguard.l':'armguard_l',
+  'armguard_r':'armguard_r','attach_arm_guard_r':'armguard_r','armguard.r':'armguard_r',
+  'cloak':'cloak','attach_cloak':'cloak',
+  'pouch':'pouch','attach_pouch':'pouch',
+  'bow':'bow','ranger_bow':'bow','weapon_bow':'bow'
+};
+let PART_MODELS = {};       // slot -> THREE.Group imported scene
+let PART_CONFIG = {};       // slot -> x/y/z/rx/ry/rz/s
+let PART_DETACHED = {};     // slot -> object temporarily detached during character rebuild
+let PARTS_HIDE_DUMMY = false;
+// 組裝檢視:暫時把手臂平舉(T-pose),只是檢視用,不寫入 phases。aL_sz/aR_sz 繞 Z 外展。
+let PART_INSPECT_TPOSE = false;
+function inspectTposePose(){ return Object.assign({}, ZERO_POSE, {aL_sz:90, aR_sz:90}); }
+function applyInspectOrPhase(){
+  if(PART_INSPECT_TPOSE) applyPose(inspectTposePose());
+  else applyPose(PHASES[activePhase] || PHASES.idle || ZERO_POSE);
+}
+
+function partDefaultConfig(slot){
+  const m = (typeof PART_MOUNT_XFORM!=='undefined') && PART_MOUNT_XFORM[slot];
+  if(m) return {x:m.pos[0], y:m.pos[1], z:m.pos[2], rx:m.rot[0], ry:m.rot[1], rz:m.rot[2], s:1};
+  return {x:0,y:0,z:0,rx:0,ry:0,rz:0,s:1};
+}
+function getPartDef(slot){ return PART_SLOT_DEFS.find(d=>d.slot===slot); }
+function getPartTarget(slot){ const d=getPartDef(slot); return d && d.target ? d.target() : null; }
+function normPartName(name){ return String(name||'').replace(/\.[^.]+$/,'').toLowerCase().replace(/[^a-z0-9_.-]+/g,'_').replace(/-/g,'_'); }
+function inferPartSlot(filename){
+  const n = normPartName(filename);
+  if(PART_ALIASES[n]) return PART_ALIASES[n];
+  // exported files may be like Ranger_HEAD.glb or 01_REGION_ARM_L.glb; prefer longest aliases.
+  const keys = Object.keys(PART_ALIASES).sort((a,b)=>b.length-a.length);
+  for(const k of keys){ if(n.includes(k)) return PART_ALIASES[k]; }
+  // 第三輪:分隔符不敏感(left_hand / left-hand / Left Hand 1 → lefthand1 ⊇ lefthand)。
+  // 修掉別名縫隙:表裡是 lefthand(無底線)和 hand_l,底線寫法 left_hand 曾兩邊都對不到。
+  const ns = n.replace(/[_.]/g,'');
+  const stripped = keys.map(k=>({k, ks:k.replace(/[_.]/g,'')})).filter(e=>e.ks)
+    .sort((a,b)=>b.ks.length-a.ks.length);
+  for(const e of stripped){ if(ns.includes(e.ks)) return PART_ALIASES[e.k]; }
+  return null;
+}
+function partCfg(slot){
+  if(!PART_CONFIG[slot]) PART_CONFIG[slot] = partDefaultConfig(slot);
+  return PART_CONFIG[slot];
+}
+function savePartConfig(){
+  try{ localStorage.setItem(PART_CFG_STORAGE_KEY, JSON.stringify(PART_CONFIG)); }catch(e){}
+}
+function loadPartConfig(){
+  try{ const raw=localStorage.getItem(PART_CFG_STORAGE_KEY); if(raw) PART_CONFIG=JSON.parse(raw)||{}; }catch(e){ PART_CONFIG={}; }
+  PART_SLOT_DEFS.forEach(d=>partCfg(d.slot));
+  try{ PARTS_HIDE_DUMMY = localStorage.getItem(PART_HIDE_STORAGE_KEY)==='1'; }catch(e){}
+}
+function applyPartConfig(slot){
+  const obj = PART_MODELS[slot]; if(!obj) return;
+  const c = partCfg(slot);
+  obj.position.set(Number(c.x)||0, Number(c.y)||0, Number(c.z)||0);
+  obj.rotation.set((Number(c.rx)||0)*D2R, (Number(c.ry)||0)*D2R, (Number(c.rz)||0)*D2R);
+  obj.scale.setScalar(Number(c.s)||1);
+}
+function markPartObject(obj, slot){
+  obj.userData.punchPartModel = true; obj.userData.punchPartSlot = slot;
+  obj.traverse(o=>{ o.userData.punchPartModel = true; o.userData.punchPartSlot = slot; });
+}
+function isInsidePartObject(o){
+  let n=o;
+  while(n){ if(n.userData && n.userData.punchPartModel) return true; n=n.parent; }
+  return false;
+}
+function attachPart(slot, obj){
+  const target = getPartTarget(slot);
+  if(!target){ throw new Error('slot target not ready: '+slot); }
+  if(PART_MODELS[slot] && PART_MODELS[slot].parent){ PART_MODELS[slot].parent.remove(PART_MODELS[slot]); }
+  markPartObject(obj, slot);
+  PART_MODELS[slot]=obj;
+  target.add(obj);
+  applyPartConfig(slot);
+  setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
+}
+function clearParts(){
+  Object.values(PART_MODELS).forEach(o=>{ if(o && o.parent) o.parent.remove(o); });
+  PART_MODELS = {}; PART_DETACHED = {};
+  if(typeof HAND_RIG !== 'undefined') HAND_RIG = null;  // 拳頭盒抑制解除(見 setSyntheticDummyVisible)
+  if(typeof HAND_AVATAR_HIDDEN !== 'undefined'){ HAND_AVATAR_HIDDEN.forEach(m=>{ m.visible = true; }); HAND_AVATAR_HIDDEN = []; } // 恢復 avatar 原生手
+  updatePartsStatus(); setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
+}
+function setSyntheticDummyVisible(on){
+  const roots = [root, pelvis].filter(Boolean);
+  roots.forEach(r=>r.traverse(o=>{
+    if((o.isMesh || o.isLine || o.isLineSegments) && !isInsidePartObject(o)) o.visible = !!on;
+  }));
+  // rigged 手掛載期間:假人自己的拳頭盒持續抑制(否則 box 手跟 chibi 手同時出現)
+  if(typeof HAND_RIG !== 'undefined' && HAND_RIG){
+    if(armL && armL.fist) armL.fist.visible = false;
+    if(armR && armR.fist) armR.fist.visible = false;
+  }
+}
+function detachPunchPartsForRebuild(){
+  PART_DETACHED = {};
+  Object.entries(PART_MODELS).forEach(([slot,obj])=>{
+    if(obj && obj.parent){ obj.parent.remove(obj); PART_DETACHED[slot]=obj; }
+  });
+}
+function reattachPunchPartsAfterRebuild(){
+  Object.entries(PART_DETACHED).forEach(([slot,obj])=>{
+    const target=getPartTarget(slot); if(target){ target.add(obj); applyPartConfig(slot); }
+  });
+  PART_DETACHED = {};
+  applyHipX();
+  if(PART_INSPECT_TPOSE) applyPose(inspectTposePose());
+  setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
+}
+function updatePartsStatus(msg){
+  const el=document.getElementById('partsStatus'); if(!el) return;
+  const loaded = Object.keys(PART_MODELS).sort();
+  const missingCore = ['head','neck','torso','upper_arm_l','forearm_l','hand_l','upper_arm_r','forearm_r','hand_r','thigh_l','calf_l','foot_l','thigh_r','calf_r','foot_r'].filter(s=>!PART_MODELS[s]);
+  el.textContent = msg || (loaded.length ? `已載入 ${loaded.length} 個部位：${loaded.join(', ')}${missingCore.length?'｜核心缺：'+missingCore.join(', '):'｜核心部位已完整'}` : '尚未載入。先在 Blender 執行 export_14_parts_for_punch_studio.py，然後一次選取輸出的 HEAD/TORSO/UPPER_ARM/FOREARM/HAND/THIGH/CALF/FOOT .glb。');
+}
+// 從整個 scene graph 深度收集可對應 slot 的節點(支援巢狀 / Armature 包裹)。
+// 同一 slot 多命中時:取樹中最淺者,並跳過已選節點的子孫,避免父子重複掛載。
+function collectBundleParts(rootObj){
+  const depthOf = (o)=>{ let d=0,p=o.parent; while(p){ d++; p=p.parent; } return d; };
+  const hits = [];
+  rootObj.traverse(n=>{ const s = inferPartSlot(n.name); if(s) hits.push({node:n, slot:s, depth:depthOf(n)}); });
+  hits.sort((a,b)=> a.depth - b.depth);
+  const claimed = {}; const picked = [];
+  const underPicked = (node)=>{ let p=node.parent; while(p){ if(picked.some(x=>x.node===p)) return true; p=p.parent; } return false; };
+  for(const h of hits){
+    if(claimed[h.slot]) continue;       // 同 slot 已取(保留最淺)
+    if(underPicked(h.node)) continue;    // 在已選節點底下 → 略過
+    claimed[h.slot]=true; picked.push({node:h.node, slot:h.slot});
+  }
+  return picked; // [{node, slot}]
+}
+
+// 套用 bundle 內嵌比例(glTF 頂層 extras.dim)→ 假人關節間距自動配合此角色
+function applyBundleDim(gltf){
+  try{
+    const exDim = gltf.parser && gltf.parser.json && gltf.parser.json.extras && gltf.parser.json.extras.dim;
+    if(!exDim) return;
+    let applied=0;
+    Object.keys(exDim).forEach(k=>{ const v=Number(exDim[k]); if(Number.isFinite(v) && (k in DIM)){ DIM[k]=v; applied++; } });
+    if(applied){ buildPropPanel(); rebuildCharacter(); if(typeof scheduleAutosave==='function') scheduleAutosave(); }
+  }catch(e){ console.warn('bundle dim apply failed', e); }
+}
+
+// ★ 一次上傳整包 GLB,自動對應到所有部位 slot(深度遍歷,不管巢不巢狀)
+async function loadPartBundle(file){
+  if(!file) return false;
+  if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 沒載入成功；請確認網路可連 CDN，或把 GLTFLoader.js 放到本機。'); return false; }
+  const loader = psMakeGltfLoader();
+  const url = URL.createObjectURL(file);
+  try{
+    const gltf = await new Promise((resolve,reject)=>loader.load(url, resolve, undefined, reject));
+    const obj = gltf.scene || gltf.scenes[0];
+    const picked = collectBundleParts(obj);
+    if(picked.length === 0){
+      updatePartsStatus(`整包「${file.name}」內找不到可對應的部位節點。節點名需含 head/neck/torso/upper_arm_l…(或 PART2_ 前綴)。`);
+      return false;
+    }
+    applySocketLocalRig(gltf);
+    let ok=0, fails=[];
+    for(const {node, slot} of picked){
+      try{ node.name='PUNCH_PART_'+slot; attachPart(slot, node); ok++; }
+      catch(err){ console.error('bundle attach failed:', slot, err); fails.push(slot); }
+    }
+    applyHipX();
+    autoHideDummyOnBundle();
+    const structural = PART_SLOT_DEFS.filter(d=>d.kind!=='equipment').map(d=>d.slot);
+    const got = picked.map(p=>p.slot);
+    const missing = structural.filter(s=>!got.includes(s));
+    updatePartsStatus(
+      `整包「${file.name}」→ 一次對應 ${ok} 個部位` +
+      (fails.length ? `｜失敗:${fails.join(', ')}` : '') +
+      (missing.length ? `｜整包未含:${missing.join(', ')}` : '｜結構部位齊全') +
+      '。可用下方 slot 下拉 + scale/x/y/z/rot 微調對位。'
+    );
+    return ok>0;
+  }catch(err){
+    console.error(err); updatePartsStatus(`整包載入失敗:${file.name} — ${err.message||err}`); return false;
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function loadPartFile(file){
+  const slot = inferPartSlot(file.name);
+  // 檔名對不到 slot 時不直接放棄:可能是合併部件包(內部子節點名對 slot),先載入再判斷
+  if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 沒載入成功；請確認網路可連 CDN，或把 GLTFLoader.js 放到本機。'); return false; }
+  const loader = psMakeGltfLoader();
+  const url = URL.createObjectURL(file);
+  try{
+    const gltf = await new Promise((resolve,reject)=>loader.load(url, resolve, undefined, reject));
+    const obj = gltf.scene || gltf.scenes[0];
+    // 合併部件包偵測:深度遍歷整個 scene,有 ≥2 個節點名可對應 slot → 自動拆掛(支援巢狀)
+    const mapped = collectBundleParts(obj).map(p=>({k:p.node, kslot:p.slot}));
+    if(mapped.length >= 2){
+      applySocketLocalRig(gltf);
+      let okCount = 0, fails = [];
+      for(const {k, kslot} of mapped){
+        try{ k.name='PUNCH_PART_'+kslot; attachPart(kslot, k); okCount++; }
+        catch(err){ console.error('bundle attach failed:', kslot, err); fails.push(kslot); }
+      }
+      applyHipX();
+      autoHideDummyOnBundle();
+      updatePartsStatus(`已從 ${file.name} 自動拆出 ${okCount} 個部位` + (fails.length ? `｜失敗：${fails.join(', ')}` : ''));
+      return okCount > 0;
+    }
+    if(!slot){
+      updatePartsStatus(`無法判斷 ${file.name} 要掛到哪個 slot（檔名對不到、內部節點名也對不到）；檔名或節點名需含部位關鍵字，如 hand_l / left_hand / HAND_L / torso / upper_arm_r（大小寫與 _ - 空格皆可）。`);
+      return false;
+    }
+    obj.name = 'PUNCH_PART_'+slot;
+    attachPart(slot, obj);
+    updatePartsStatus(`已載入 ${file.name} → ${slot}`);
+    return true;
+  }catch(err){
+    console.error(err); updatePartsStatus(`載入失敗：${file.name} — ${err.message||err}`); return false;
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+async function loadPartFiles(files){
+  let ok=0;
+  for(const f of Array.from(files||[])){ if(await loadPartFile(f)) ok++; }
+  updatePartsStatus(ok ? `載入完成：${ok} 個部位。可用下方 scale/x/y/z/rot 微調對位。` : undefined);
+}
+// 裝備載入(通用):不靠檔名對應,直接把整個 GLB 掛到「目前選定的 slot」(如 headgear)。
+// 供任意單網格道具(火帽等)——選 slot → 載入 → 用校準滑桿眼睛喬 → 匯出對位 JSON(= EQUIP_CAL)。
+window.__PS_EQUIP_TARGET_SLOT = 'headgear';    // 預設頭戴;__ps 測試/UI 可覆寫
+async function loadEquipFile(file){
+  if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 未載入(需連 CDN)。'); return false; }
+  const sel = document.getElementById('partSlotSelect');
+  const slot = (sel && sel.value) || window.__PS_EQUIP_TARGET_SLOT;
+  if(!getPartTarget(slot)){ updatePartsStatus(`slot「${slot}」在目前 rig 沒有掛點,無法掛裝備。`); return false; }
+  const loader = psMakeGltfLoader();
+  const url = URL.createObjectURL(file);
+  try{
+    const gltf = await new Promise((res,rej)=>loader.load(url,res,undefined,rej));
+    const obj = gltf.scene || gltf.scenes[0];
+    obj.name = 'PUNCH_EQUIP_'+slot;
+    attachPart(slot, obj);
+    updatePartsStatus(`已載入裝備 ${file.name} → ${slot}。用下方 scale/x/y/z/rot 校準對位,再「匯出對位 JSON」(= 遊戲的 EQUIP_CAL)。`);
+    return true;
+  }catch(err){ console.error(err); updatePartsStatus(`裝備載入失敗:${file.name} — ${err.message||err}`); return false; }
+  finally{ URL.revokeObjectURL(url); }
+}
+// ===== 道具庫(入庫 GLB 一鍵掛載,供動作編排)=====
+// 使用者反饋 2026-07-23:想在 studio「自由選用」入庫道具編動作(不用每次手動找檔+重記對位)。
+// 一張表把 repo assets/scene/ 的道具對到自然掛點:火帽=headgear(頭骨,套使用者 studio 校準)、
+// 桶/瓶=bow(右腕武器掛點——避開 hand_r 的 rigged 手,不互相清掉)。載入=fetch→parse→attachPart。
+// 對位「每道具各自記憶」(桶/瓶共用 bow slot 也不互蓋):存 localStorage PROP_CAL,掛載時套回、
+// 校準滑桿改動時鏡射回該道具(見 buildPartSlotUI 的 write() 尾巴)。無記錄的握持類=首次自動 fit 尺寸。
+const PROP_LIB_CAL_KEY = 'PS_PROP_LIB_CAL_V1';
+const PROP_LIBRARY = {
+  fire_hat:     { file:'fire-hat.glb',     tex:'fire-hat-tex.jpg',     slot:'headgear', label:'🔥 火帽 The Golden Maw', cal:{ s:0.69, x:0, y:0.23, z:0, rx:0, ry:0, rz:0 } }, // 使用者 studio 校準值
+  barrel:       { file:'barrel.glb',       tex:'barrel-tex.jpg',       slot:'bow',      label:'🛢 爆桶 Violet Vessel',    autoFit:true }, // 握持類=右腕,首次自動 fit
+  frost_bottle: { file:'frost-bottle.glb', tex:'frost-bottle-tex.jpg', slot:'bow',      label:'❄ 冰霜瓶 Frost Bottle',    autoFit:true },
+  oil_bottle:   { file:'oil-bottle.glb',   tex:'oil-bottle-tex.jpg',   slot:'bow',      label:'🛢 油瓶 Oil Bottle',        autoFit:true },
+  wind_gauntlet:{ file:'wind-gauntlet.glb',tex:'wind-gauntlet-tex.jpg',slot:'bow',      label:'🌀 風壓手套 Azure Gauntlet', autoFit:true }, // item-4:右腕(遊戲掛 armR.wr=同 bow slot,校準值可回填遊戲 WIND_CAL)
+};
+// 貼圖外部化(遊戲同坑):GLB 已去圖只留幾何 → 這裡 TextureLoader 載回 *-tex.jpg 指派(flipY=false=GLB 慣例、sRGB),
+// 不然道具渲成素白、編動作看不出朝向。r128 用 sRGBEncoding(遊戲 r149 是 colorSpace,不能互抄)。
+function applyPropTexture(obj, texFile){
+  const tex = new THREE.TextureLoader().load('../assets/scene/'+texFile);
+  tex.flipY = false; if(THREE.sRGBEncoding!==undefined) tex.encoding = THREE.sRGBEncoding;
+  obj.traverse(o=>{ if(o.isMesh && o.material){ o.material.map = tex; o.material.needsUpdate = true; } });
+}
+const PROP_FIT_H = 0.7;   // 自動 fit 目標高(素體單位;角色≈2.4 → 握持道具約 0.7)
+let PROP_CAL = {};        // { propId: {s,x,y,z,rx,ry,rz} };使用者調過的對位
+let PROP_ACTIVE = null;   // { id, slot };目前掛在庫上的道具(校準鏡射用)
+function loadPropCal(){ try{ const raw=localStorage.getItem(PROP_LIB_CAL_KEY); if(raw) PROP_CAL=JSON.parse(raw)||{}; }catch(e){ PROP_CAL={}; } }
+function savePropCal(){ try{ localStorage.setItem(PROP_LIB_CAL_KEY, JSON.stringify(PROP_CAL)); }catch(e){} }
+// 校準滑桿改動時:若動到的正是目前庫道具的 slot,把對位鏡射回該道具(共用 bow 也各記各的)
+function mirrorPropCal(slot){
+  if(!PROP_ACTIVE || PROP_ACTIVE.slot!==slot) return;
+  PROP_CAL[PROP_ACTIVE.id] = Object.assign({}, partCfg(slot)); savePropCal();
+}
+function fitPropToHand(obj, slot){
+  const box = new THREE.Box3().setFromObject(obj); const size = new THREE.Vector3(); box.getSize(size);
+  const h = Math.max(size.x, size.y, size.z) || 1;
+  const c = partCfg(slot); c.s = +(PROP_FIT_H / h).toFixed(3); c.x=0; c.y=0; c.z=0; c.rx=0; c.ry=0; c.rz=0;
+}
+// 一鍵掛庫道具:fetch repo GLB → parse → 掛自然 slot → 套對位(記錄 > 預設 > 自動 fit)。回 Promise。
+async function mountPropFromLibrary(id){
+  const def = PROP_LIBRARY[id];
+  if(!def){ updatePartsStatus(`道具庫沒有「${id}」。`); return false; }
+  if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 未載入(需連 CDN)。'); return false; }
+  if(!getPartTarget(def.slot)){ updatePartsStatus(`slot「${def.slot}」在目前 rig 沒有掛點。`); return false; }
+  try{
+    const ab = await fetch('../assets/scene/'+def.file).then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.arrayBuffer(); });
+    const gltf = await new Promise((res,rej)=> psMakeGltfLoader().parse(ab, '', res, rej));
+    const obj = gltf.scene || gltf.scenes[0];
+    obj.name = 'PUNCH_PROP_'+id;
+    if(def.tex) applyPropTexture(obj, def.tex);         // 貼外部圖(素白→真色,編動作看得出朝向)
+    attachPart(def.slot, obj);                         // 先掛上(applyPartConfig 會用到現有 cfg)
+    if(PROP_CAL[id])       Object.assign(partCfg(def.slot), PROP_CAL[id]);   // 使用者記錄優先
+    else if(def.cal)       Object.assign(partCfg(def.slot), def.cal);        // 表內預設(火帽)
+    else if(def.autoFit)   fitPropToHand(obj, def.slot);                     // 握持類首次:自動 fit 尺寸
+    applyPartConfig(def.slot);
+    PROP_ACTIVE = { id, slot:def.slot };
+    const sel=document.getElementById('partSlotSelect'); if(sel){ sel.value=def.slot; sel.dispatchEvent(new Event('change')); } // 校準滑桿跳到此 slot
+    updatePartsStatus(`已掛載道具「${def.label}」→ ${def.slot}。可用 scale/x/y/z/rot 微調(自動記憶此道具),或「匯出對位 JSON」給遊戲 EQUIP_CAL。`);
+    return true;
+  }catch(err){ console.error(err); updatePartsStatus(`道具載入失敗:${def.file} — ${err.message||err}`); return false; }
+}
+
+// ===== Rigged 手(chibi-hands-rigged.glb):自動拆左右掛手腕 + 手勢庫(GetAmped 式預設姿勢+插值的編輯端)=====
+// rig 事實(解析自 GLB):骨鏈 Hand→Fingers→FingerMid→FingerTips(+Thumb),手指沿骨局部 +Y 生長,
+// 彎曲軸=骨局部 X(rest 已帶 -2.4° 自然微彎,左右同號 → 同一組角度兩手對稱)。剛性分段(無蒙皮),轉骨即彎。
+let HAND_RIG = null;   // { L:{fingers,mid,tips,thumb}, R:{...} } 各=THREE.Object3D;rest 四元數存在 userData.restQ
+// 手指彎曲=逐關鍵格姿勢軸(左右獨立);preset=快速套形的起始值(open/grip/fist),按鈕會寫進當前 key 的兩手軸。
+const HAND_POSE_PRESETS = {
+  open: { fingers: 0,   mid: 0,   tips: 0,   thumb: 0 },
+  grip: { fingers: -50, mid: -70, tips: -40, thumb: -40 },
+  fist: { fingers: -80, mid: -95, tips: -70, thumb: -55 },
+};
+const HAND_BONE_KEYS = { fingers:'Fingers', mid:'FingerMid', tips:'FingerTips', thumb:'Thumb' };
+// 指骨鍵 → 姿勢軸名(左右各一組);applyFingerPose 依此把 pose 值寫進骨頭。
+const FINGER_POSE_AXES = {
+  L: { fingers:'aL_fbase', mid:'aL_fmid', tips:'aL_ftip', thumb:'aL_fthumb' },
+  R: { fingers:'aR_fbase', mid:'aR_fmid', tips:'aR_ftip', thumb:'aR_fthumb' },
+};
+function collectHandRig(handNode, side){
+  const out = {};
+  handNode.traverse(o=>{
+    for(const [k, base] of Object.entries(HAND_BONE_KEYS)){
+      if(o.name === base + side){ o.userData.restQ = o.quaternion.clone(); out[k] = o; }
+    }
+  });
+  return out;
+}
+// 每幀由 rig.js applyPose(p) 呼叫:從當前姿勢(播放/scrub 內插值、或編輯的靜態 key)驅動指骨彎曲。
+// 未掛 rigged 手 = no-op;彎曲軸=骨局部 X(負=往掌心)。
+function applyFingerPose(p){
+  if(!HAND_RIG || !p) return;
+  const AX = new THREE.Vector3(1,0,0);
+  for(const side of ['L','R']){
+    const rig = HAND_RIG[side]; if(!rig) continue;
+    const axes = FINGER_POSE_AXES[side];
+    for(const [k, bone] of Object.entries(rig)){
+      if(!bone || !bone.userData.restQ) continue;
+      const deg = Number(p[axes[k]]) || 0;
+      bone.quaternion.copy(bone.userData.restQ)
+        .multiply(new THREE.Quaternion().setFromAxisAngle(AX, deg*D2R));
+    }
+  }
+}
+// 手指彎曲滑桿住在主面板的 ARM L / ARM R 群組(pose-data SLIDER_GROUPS),當普通姿勢軸走
+// (bindPoseSliders 綁定、refreshSliders 同步)。這裡只留 applyFingerPose(驅動骨)+ 預設鈕(快速套形)。
+// 預設對位,依掛載對象分兩套:
+// - avatar(chibi 人物,正式基準):手與 avatar 出自同一套 rig → 骨頭已提供 rest 旋轉,
+//   手節點歸零(位置+旋轉)identity 掛上即貼合 → 出廠對位 = identity。
+// - 假人(fallback,無 avatar 時):手指沿節點空間 +X(L)/−X(R)、假人拳頭沿手腕 −Y、大小≈0.42×DIM.fist
+//   → rz=∓90° 轉指向、scale≈0.55 對拳頭盒。
+const HAND_CAL_AVATAR = { L:{ x:0,y:0,z:0, rx:0, ry:0, rz:0, s:1 }, R:{ x:0,y:0,z:0, rx:0, ry:0, rz:0, s:1 } };
+const HAND_CAL_DUMMY  = { L:{ x:0,y:0,z:0, rx:0, ry:0, rz:-90, s:0.55 }, R:{ x:0,y:0,z:0, rx:0, ry:0, rz:90, s:0.55 } };
+// 「使用者沒調過」= cfg 等於該 slot 出廠值(hand slot 出廠值帶 rx:180,不能用零值判斷),
+// 或等於我們自動寫入過的任一套起始對位(換掛載對象時要能重新套用,不能被舊自動值卡住)
+function cfgUntouched(slot, c){
+  const side = slot === 'hand_l' ? 'L' : 'R';
+  const candidates = [partDefaultConfig(slot), HAND_CAL_AVATAR[side], HAND_CAL_DUMMY[side]];
+  return candidates.some(d => ['x','y','z','rx','ry','rz','s'].every(k=>Number(c[k])===Number(d[k])));
+}
+let HAND_AVATAR_HIDDEN = [];   // 掛載時被隱藏的 avatar 原生手網格(clearParts 恢復)
+function mountRiggedHands(gltf){
+  const scene = gltf.scene || gltf.scenes[0];
+  // GLTFLoader 名稱淨化:Hand.L → HandL(同 actor-hands 的既知行為)
+  let hl=null, hr=null;
+  scene.traverse(o=>{ if(o.name==='HandL') hl=o; else if(o.name==='HandR') hr=o; });
+  if(!hl || !hr) throw new Error('GLB 內找不到 HandL/HandR 節點');
+  const av = (typeof AVATAR !== 'undefined' && AVATAR && AVATAR.by && AVATAR.by.hand_l && AVATAR.by.hand_r) ? AVATAR : null;
+  HAND_RIG = {};
+  HAND_AVATAR_HIDDEN.forEach(m=>{ m.visible = true; }); HAND_AVATAR_HIDDEN = [];
+  for(const [node, side, slot] of [[hl,'L','hand_l'],[hr,'R','hand_r']]){
+    const wrap = new THREE.Group(); wrap.name='PUNCH_RIGGEDHAND_'+side;
+    node.position.set(0,0,0);                    // 去掉 rig 內左右並排的偏移
+    if(av) node.quaternion.identity();           // avatar:骨頭已帶 rest 旋轉,節點再疊會轉兩次 → 歸零
+    if(av && av.skinned){
+      // ugc-3 拳套模式(與遊戲 js/actor-hands-rigged.js 同規格,改一邊要同步另一邊):蒙皮角色手骨的
+      // rest 軸每個 GLB 不同,identity 掛上=拳套朝向亂轉。正確基準=base 手骨 rest 在作者空間的朝向
+      // GLOVE_REST(L 繞 Z +90°/R −90°);studio 的 wrap 無場景旋轉(wrapQT=I)→ qComp = bQT⁻¹·GLOVE_REST。
+      // 尺寸照素體拳套佔比(0.28×素體站高)由 proto 局部高×骨世界縮放反推。都烘在 node 層,
+      // cfg(滑桿)照常疊 wrap 層,起始值 identity 不互蓋。⚠ proto 要在 identity 時量(斜盒會膨脹)。
+      node.updateWorldMatrix(true, true);
+      const gb = new THREE.Box3().setFromObject(node), gs = new THREE.Vector3(); gb.getSize(gs);
+      const protoLen = gs.y || 1;
+      const rest = new THREE.Quaternion(0, 0, (side === 'L' ? 1 : -1) * Math.SQRT1_2, Math.SQRT1_2);
+      const entry0 = AVATAR.by[slot];
+      node.quaternion.copy(entry0.bQT).invert().multiply(rest);
+      entry0.bone.updateWorldMatrix(true, false);
+      entry0.bone.getWorldScale(gs);
+      const standH0 = headCY + DIM.headSize * 0.5;
+      node.scale.setScalar(0.28 * standH0 / (protoLen * (Math.abs(gs.y) || 1)));
+    }
+    wrap.add(node);
+    HAND_RIG[side] = collectHandRig(node, side);
+    const c = partCfg(slot);
+    if(cfgUntouched(slot, c)) Object.assign(c, (av ? HAND_CAL_AVATAR : HAND_CAL_DUMMY)[side]); // 依掛載對象給起始對位;使用者調過則保留
+    if(av){
+      // 掛 chibi 人物手骨(正式基準):不走 attachPart(那會掛假人腕+把假人叫回來)
+      const entry = AVATAR.by[slot];
+      if(PART_MODELS[slot] && PART_MODELS[slot].parent) PART_MODELS[slot].parent.remove(PART_MODELS[slot]);
+      markPartObject(wrap, slot);
+      PART_MODELS[slot] = wrap;
+      entry.bone.add(wrap);
+      applyPartConfig(slot);
+      entry.meshes.forEach(m=>{ m.visible = false; HAND_AVATAR_HIDDEN.push(m); }); // 藏 avatar 原生手,避免同框
+    } else {
+      attachPart(slot, wrap);                    // fallback:無 avatar → 掛假人腕(舊路徑,拳頭盒抑制照舊)
+    }
+    savePartConfig();
+  }
+  if(!av){ PARTS_HIDE_DUMMY = false; setSyntheticDummyVisible(true); } // 假人路徑才需要顯示假人;avatar 路徑完全不動假人(維持隱藏)
+  applyFingerPose((typeof PHASES!=='undefined' && typeof activePhase!=='undefined' && PHASES[activePhase]) ? PHASES[activePhase]
+    : (typeof ZERO_POSE!=='undefined' ? ZERO_POSE : null));   // 依當前 key 的手指軸擺位(通常張開)
+  applyHandShow(); // 重載時保持目前的雙手/單手顯示模式
+  updatePartsStatus(av
+    ? '已載入 rigged 手 → chibi 人物手骨(原生手已隱藏)。手指彎曲在 ARM L / ARM R 群組滑桿逐關鍵格調(✋✊👊套雙手起始形);彎曲隨招式匯出。'
+    : '已載入 rigged 手 → 假人手腕(fallback)。手指彎曲在 ARM L / ARM R 群組滑桿逐關鍵格調(✋✊👊套雙手起始形)。');
+}
+async function loadRiggedHandsFile(file){
+  if(!THREE.GLTFLoader){ updatePartsStatus('GLTFLoader 未載入(需連 CDN)。'); return false; }
+  const url = URL.createObjectURL(file);
+  try{
+    const gltf = await new Promise((res,rej)=>psMakeGltfLoader().load(url,res,undefined,rej));
+    mountRiggedHands(gltf); return true;
+  }catch(err){ console.error(err); updatePartsStatus('rigged 手載入失敗:'+(err.message||err)); return false; }
+  finally{ URL.revokeObjectURL(url); }
+}
+// 內建一鍵載入(repo 內 assets/rigs/chibi-hands-rigged.glb;比照 avatar.js 的 base-avatar fetch 套路,
+// HTTP 服務下直接成功;file:// 開啟時 fetch 失敗 → 提示改用檔案選擇器)
+async function loadRiggedHandsBuiltin(){
+  try{
+    const r = await fetch('../assets/rigs/chibi-hands-rigged.glb');
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const ab = await r.arrayBuffer();
+    await new Promise((res,rej)=>psMakeGltfLoader().parse(ab, '', (g)=>{ try{ mountRiggedHands(g); res(); }catch(e){ rej(e); } }, rej));
+    return true;
+  }catch(err){
+    console.warn('builtin hands load failed', err);
+    updatePartsStatus('內建 rigged 手載入失敗(file:// 開啟時請改用「🖐 選檔載入」選 assets/rigs/chibi-hands-rigged.glb)。');
+    return false;
+  }
+}
+// 顯示切換:雙手 → 只左 → 只右(調單手手勢/對位時不被另一手擋視線)
+let HAND_SHOW = 'both';
+function applyHandShow(){
+  const l = PART_MODELS.hand_l, r = PART_MODELS.hand_r;
+  if(l) l.visible = (HAND_SHOW !== 'R');
+  if(r) r.visible = (HAND_SHOW !== 'L');
+  const btn = document.getElementById('handShowToggle');
+  if(btn) btn.textContent = HAND_SHOW === 'both' ? '顯示:雙手' : HAND_SHOW === 'L' ? '顯示:只左手' : '顯示:只右手';
+}
+function cycleHandShow(){ HAND_SHOW = HAND_SHOW === 'both' ? 'L' : HAND_SHOW === 'L' ? 'R' : 'both'; applyHandShow(); }
+// 手指彎曲已併入招式 clip 的姿勢資料(逐關鍵格),不再有獨立「手勢 JSON」匯出——「全部匯出 JSON」就帶著它。
+
+// ===== 對照 stand-in(編扛人/丟人/扛桶動作的參照幽靈;位置=遊戲真實值,PS 1 單位=25 遊戲px)=====
+// 遊戲事實(js/v2.js 搬運 loop):被扛者=前方 f.r+o.r*0.7≈32px(地面高度,2D sim 不抬高);
+// 扛桶=前方 f.r+b.r*0.9≈31px、桶 r=13(voxel 箱 ≈26px 見方)。改遊戲常數要同步這裡。
+const GHOST_ANCHOR = { carried: 32.3/25, barrel: 30.7/25, barrelSize: 26/25 };
+let REF_GHOSTS = { carried: null, barrel: null };
+function tintGhost(obj, hex, op){
+  obj.traverse(o=>{ if(o.isMesh){ o.material = o.material.clone();
+    if(o.material.color) o.material.color.lerp(new THREE.Color(hex), 0.55);
+    o.material.transparent = true; o.material.opacity = op; o.material.depthWrite = false; } });
+}
+async function _loadGhostAvatar(){
+  const r = await fetch('../assets/rigs/base-avatar.glb'); if(!r.ok) throw new Error('HTTP '+r.status);
+  const ab = await r.arrayBuffer();
+  return await new Promise((res,rej)=>psMakeGltfLoader().parse(ab,'',res,rej));
+}
+async function toggleCarriedGhost(){
+  if(REF_GHOSTS.carried){ scene.remove(REF_GHOSTS.carried); REF_GHOSTS.carried = null; return false; }
+  let obj;
+  const standH = (typeof headCY !== 'undefined' ? headCY + DIM.headSize*0.5 : 2);
+  try{
+    const gltf = await _loadGhostAvatar();
+    obj = gltf.scene || gltf.scenes[0];
+    const bb = new THREE.Box3().setFromObject(obj), size = new THREE.Vector3(); bb.getSize(size);
+    const S = size.y > 1e-6 ? standH/size.y : 1;
+    obj.scale.setScalar(S);
+  }catch(e){ // file:// 或缺檔 → 幽靈箱剪影(同身高)
+    obj = new THREE.Mesh(new THREE.BoxGeometry(0.9, standH, 0.55), new THREE.MeshStandardMaterial());
+    obj.position.y = standH/2;
+    const wrapb = new THREE.Group(); wrapb.add(obj); obj = wrapb;
+  }
+  tintGhost(obj, 0xff5a5a, 0.42);
+  obj.name = 'PS_GHOST_CARRIED';
+  obj.position.set(0, 0, GHOST_ANCHOR.carried);   // 遊戲真實 offset:正前方 ~1.29 單位、地面高度
+  obj.userData.home = obj.position.clone();       // 跟手預覽的「地面起點」(grab 幀前/清 tag 後回這)
+  obj.userData.h = standH;                        // 身高(grip='head' 拎頭吊掛時,頭頂貼手=原點下移一個身高)
+  scene.add(obj); REF_GHOSTS.carried = obj; return true;
+}
+function toggleBarrelGhost(){
+  if(REF_GHOSTS.barrel){ scene.remove(REF_GHOSTS.barrel); REF_GHOSTS.barrel = null; return false; }
+  const s = GHOST_ANCHOR.barrelSize;
+  const m = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), new THREE.MeshStandardMaterial());
+  m.position.set(0, s/2, 0);                       // 底貼地
+  const g = new THREE.Group(); g.add(m); tintGhost(g, 0xff9a4a, 0.5);
+  g.name = 'PS_GHOST_BARREL';
+  g.position.set(0, 0, GHOST_ANCHOR.barrel);       // 遊戲真實 offset:正前方 ~1.23 單位
+  g.userData.home = g.position.clone();            // 跟手預覽的「地面起點」
+  g.userData.h = s;                                // 高度(grip='head' 時可倒吊,桶預設 grip='feet' 用不到)
+  scene.add(g); REF_GHOSTS.barrel = g; return true;
+}
+
+// ===== 幽靈跟手預覽(tag 驅動;題目①②定案:雙腕中點+固定偏移、grab/release 正式 tag)=====
+// 行為:SEQ 沒有 grab tag → 幽靈靜止在 home(純參照,零回歸)。有 tag 時依「目前幀」(playT×REF_FPS):
+//   幀 < grab → home;grab ≤ 幀 < release → 貼雙腕中點+偏移(手到哪它到哪);幀 ≥ release → 沿面向(+Z)
+//   以遊戲真實速度飛出(THROW_FORCE 780px/s → 0.52 單位/幀)+ 高度過渡到地面。
+// 掛點:AVATAR 在 → avatar 手骨(畫面上真正的手);否則素體手腕。每幀由 hitfeel tick 呼叫(typeof 守衛)。
+// 每個幽靈的跟手設定:anchor='mid'(雙手中點,適合雙手抬)/'L'/'R'(單手抓握點);
+// grip='feet'(原點/腳底貼掛點=物件坐在手上,桶用)或 'head'(**拎頭吊掛**:頭頂貼掛點、身體垂直吊下,拎人用);
+// off=偏移(單手時=手局部座標,隨手旋轉;mid 時=世界座標)。使用者可在 UI 眼睛喬,存 localStorage。
+const GHOST_FOLLOW = {
+  carried: { anchor:'R', grip:'head', off:{x:0,y:0,z:0} },   // 被扛者:單手拎頭(頭頂貼右手,身體吊下;可切 L/mid、grip 腳底)
+  barrel:  { anchor:'R', grip:'feet', off:{x:0,y:0,z:0} },   // 桶:單手托底(off 自己喬進掌心)
+};
+const GHOST_FOLLOW_KEY = 'PS_GHOST_FOLLOW_V1';
+(function loadGhostFollow(){ try{ const s=localStorage.getItem(GHOST_FOLLOW_KEY); if(s){ const j=JSON.parse(s);
+  for(const k of ['carried','barrel']) if(j[k]){ GHOST_FOLLOW[k].anchor=j[k].anchor||GHOST_FOLLOW[k].anchor; if(j[k].grip) GHOST_FOLLOW[k].grip=j[k].grip; Object.assign(GHOST_FOLLOW[k].off, j[k].off||{}); } } }catch(e){} })();
+function saveGhostFollow(){ try{ localStorage.setItem(GHOST_FOLLOW_KEY, JSON.stringify(GHOST_FOLLOW)); }catch(e){} }
+// 拋物線=遊戲 B 案彈道同款(y(p)=離手高·(1-p)+apex·4p(1-p);js/v2-state lobZ):
+// carried=PERSON_LOB{range200,apex32,T0.5→30f}、barrel=BARREL_LOB{range180,apex34,T0.5→30f};
+// speed=水平速度 range/T 換算 PS 單位/幀。**改遊戲 PERSON_LOB/BARREL_LOB 要同步這裡**(同 GHOST_ANCHOR 規則)。
+const GHOST_THROW = {
+  speed: { carried: (200 / 0.5 / 25) / 60, barrel: (180 / 0.5 / 25) / 60 },
+  flyFrames: { carried: 30, barrel: 30 },
+  peak: { carried: 32 / 25, barrel: 34 / 25 },
+};
+function ghostTagFrames(){
+  let gf = null, rf = null;
+  try{ for(const k of (SEQ || [])){ if(k.tag === 'grab' && gf === null) gf = k.frame; if(k.tag === 'release' && rf === null) rf = k.frame; } }catch(e){}
+  return { gf, rf };
+}
+// 單手抓握點:回傳該手 Fingers 骨(掌指關節/抓握面)的世界位置 + 骨頭(供把 off 轉到手局部)。
+function handGripBone(side){
+  if(typeof HAND_RIG !== 'undefined' && HAND_RIG && HAND_RIG[side] && HAND_RIG[side].fingers) return HAND_RIG[side].fingers;
+  if(typeof AVATAR !== 'undefined' && AVATAR && AVATAR.by){ const e=AVATAR.by[side==='L'?'hand_l':'hand_r']; if(e && e.bone) return e.bone; }
+  if(typeof armL !== 'undefined'){ const w = side==='L' ? (armL&&armL.wr) : (armR&&armR.wr); if(w) return w; }
+  return null;
+}
+function handsMidWorld(){   // 雙手抓握點中點(掌指關節線;無 rigged 手退回手腕)
+  const bl=handGripBone('L'), br=handGripBone('R'); if(!bl||!br) return null;
+  const a=new THREE.Vector3(), b=new THREE.Vector3(); bl.getWorldPosition(a); br.getWorldPosition(b);
+  return a.add(b).multiplyScalar(0.5);
+}
+// 依 cfg 解析幽靈掛點世界座標:單手=該手抓握面 + off(手局部,隨手轉);mid=雙手中點 + off(世界)。
+function ghostAnchorWorld(cfg, off){
+  off = off || (cfg && cfg.off) || {x:0,y:0,z:0};
+  if(!cfg || cfg.anchor === 'mid'){ const m=handsMidWorld(); if(!m) return null; return m.add(new THREE.Vector3(off.x||0, off.y||0, off.z||0)); }
+  const bone = handGripBone(cfg.anchor); if(!bone) return null;
+  const pos = new THREE.Vector3(); bone.getWorldPosition(pos);
+  const q = new THREE.Quaternion(); bone.getWorldQuaternion(q);
+  return pos.add(new THREE.Vector3(off.x||0, off.y||0, off.z||0).applyQuaternion(q));   // off 在手局部座標
+}
+// 被扛者=逐幀掛點偏移(pose 軸 carry_o*,rig 每幀轉存 CARRY_OFF_NOW);其它幽靈=靜態 GHOST_FOLLOW[key].off。
+function ghostOffFor(key){
+  if(key === 'carried' && typeof CARRY_OFF_NOW !== 'undefined') return CARRY_OFF_NOW;
+  return (GHOST_FOLLOW[key] && GHOST_FOLLOW[key].off) || {x:0,y:0,z:0};
+}
+// 掛點 → 幽靈原點位置(+設 rotation):
+//  grip='head'=拎頭吊掛:被拎的「頭(=掛點)」固定,身體繞頭轉——pitch(carry_tilt,前後傾/打橫)+
+//    yaw(carry_yaw,左右轉向,繞世界 Y)。合成四元數 R=yaw∘pitch;原點(腳底)= 頭 − R·(0,身高,0);
+//    ghost.quaternion=R 讓模型跟著轉。頭在任何角度都固定在掛點。逐關鍵格內插=安排哪幀打橫/轉多少。
+//  grip='feet'(預設)=原點直接貼掛點(物件坐在手上,不旋轉)。
+const _CQP = new THREE.Quaternion(), _CQY = new THREE.Quaternion(), _CHV = new THREE.Vector3();
+const _CAX = new THREE.Vector3(1,0,0), _CAY = new THREE.Vector3(0,1,0);
+function ghostHoldWorld(key, ghost){
+  const cfg = GHOST_FOLLOW[key];
+  const m = ghostAnchorWorld(cfg, ghostOffFor(key)); if(!m) return null;
+  if((cfg && cfg.grip) === 'head'){
+    const h = ghost.userData.h || 0;
+    const pitch = (typeof CARRY_TILT_NOW !== 'undefined' ? CARRY_TILT_NOW : 0) * Math.PI / 180;
+    const yaw   = (typeof CARRY_YAW_NOW  !== 'undefined' ? CARRY_YAW_NOW  : 0) * Math.PI / 180;
+    _CQP.setFromAxisAngle(_CAX, pitch); _CQY.setFromAxisAngle(_CAY, yaw);
+    ghost.quaternion.copy(_CQY).multiply(_CQP);            // R = yaw ∘ pitch(先前後傾,再繞垂直軸左右轉)
+    _CHV.set(0, h, 0).applyQuaternion(ghost.quaternion);   // 頭相對腳底的世界向量
+    return { x: m.x - _CHV.x, y: m.y - _CHV.y, z: m.z - _CHV.z };   // 頭固定在 m
+  }
+  ghost.rotation.set(0, 0, 0);
+  return m;
+}
+function updateGhostFollow(){
+  const anyGhost = REF_GHOSTS.carried || REF_GHOSTS.barrel;
+  if(!anyGhost) return;
+  const { gf, rf } = ghostTagFrames();
+  const cur = (typeof playT !== 'undefined' ? playT : 0) * REF_FPS;
+  for(const [key, ghost] of Object.entries(REF_GHOSTS)){
+    if(!ghost || !ghost.userData.home) continue;
+    const ud = ghost.userData;
+    if(gf === null || cur < gf){                                   // 未附著:躺在地面起點(直立)
+      ghost.position.copy(ud.home); ghost.rotation.set(0, 0, 0); ud.rel = null; continue;
+    }
+    if(rf === null || cur < rf){                                   // 附著:貼掛點(grip 決定拎頭吊掛/坐在手上)
+      const m = ghostHoldWorld(key, ghost); if(!m) continue;
+      ghost.position.copy(m);
+      ud.rel = null; continue;
+    }
+    if(!ud.rel){                                                   // 脫手:記下脫手點(scrub 倒回會清掉重算)
+      const m = ghostHoldWorld(key, ghost) || ghost.position;
+      ud.rel = { x: m.x, y: m.y, z: m.z };
+    }
+    const df = cur - rf;
+    const fly = GHOST_THROW.flyFrames[key] || 40;
+    const p = Math.min(1, df / fly);                       // 拋物線:離手高滑落 + 弧頂(同遊戲 lobZ)
+    const peak = GHOST_THROW.peak[key] || 1;
+    const arcY = ud.home.y + (ud.rel.y - ud.home.y) * (1 - p) + peak * 4 * p * (1 - p);
+    const spd = GHOST_THROW.speed[key] || 0.35;
+    ghost.position.set(ud.rel.x, arcY, ud.rel.z + Math.min(df, fly) * spd);   // 落地後不再前進(等速直線到落點)
+  }
+}
+
+// headless 健檢 hook(比照 __v2/__mpe;獨立命名空間,避免被 game-bridge 的 window.__ps 覆寫)。
+window.__psEquip = {
+  slots: ()=>PART_SLOT_DEFS.map(d=>d.slot),
+  partInfo: (slot)=>{ const o=PART_MODELS[slot]; if(!o) return null; return { slot, mounted:true, onHeadPivot:o.parent===headPivot, cfg:partCfg(slot) }; },
+  loadEquipBuffer: (ab, slot='headgear')=> new Promise((resolve,reject)=>{
+    if(!THREE.GLTFLoader) return reject(new Error('no GLTFLoader'));
+    const s=document.getElementById('partSlotSelect'); if(s) s.value=slot;
+    psMakeGltfLoader().parse(ab, '', (gltf)=>{ const obj=gltf.scene||gltf.scenes[0]; obj.name='PUNCH_EQUIP_'+slot; try{ attachPart(slot,obj); resolve(true); }catch(e){ reject(e); } }, reject);
+  }),
+  props: ()=>Object.keys(PROP_LIBRARY),
+  mountProp: (id)=>mountPropFromLibrary(id),   // 一鍵掛庫道具(headless 測用;回 Promise<bool>)
+  activeProp: ()=>PROP_ACTIVE ? { id:PROP_ACTIVE.id, slot:PROP_ACTIVE.slot, cfg:partCfg(PROP_ACTIVE.slot) } : null,
+  loadHandsBuffer: (ab)=> new Promise((resolve,reject)=>{
+    if(!THREE.GLTFLoader) return reject(new Error('no GLTFLoader'));
+    psMakeGltfLoader().parse(ab, '', (gltf)=>{ try{ mountRiggedHands(gltf); resolve(true); }catch(e){ reject(e); } }, reject);
+  }),
+  // 逐關鍵格手指:寫進當前 key 的姿勢軸(side='L'/'R'),套用後回傳指骨四元數供驗證
+  setFingerPose: (partial, side='L')=>{
+    const axes = FINGER_POSE_AXES[side]; if(!axes) return null;
+    if(typeof PHASES!=='undefined' && PHASES[activePhase]) for(const k of Object.keys(partial)) PHASES[activePhase][axes[k]] = Number(partial[k])||0;
+    if(typeof applyPose==='function' && typeof PHASES!=='undefined' && PHASES[activePhase]) applyPose(PHASES[activePhase]);
+    return { mounted: !!HAND_RIG };
+  },
+  loadHandsBuiltin: loadRiggedHandsBuiltin,
+  setHandShow: (m)=>{ HAND_SHOW = m; applyHandShow(); return { show: HAND_SHOW, lVis: PART_MODELS.hand_l ? PART_MODELS.hand_l.visible : null, rVis: PART_MODELS.hand_r ? PART_MODELS.hand_r.visible : null }; },
+  toggleCarriedGhost, toggleBarrelGhost,
+  setGhostFollow: (key, cfg)=>{ if(!GHOST_FOLLOW[key]) return null; if(cfg.anchor) GHOST_FOLLOW[key].anchor=cfg.anchor; if(cfg.grip) GHOST_FOLLOW[key].grip=cfg.grip; if(cfg.off) Object.assign(GHOST_FOLLOW[key].off, cfg.off); saveGhostFollow(); if(typeof updateGhostFollow==='function') updateGhostFollow(); return JSON.parse(JSON.stringify(GHOST_FOLLOW[key])); },
+  ghostFollow: ()=>JSON.parse(JSON.stringify(GHOST_FOLLOW)),
+  ghosts: ()=>({ carried: !!REF_GHOSTS.carried, barrel: !!REF_GHOSTS.barrel,
+    carriedPos: REF_GHOSTS.carried ? REF_GHOSTS.carried.position.toArray().map(v=>+v.toFixed(3)) : null,
+    barrelPos: REF_GHOSTS.barrel ? REF_GHOSTS.barrel.position.toArray().map(v=>+v.toFixed(3)) : null }),
+  handInfo: ()=>{
+    if(!HAND_RIG) return null;
+    const info = {};
+    for(const side of ['L','R']){
+      const rig=HAND_RIG[side]; if(!rig) continue;
+      const wrap = PART_MODELS[side==='L'?'hand_l':'hand_r'];
+      info[side] = { mounted: !!(wrap && wrap.parent), bones: Object.keys(rig),
+        midQuatX: rig.mid ? +rig.mid.quaternion.x.toFixed(4) : null };
+    }
+    return info;
+  },
+};
+function buildPartSlotUI(){
+  const sel=document.getElementById('partSlotSelect'); if(!sel) return;
+  sel.innerHTML='';
+  PART_SLOT_DEFS.forEach(d=>{ const opt=document.createElement('option'); opt.value=d.slot; opt.textContent=d.label; sel.appendChild(opt); });
+  const syncPair=(rangeId,numId,key)=>{
+    const r=document.getElementById(rangeId), n=document.getElementById(numId); if(!r||!n) return;
+    const write=(val)=>{ const slot=sel.value; const c=partCfg(slot); c[key]=Number(val)||0; if(key==='s' && c[key]<=0) c[key]=0.01; r.value=c[key]; n.value=c[key]; applyPartConfig(slot); savePartConfig(); mirrorPropCal(slot); };
+    r.addEventListener('input',e=>write(e.target.value));
+    n.addEventListener('input',e=>write(e.target.value));
+  };
+  syncPair('partScale','partScaleNum','s');
+  syncPair('partX','partXNum','x'); syncPair('partY','partYNum','y'); syncPair('partZ','partZNum','z');
+  syncPair('partRX','partRXNum','rx'); syncPair('partRY','partRYNum','ry'); syncPair('partRZ','partRZNum','rz');
+  function refresh(){
+    const c=partCfg(sel.value);
+    [['partScale','partScaleNum','s'],['partX','partXNum','x'],['partY','partYNum','y'],['partZ','partZNum','z'],['partRX','partRXNum','rx'],['partRY','partRYNum','ry'],['partRZ','partRZNum','rz']].forEach(([rId,nId,k])=>{
+      const r=document.getElementById(rId), n=document.getElementById(nId); if(r)r.value=c[k]; if(n)n.value=c[k];
+    });
+  }
+  sel.addEventListener('change',refresh);
+  refresh();
+  document.getElementById('partsBundle')?.addEventListener('change',e=>{
+    const f = e.target.files && e.target.files[0];
+    if(f) loadPartBundle(f);
+    e.target.value='';   // 允許同一檔重新上傳再次觸發
+  });
+  document.getElementById('partsFiles')?.addEventListener('change',e=>loadPartFiles(e.target.files));
+  document.getElementById('partsEquip')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) loadEquipFile(f); e.target.value=''; }); // 裝備→選定 slot
+  // 道具庫:下拉列入庫道具,「掛上」一鍵 fetch repo GLB 掛自然 slot(火帽=頭、桶/瓶=右腕)
+  const propSel=document.getElementById('propLibSelect');
+  if(propSel){ propSel.innerHTML=''; Object.entries(PROP_LIBRARY).forEach(([id,d])=>{ const o=document.createElement('option'); o.value=id; o.textContent=d.label; propSel.appendChild(o); }); }
+  document.getElementById('propLibMount')?.addEventListener('click',()=>{ const id=propSel&&propSel.value; if(id) mountPropFromLibrary(id); });
+  document.getElementById('partsHandsRig')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) loadRiggedHandsFile(f); e.target.value=''; }); // rigged 手→自動拆左右
+  document.getElementById('handsBuiltin')?.addEventListener('click',()=>loadRiggedHandsBuiltin()); // 內建一鍵載入
+  document.getElementById('handShowToggle')?.addEventListener('click',()=>cycleHandShow());        // 雙手/左/右 顯示切換
+  document.getElementById('ghostCarried')?.addEventListener('click',e=>{ toggleCarriedGhost().then(on=>e.target.classList.toggle('on',on)); }); // 對照:被扛者
+  document.getElementById('ghostBarrel')?.addEventListener('click',e=>{ e.target.classList.toggle('on', toggleBarrelGhost()); });               // 對照:桶
+  // 幽靈跟手掛點 UI:掛哪隻手/中點 + grip(拎頭吊掛/坐在手上)+ 靜態偏移(XYZ,選配)。存 localStorage、即時反映。
+  // 被扛者的 XYZ 偏移改走逐幀 pose 軸(carry_o*),故其 UI 不含 XYZ(只 anchor+grip)。
+  function bindGhostFollowUI(key, anchorId, gripId, oxId, oyId, ozId){
+    const cfg=GHOST_FOLLOW[key];
+    const anchorSel=document.getElementById(anchorId), gripSel=gripId?document.getElementById(gripId):null;
+    const ox=oxId?document.getElementById(oxId):null, oy=oyId?document.getElementById(oyId):null, oz=ozId?document.getElementById(ozId):null;
+    if(!anchorSel) return;
+    anchorSel.value=cfg.anchor; if(gripSel) gripSel.value=cfg.grip||'feet';
+    if(ox&&oy&&oz){ ox.value=cfg.off.x; oy.value=cfg.off.y; oz.value=cfg.off.z; }
+    const apply=()=>{ cfg.anchor=anchorSel.value; if(gripSel) cfg.grip=gripSel.value;
+      if(ox&&oy&&oz) cfg.off={ x:Number(ox.value)||0, y:Number(oy.value)||0, z:Number(oz.value)||0 };
+      saveGhostFollow(); if(typeof updateGhostFollow==='function') updateGhostFollow(); };
+    anchorSel.addEventListener('change',apply); gripSel && gripSel.addEventListener('change',apply);
+    [ox,oy,oz].forEach(el=>el && el.addEventListener('input',apply));
+  }
+  bindGhostFollowUI('barrel', 'ghostBarrelAnchor', null, 'ghostBarrelOX', 'ghostBarrelOY', 'ghostBarrelOZ');
+  bindGhostFollowUI('carried', 'ghostCarriedAnchor', 'ghostCarriedGrip');   // 人:XYZ 走逐幀 pose 軸,UI 不含
+  // 手指預設鈕:快速把「當前 key」的兩手手指軸套成該形(open/grip/fist);之後在 ARM L/ARM R 群組的
+  // 指根/指中/指尖/拇指 滑桿逐手微調(那些是普通姿勢軸,見 pose-data SLIDER_GROUPS)。
+  document.querySelectorAll('[data-handpose]').forEach(btn=>btn.addEventListener('click',()=>{
+    const preset=HAND_POSE_PRESETS[btn.dataset.handpose]; if(!preset) return;
+    if(typeof PHASES==='undefined' || !PHASES[activePhase]) return;
+    if(typeof pushHistory==='function') pushHistory();
+    for(const side of ['L','R']) for(const k of Object.keys(preset)) PHASES[activePhase][FINGER_POSE_AXES[side][k]] = Number(preset[k])||0;
+    if(typeof refreshSliders==='function') refreshSliders();   // 反映到主面板 ARM 群組的手指滑桿
+    if(typeof scheduleAutosave==='function') scheduleAutosave();
+  }));
+  document.getElementById('partsClear')?.addEventListener('click',()=>clearParts());
+  document.getElementById('partsDummyToggle')?.addEventListener('click',()=>{
+    PARTS_HIDE_DUMMY=!PARTS_HIDE_DUMMY;
+    try{ localStorage.setItem(PART_HIDE_STORAGE_KEY, PARTS_HIDE_DUMMY?'1':'0'); }catch(e){}
+    setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
+    const b=document.getElementById('partsDummyToggle'); if(b) b.textContent=PARTS_HIDE_DUMMY?'顯示假人':'隱藏假人';
+  });
+  document.getElementById('partInspectTpose')?.addEventListener('click',()=>{
+    PART_INSPECT_TPOSE=!PART_INSPECT_TPOSE;
+    applyInspectOrPhase();
+    const b=document.getElementById('partInspectTpose'); if(b) b.textContent=PART_INSPECT_TPOSE?'結束檢視':'組裝檢視 T-pose';
+  });
+  document.getElementById('partResetSlot')?.addEventListener('click',()=>{
+    PART_CONFIG[sel.value]=partDefaultConfig(sel.value); refresh(); applyPartConfig(sel.value); savePartConfig();
+  });
+  document.getElementById('partExportCfg')?.addEventListener('click',()=>{
+    const out = JSON.stringify({createdBy:'PUNCH STUDIO part kit', config:PART_CONFIG, loaded:Object.keys(PART_MODELS)}, null, 2);
+    const modal=document.getElementById('modal'), text=document.getElementById('modalText'), help=document.getElementById('modalHelp');
+    if(help) help.textContent='保存這份 JSON 可記錄每個部位的 x/y/z/rotation/scale 對位參數。';
+    if(text) text.value=out;
+    if(modal) modal.classList.add('show');
+  });
+  const b=document.getElementById('partsDummyToggle'); if(b) b.textContent=PARTS_HIDE_DUMMY?'顯示假人':'隱藏假人';
+}
+loadPartConfig();
+loadPropCal();
+buildPartSlotUI();
+setSyntheticDummyVisible(!PARTS_HIDE_DUMMY);
+updatePartsStatus();
+
+
+requestAnimationFrame(tick);
+
+// 開機自動載入(基底角色優先 → Meshy 部位人偶退路)移到 avatar.js 統一調度。

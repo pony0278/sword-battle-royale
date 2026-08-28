@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>G4.3B.5R.2.9.2R1 · Articulated Arm Impulse Chain</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}
+    body{display:grid;grid-template-columns:minmax(0,1fr) 440px;overflow:hidden}main{position:relative;min-width:0;min-height:0}canvas{width:100%;height:100%;display:block}
+    aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:19px;margin:0 0 6px}h2{font-size:12px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}
+    button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:9px 12px;margin:3px;cursor:pointer}button:hover{border-color:#75e6c2}.row{display:flex;flex-wrap:wrap;gap:6px}.note{color:#9eb0c8;font-size:12px}
+    .hud{position:absolute;left:16px;top:16px;min-width:700px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.55 ui-monospace,monospace;pointer-events:none}.legend{position:absolute;left:16px;bottom:16px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:8px 10px;font-size:12px}
+    .metric{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:8px 0;padding:10px;border:1px solid #243147;border-radius:8px;background:#080d14}.metric b{color:#ddecff}.control{display:grid;grid-template-columns:145px 1fr 58px;gap:8px;align-items:center;margin:9px 0}.control input{width:100%}.good{color:#7ef0ad}.warn{color:#ffd27a}.bad{color:#ff8c8c}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px;max-height:310px;overflow:auto}
+    @media(max-width:940px){html,body{height:auto;min-height:100%;overflow:auto}body{display:block}main{height:58vh;min-height:380px}.hud{left:10px;right:10px;top:10px;min-width:0;font-size:10px}aside{border-left:0;border-top:1px solid #26354d}}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <main>
+    <canvas id="canvas"></canvas>
+    <div class="hud">
+      <b>G4.3B.5R.2.9.2R1 · Articulated Arm Impulse Chain</b>
+      <div id="hudContact">CCD: waiting…</div>
+      <div id="hudImpulse">Articulated impulse: —</div>
+      <div id="hudJointDelta">Impact Δω: —</div>
+      <div id="hudAngles">Joint angles: —</div>
+      <div id="hudGrip">Grip separation: 0.0 mm</div>
+      <div id="hudTravel">After impact travel: —</div>
+    </div>
+    <div class="legend">Cyan = shield · Silver = sword · Green = rigid arm chain · Purple = torso/shoulder · Orange = physical contact</div>
+  </main>
+  <aside>
+    <h1>Articulated Arm Impulse Chain</h1>
+    <div class="note">這版取代失敗的「自由 Hand + Grip spring + Forearm spring」。Hand 不再是一顆會在空間漂移的質點；Sword Grip 永遠接在手腕 FK 鏈上。盾劍 contact impulse 直接透過 Jacobian 分配成 wrist / elbow / shoulder 的角速度。</div>
+
+    <h2>Presets</h2>
+    <div class="row"><button id="restart">Restart</button><button id="strong">Strong parry</button><button id="firm">Firm joints</button><button id="loose">Loose joints</button></div>
+    <label class="control"><span>Shield speed</span><input id="shieldSpeed" type="range" min="0.65" max="2.2" step="0.05" value="1.65"><b id="shieldSpeedValue">1.65×</b></label>
+    <label class="control"><span>Wrist stiffness</span><input id="wristStiffness" type="range" min="0.4" max="8" step="0.2" value="2.4"><b id="wristStiffnessValue">2.4</b></label>
+    <label class="control"><span>Elbow stiffness</span><input id="elbowStiffness" type="range" min="1" max="12" step="0.5" value="5.5"><b id="elbowStiffnessValue">5.5</b></label>
+    <label class="control"><span>Auto repeat</span><input id="autoRepeat" type="checkbox" checked><b>ON</b></label>
+
+    <h2>R1 authority</h2>
+    <div class="metric">
+      <span>Blade contact</span><b>.2.9.1 whole-blade CCD / earliest TOI</b>
+      <span>Impact solver</span><b>articulated Jacobian effective mass</b>
+      <span>Sword ↔ Hand</span><b>rigid grip, 0 translation DOF</b>
+      <span>Wrist</span><b>revolute angular response</b>
+      <span>Elbow</span><b>revolute angular response</b>
+      <span>Shoulder</span><b>revolute angular response</b>
+      <span>Rejected model</span><b>no free Hand particle / no Grip spring</b>
+      <span>Physics step</span><b>240 Hz</b>
+    </div>
+
+    <h2>Visual acceptance</h2>
+    <div class="metric">
+      <span>Contact</span><b>shield hits blade before penetration</b>
+      <span>First reaction</span><b>sword/wrist rotate immediately</b>
+      <span>Propagation</span><b>wrist → elbow → shoulder</b>
+      <span>Grip</span><b>handle never separates from Hand</b>
+      <span>Silhouette</span><b>tip travels more than wrist</b>
+      <span>Failure sign</span><b>no rubber-band Hand motion</b>
+    </div>
+
+    <h2>Verification</h2>
+    <div id="status" class="warn">Loading…</div>
+    <pre id="report">Not run.</pre>
+  </aside>
+  <script type="module" src="./articulated-arm-impulse-chain-lab-r292r1.js?v=g43b5r292r1-articulated"></script>
+</body>
+</html>

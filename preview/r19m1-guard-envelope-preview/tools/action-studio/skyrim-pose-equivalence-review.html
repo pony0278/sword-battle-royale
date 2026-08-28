@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>G2.4.4 Skyrim Source ↔ Target Pose Review</title>
+  <style>
+    html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#0d1119; color:#e8f0ff; font-family:Inter,system-ui,sans-serif; }
+    #canvas { width:100%; height:100%; display:block; }
+    .hud { position:fixed; top:16px; left:16px; right:16px; display:flex; justify-content:space-between; pointer-events:none; gap:16px; }
+    .panel { background:rgba(8,12,19,.88); border:1px solid rgba(150,190,255,.28); border-radius:10px; padding:10px 13px; box-shadow:0 8px 32px rgba(0,0,0,.28); }
+    .title { font-weight:800; letter-spacing:.02em; }
+    .sub { margin-top:3px; font-size:12px; opacity:.72; }
+    .labels { position:fixed; left:0; right:0; bottom:22px; display:flex; justify-content:space-around; pointer-events:none; font-weight:800; letter-spacing:.12em; }
+    .source { color:#ffbf69; } .target { color:#96e8ff; }
+    #report { position:fixed; left:16px; bottom:54px; width:min(640px,45vw); max-height:34vh; overflow:auto; white-space:pre-wrap; font:11px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; background:rgba(5,8,13,.86); border:1px solid rgba(255,255,255,.14); border-radius:8px; padding:10px; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="hud">
+    <div class="panel"><div class="title">G2.4.4 · Canonical Source ↔ Target</div><div class="sub" id="sampleLabel">loading canonical shd_blockidle…</div></div>
+    <div class="panel"><div class="title" id="decisionLabel">PENDING</div><div class="sub" id="equivalenceLabel">equivalence pending</div></div>
+  </div>
+  <div class="labels"><span class="source">SKYRIM SOURCE</span><span class="target">ACTION STUDIO TARGET</span></div>
+  <pre id="report">running…</pre>
+  <script type="module" src="./skyrim-pose-equivalence-review.js"></script>
+</body>
+</html>
