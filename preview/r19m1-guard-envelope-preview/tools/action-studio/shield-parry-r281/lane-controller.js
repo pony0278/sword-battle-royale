@@ -85,7 +85,11 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     update(elapsedSeconds, attacking = true) {
       swingLive = Boolean(attacking);
       if (!swingLive || exchangeSettled) return ground.report;
-      ground.setAttackerSwing(advance.update(elapsedSeconds)?.advanceMeters ?? 0);
+      // R19U.1: the swing spends its metres along the attacker's frozen facing - the same value
+      // the R19T freeze holds for the length of the commitment. On the lane that facing is zero
+      // and the ledger's exact legacy path runs.
+      ground.setAttackerSwing(advance.update(elapsedSeconds)?.advanceMeters ?? 0,
+        attackerBaseFacing.facingRadians);
       return apply();
     },
     // Feet run every frame, attack or no attack, which is the point: standing still is a choice
