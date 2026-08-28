@@ -55,6 +55,7 @@ export function createShieldParryDebugApi({
     get latestFinePlan() { return getExchangeState().latestFinePlan; },
     get latestFineTracking() { return getExchangeState().latestFineTracking; },
     get latestGuardCoverage() { return getExchangeState().latestGuardCoverage; },
+    get latestSwingRelevance() { return getExchangeState().latestSwingRelevance; },
     get latestGuardResidual() { return getExchangeState().latestGuardResidual; },
     get latestGuardStanceReach() { return getExchangeState().latestGuardStanceReach; },
     get latestParryWhiff() { return getExchangeState().latestParryWhiff; },

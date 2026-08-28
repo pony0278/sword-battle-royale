@@ -7,6 +7,7 @@ import {
 } from '../../../src/combat/parry-top-direction-compatibility-probe.js';
 import { createTopPrepReadabilityHoldRuntime } from '../../../src/combat/parry-top-prep-readability-hold.js';
 import { createGuardCoverageDirector } from '../../../src/combat/guard-coverage-director.js';
+import { assessSwingThreatRelevance } from '../../../src/combat/swing-threat-relevance.js';
 import { createParryInterceptDirector } from '../../../src/combat/parry-intercept-director.js';
 
 const TOP_DIRECTION_PROBE_ARM_BONES = Object.freeze(['upperarm.l', 'lowerarm.l']);
@@ -95,9 +96,16 @@ export function createShieldParryPreContactController({
   function zeroBracePlan() { return planArticulatedImpactBracing({ mode: 'off' }); }
 
   function updateBlockPreContact(snapshot, currentBlade, deltaSeconds, context) {
-    const { previousBlade, defenderSword } = context;
+    const { previousBlade, defenderSword, separationMeters } = context;
+    // R19N.1: a swing that cannot reach the defender is nobody's problem. The gate sits on
+    // commitment rather than inside the director so that an irrelevant attack is simply never
+    // committed to: the latch stays quiet, the anchors never apply, and the arm eases home at its
+    // return speed instead of performing coverage for a blow landing metres short.
+    const relevance = assessSwingThreatRelevance({ direction: snapshot.direction, separationMeters });
+    exchangeState.latestSwingRelevance = relevance;
     const baselineSurface = buckler.getWorldParrySurface();
-    const bracePlan = previousBlade && snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
+    const engaged = snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED && relevance.relevant;
+    const bracePlan = previousBlade && engaged
       ? planArticulatedImpactBracing({
           mode: 'brace-fine', attackDirection: snapshot.direction,
           previousBlade, currentBlade, bucklerSurface: baselineSurface, deltaSeconds,
@@ -107,7 +115,7 @@ export function createShieldParryPreContactController({
     const coverage = guardCoverageDirector.update({
       sequence: snapshot.sequence,
       direction: snapshot.direction,
-      committed: snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED,
+      committed: engaged,
       previousBlade,
       currentBlade,
       deltaSeconds,
