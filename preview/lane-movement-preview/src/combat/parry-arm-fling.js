@@ -202,10 +202,22 @@ export function computeParryArmFlingImpulse(input = {}) {
   // component of the blade's approach across the shield face -- a downward
   // chop is knocked back up, a horizontal cut is knocked back across -- so
   // every direction gets its own correct throw with no branching.
+  //
+  // R19H.1: the approach is the blade's OWN travel, not the sweep-relative
+  // one. The carry used to oppose tangential(incoming - sweep), which let the
+  // shield's motion rotate the throw: proven with this very function, a
+  // downward sweep peak of 3-5 mps walks RIGHT's carry from (-0.82, 0.23) to
+  // (-0.36, -0.70) and onward to the straight-down releases observed at ~3%
+  // in sequenced exchanges -- the peak tracker cannot tell the defender's
+  // parry sweep from the guard still descending out of the previous
+  // exchange's recovery. The shield's real motion keeps its influence where
+  // it belongs: the closing speed and the tangential drag term below both
+  // still use the relative velocity; only the throw's direction is the
+  // strike's own.
   const carryRatio = Math.max(0, finite(profile.deflectCarryRatio));
   let carryDirection = null;
   if (carryRatio > 0) {
-    const tangentialApproach = sub(relative, mul(normal, dot(relative, normal)));
+    const tangentialApproach = sub(incoming, mul(normal, dot(incoming, normal)));
     const opposed = normalize(tangentialApproach);
     if (opposed) carryDirection = mul(opposed, -1);
   }

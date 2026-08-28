@@ -130,13 +130,14 @@ export function createContactLifecycleDirector({
     });
   }
 
-  function armReaction({ outcome, contactPoint, surfaceNormal, incomingVelocity }) {
+  function armReaction({ outcome, contactPoint, surfaceNormal, incomingVelocity, incomingSource }) {
     return reactionDirector.arm({
       outcome,
       backwardDirection: backwardDirection(),
       contactPoint,
       surfaceNormal,
       incomingVelocity,
+      incomingSource,
     });
   }
 
@@ -238,12 +239,13 @@ export function createContactLifecycleDirector({
     };
     // Armed here, never earlier: while the swept probe is live it owns parry success, and moving
     // either root would move the geometry it measures.
+    const measuredIncoming = sanitizeIncomingVelocity(firstContact?.incomingVelocity);
     const armed = armReaction({
       outcome: combatResult?.resolution?.outcome,
       contactPoint: firstContact?.point,
       surfaceNormal: handoff.surfaceAtContact?.normal || readShieldSurface()?.normal,
-      incomingVelocity: sanitizeIncomingVelocity(firstContact?.incomingVelocity)
-        || fallbackIncomingVelocity(selectedDirection),
+      incomingVelocity: measuredIncoming || fallbackIncomingVelocity(selectedDirection),
+      incomingSource: measuredIncoming ? 'measured-contact-point' : 'authored-direction-fallback',
     });
 
     transfer = Object.freeze({

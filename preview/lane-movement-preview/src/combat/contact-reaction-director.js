@@ -145,7 +145,7 @@ export function createContactReactionDirector(THREE, {
   // Arms all five runtimes for one outcome. Parry calls this at DEFLECT_IMPULSE, once the swept
   // probe has finished owning the geometry; block calls it at impact, because a held shield never
   // takes the blade hostage and there is no release marker to wait for.
-  function arm({ outcome, backwardDirection: axis, contactPoint, surfaceNormal, incomingVelocity } = {}) {
+  function arm({ outcome, backwardDirection: axis, contactPoint, surfaceNormal, incomingVelocity, incomingSource } = {}) {
     // The hand pair travels together: both are read off the live contact, so a block - which never
     // has one - arms without either rather than with half of it.
     const handReleaseVelocity = saneVelocity(peakHandVelocity, EXCITATION_LIMITS.maximumSweepSpeedMps);
@@ -189,6 +189,14 @@ export function createContactReactionDirector(THREE, {
               shoulderAxis: armFlingPlan.joints.shoulder.axis,
               shoulderInitialVelocityRadPerSecond: armFlingPlan.joints.shoulder.initialVelocityRadPerSecond,
               startsAfterDeflectImpulse: outcome !== 'block',
+              // Which inputs the release was actually built from, for the release-direction
+              // diagnostics: the carry is the tangential remainder of incoming minus sweep.
+              incomingSource: incomingSource || null,
+              incomingUsed: armFlingPlan.incomingUsed,
+              sweepUsed: armFlingPlan.sweepUsed,
+              normalUsed: armFlingPlan.normalUsed,
+              closingSpeed: armFlingPlan.closingSpeed,
+              handReleaseVelocity,
             })
           : Object.freeze({ accepted: false, reason: armFlingPlan?.reason || 'not-planned' }),
         torsoLean: torsoLeanPlan?.accepted === true
