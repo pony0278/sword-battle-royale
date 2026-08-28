@@ -28,13 +28,36 @@
       .metric{grid-template-columns:1fr;gap:1px 0}.metric b{margin-bottom:7px}
       aside{border-left:0;border-top:1px solid #26354d}button{flex:1 1 30%;min-height:44px}
     }
-  </style>
+    #touchPad {
+    position: fixed; right: 14px; bottom: 14px; z-index: 30;
+    display: grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px;
+    grid-template-areas: ". up ." "left . right" ". down ."; gap: 6px;
+    opacity: 0.85; touch-action: none;
+  }
+  #touchPad button {
+    font-size: 20px; border-radius: 12px; border: 1px solid #3a4a5a;
+    background: rgba(20, 30, 42, 0.75); color: #cfe3f7; padding: 0;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #touchPad button:active { background: rgba(70, 110, 150, 0.9); }
+  .pad-up { grid-area: up; } .pad-down { grid-area: down; }
+  .pad-left { grid-area: left; } .pad-right { grid-area: right; }
+</style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
   <main>
     <canvas id="canvas" tabindex="0"></canvas>
+    <!-- R19W.1: touch movement pad. Each button is a virtual arrow key - pressing one puts the
+         same key code into the same held-set the keyboard uses, so touch and keys share one
+         intent pipeline and cannot drift apart. -->
+    <div id="touchPad" aria-hidden="true">
+      <button data-move="ArrowUp" class="pad-up">▲</button>
+      <button data-move="ArrowLeft" class="pad-left">◀</button>
+      <button data-move="ArrowRight" class="pad-right">▶</button>
+      <button data-move="ArrowDown" class="pad-down">▼</button>
+    </div>
     <div id="parryCue" class="parry-cue wait"><span>BEST PARRY TIMING · R18I5</span><strong id="parryCueMain">LOADING…</strong><small id="parryCueDetail">等待即時 attack gate</small></div>
     <div class="hud">
       <b>Step 3A · Live Shield → Sword → Arm → OLD B3 · BUILD R18I5 TOP/RIGHT</b>
@@ -49,7 +72,7 @@
       <div id="hudRecoil">OLD B3 recoil: —</div>
       <div id="hudDiagnostic">STEP 3A diagnostic: —</div>
     </div>
-    <div class="legend">↑↓ 防守者進退 · ←→ 防守者側移(R19V.1,繞著對手轉)· Shift+↑↓ 攻擊者進退(揮擊中攻擊者由步伐接管)· WASD 仍是自由觀察相機 · Cyan = shield target · yellow = sword contact · red = original attack axis · green/orange = current sword axis PASS/FAIL · purple = wrist→hilt line</div>
+    <div class="legend">↑↓ 防守者進退 · ←→ 防守者側移(R19V.1,繞著對手轉)· 觸控:右下方向鈕· Shift+↑↓ 攻擊者進退(揮擊中攻擊者由步伐接管)· WASD 仍是自由觀察相機 · Cyan = shield target · yellow = sword contact · red = original attack axis · green/orange = current sword axis PASS/FAIL · purple = wrist→hilt line</div>
   </main>
   <aside>
     <h1>Step 3A · Live Shield → Sword → Wrist-Grip</h1>
