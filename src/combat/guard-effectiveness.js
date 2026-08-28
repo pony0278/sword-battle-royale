@@ -1,4 +1,4 @@
-export const GUARD_EFFECTIVENESS_STAGE = 'R19L.1';
+export const GUARD_EFFECTIVENESS_STAGE = 'R19L.2';
 
 // R19L.1: whether holding a guard ever saves anybody.
 //
@@ -28,6 +28,21 @@ export const GUARD_EFFECTIVENESS_STAGE = 'R19L.1';
 // that was offered as a reason to be careful about strengthening the guard. It is not currently
 // protecting anything - the guard is nowhere near invincible - and the rule only becomes a real
 // balance question once the guard works at all.
+// R19L.2 re-ran all twenty-seven pairs after finding a trap in the harness that took them: the
+// lab refuses setEngagementSeparation while an exchange is still resolving and returns null to say
+// so, and a probe that ignores the return value cannot tell. A body hit keeps the attack runtime
+// alive past the settle the first pass allowed, so from the first landed blow onward the lane
+// stayed pinned at the 0.90m pushbox and every later trial silently ran there instead of at its
+// nominal stance - and being pinned makes trials resolve late, which keeps it pinned. Re-measured
+// with one fresh page load per trial, twenty-six of twenty-seven cells reproduced exactly. Only
+// RIGHT at 1.8m moved, from a clean miss to a landing blow the guard does not answer, so the
+// unanswered count is thirteen rather than twelve. The headline is unchanged.
+//
+// Two cautions the re-run earns. Cells near a direction's boundary are not deterministic: TOP at
+// 2.2m blocks five times in six, and this table's single trial per cell recorded the one miss, so
+// a cell here is one sample of a rate rather than a verdict. And R19M.1 has since widened the
+// guard's travel envelope, which moves TOP's column; this table is the measurement that motivated
+// that change, not a description of the code after it.
 export const MEASURED_GUARD_PAIRED_TRIALS = Object.freeze([
   Object.freeze({ stanceMeters: 2.6, direction: 'top', landsUnguarded: true, blocked: true }),
   Object.freeze({ stanceMeters: 2.6, direction: 'right', landsUnguarded: false, blocked: true }),
@@ -42,7 +57,7 @@ export const MEASURED_GUARD_PAIRED_TRIALS = Object.freeze([
   Object.freeze({ stanceMeters: 2.0, direction: 'right', landsUnguarded: false, blocked: false }),
   Object.freeze({ stanceMeters: 2.0, direction: 'left', landsUnguarded: false, blocked: true }),
   Object.freeze({ stanceMeters: 1.8, direction: 'top', landsUnguarded: true, blocked: false }),
-  Object.freeze({ stanceMeters: 1.8, direction: 'right', landsUnguarded: false, blocked: false }),
+  Object.freeze({ stanceMeters: 1.8, direction: 'right', landsUnguarded: true, blocked: false }),
   Object.freeze({ stanceMeters: 1.8, direction: 'left', landsUnguarded: true, blocked: true }),
   Object.freeze({ stanceMeters: 1.6, direction: 'top', landsUnguarded: true, blocked: false }),
   Object.freeze({ stanceMeters: 1.6, direction: 'right', landsUnguarded: true, blocked: false }),

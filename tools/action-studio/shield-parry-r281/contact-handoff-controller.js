@@ -66,6 +66,16 @@ export function createShieldParryContactHandoffController({
       },
       facing: attackerFacingFromDefender(),
     }),
+    // R19P.1: the hilt the clang probe sweeps is the attacker's wrist, read live like the
+    // hurtbox above so a lunging attacker's hilt is where the animation actually put it.
+    readAttackerHiltPoint: () => {
+      const bone = attacker?.rig?.bones?.['wrist.r'];
+      const THREE_ = globalThis.THREE;
+      if (!bone?.getWorldPosition || !THREE_?.Vector3) return null;
+      const world = bone.getWorldPosition(new THREE_.Vector3());
+      return { x: world.x, y: world.y, z: world.z };
+    },
+    readCloseRangePosture: () => exchangeState.latestCloseRangePosture,
     fallbackIncomingVelocity: (direction) => diagnosticIncomingVelocity(direction),
     releaseReachOwnership: () => {
       fineTrackingRuntime.reset();
@@ -73,6 +83,13 @@ export function createShieldParryContactHandoffController({
       residualStanceReachRuntime.reset();
     },
     observe: {
+      // R19P.1 diagnostic: every clang probe is recorded, hit or miss, because a clang that
+      // silently never fires is indistinguishable from one that was never attempted.
+      hiltClangProbed: (report, attackSnapshot) => {
+        exchangeState.latestHiltClang = report
+          ? Object.freeze({ ...report, probeElapsedSeconds: attackSnapshot?.elapsedSeconds ?? null })
+          : report;
+      },
       contactEvaluated: (evaluation, attackSnapshot) => {
         exchangeState.latestContact = evaluation;
         // Recorded here, before the confirmation can consume the gate's armed state.

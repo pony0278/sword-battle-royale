@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from '../src/combat/parry-lunge-reach.js';
+import {
+  PARRY_LUNGE_TRAVEL_BUDGET_METERS,
+  PARRY_LUNGE_TRACKING_SPEED_MPS,
+} from '../src/combat/parry-lunge-reach.js';
+import {
+  GUARD_TRACKING_TRAVEL_BUDGET_METERS,
+  GUARD_TRACKING_SPEED_MPS,
+  GUARD_EXCEEDS_PARRY_REACH_RATIONALE,
+} from '../src/combat/guard-tracking-envelope.js';
 import {
   GUARD_THREAT_TRACKING_STAGE,
   getGuardThreatTrackingProfile,
@@ -21,18 +29,29 @@ function close(actual, expected, epsilon = 1e-6) {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${actual} != ${expected}`);
 }
 
-test('G4.3A.1 profiles bind Parry to the lunge-reach envelope and leave Guard on its measured own', () => {
+test('G4.3A.1 both profiles bind to a named envelope, and Guard travels further but never faster', () => {
   assert.equal(GUARD_THREAT_TRACKING_STAGE, 'G4.3A.1');
   const guard = getGuardThreatTrackingProfile('guard');
   const parry = getGuardThreatTrackingProfile('parry');
-  // R18R.1 gave Guard the wider-but-slower correction; R19F.1 then moved Parry's whole envelope
-  // to parry-lunge-reach because the attack advance made the parry journey longer than any hand
-  // correction. Guard's numbers are untouched - every coverage band was measured on them.
-  assert.equal(guard.maxCorrectionMeters, 0.34);
+  // R19F.1 moved Parry to parry-lunge-reach because the attack advance made the parry journey
+  // longer than any hand correction, and deliberately left Guard on R18R.1's 0.34m/1.55mps
+  // because the coverage bands were measured on them. R19M.1 found that this is exactly why the
+  // bands stop where they do: the same staleness, in the one place the fix had not reached.
+  assert.equal(guard.maxCorrectionMeters, GUARD_TRACKING_TRAVEL_BUDGET_METERS);
   assert.equal(parry.maxCorrectionMeters, PARRY_LUNGE_TRAVEL_BUDGET_METERS);
-  assert.ok(parry.maxCorrectionMeters > guard.maxCorrectionMeters,
-    'the lunge journey outgrew even the omnidirectional guard reach');
-  assert.ok(guard.maxTrackingSpeedMps < parry.maxTrackingSpeedMps);
+  assert.equal(guard.maxTrackingSpeedMps, GUARD_TRACKING_SPEED_MPS);
+  assert.equal(parry.maxTrackingSpeedMps, PARRY_LUNGE_TRACKING_SPEED_MPS);
+
+  // The speed rule is the one the Guard profile actually states - "Guard covers a direction it
+  // has time to read, Parry buys the frames a fast attack denies it" - and it still holds.
+  assert.ok(guard.maxTrackingSpeedMps < parry.maxTrackingSpeedMps,
+    'Guard must never out-run the committed action');
+  // The budget ordering is the one R19M.1 reversed, and it is asserted in its new direction so
+  // that moving either envelope back breaks loudly rather than quietly restoring the old bands.
+  assert.ok(guard.maxCorrectionMeters > parry.maxCorrectionMeters,
+    'a held guard tracks across a longer horizon, so it covers more ground');
+  assert.match(GUARD_EXCEEDS_PARRY_REACH_RATIONALE.supersedes, /R19F\.1/);
+
   assert.equal(guard.threatSelection, 'disc-distance');
   assert.equal(parry.threatSelection, 'blade-first');
 });
@@ -71,16 +90,20 @@ test('G4.3A.1 Guard tracking makes a bounded correction toward a low LEFT-like t
 });
 
 test('G4.3A.1 clamps unreachable Guard tracking instead of magnetizing to the sword', () => {
-  const farBlade = blade(-0.2, 0.84);
+  // Placed out of reach by construction rather than at a literal height: this fixture sat at
+  // y=0.84 and silently stopped testing anything when R19M.1 widened the budget past it, so the
+  // distance is now derived from the budget it is meant to exceed.
+  const outOfReachY = GUARD_TRACKING_TRAVEL_BUDGET_METERS + surface.radius + 0.4;
+  const farBlade = blade(-0.2, outOfReachY);
   const plan = planGuardThreatCorrection({
     mode: 'guard',
-    previousBlade: blade(-0.3, 0.84),
+    previousBlade: blade(-0.3, outOfReachY),
     currentBlade: farBlade,
     bucklerSurface: surface,
     deltaSeconds: 0.1,
   });
   assert.equal(plan.reachable, false);
-  close(plan.appliedDistance, 0.34);
+  close(plan.appliedDistance, GUARD_TRACKING_TRAVEL_BUDGET_METERS);
   assert.equal(plan.reason, 'out-of-tracking-reach');
 });
 

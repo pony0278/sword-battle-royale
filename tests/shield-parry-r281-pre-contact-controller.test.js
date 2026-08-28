@@ -67,7 +67,7 @@ test('R18M.5 whiff probing remains diagnostic and real swept contact stays autho
   // R18S.4: the sequence lives in the lifecycle director; the whiff record is a hook it fires
   // after eligibility and before the confirmation can consume the gate's armed state.
   const probeIndex = lifecycleDirector.indexOf('const geometricContact = probeSweptSwordBucklerContact({');
-  const temporalEligibilityIndex = lifecycleDirector.indexOf('const contactEvaluation = evaluateSweptContactTemporalEligibility({', probeIndex);
+  const temporalEligibilityIndex = lifecycleDirector.indexOf('let contactEvaluation = evaluateSweptContactTemporalEligibility({', probeIndex);
   const whiffIndex = lifecycleDirector.indexOf('observe.contactEvaluated?.(contactEvaluation, attackSnapshot);', temporalEligibilityIndex);
   const rejectIndex = lifecycleDirector.indexOf('if (!contactEvaluation.contact) {', whiffIndex);
   const confirmIndex = lifecycleDirector.indexOf('confirmParry({ attackSnapshot, contact: contactEvaluation })', rejectIndex);

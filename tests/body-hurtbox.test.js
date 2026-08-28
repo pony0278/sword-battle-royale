@@ -103,7 +103,7 @@ test('R18U.1 the shield is asked first, always', async () => {
     lifecycle.indexOf('function resolveContact('),
     lifecycle.indexOf('function advanceCombat('),
   );
-  const shield = resolve.indexOf('const contactEvaluation = evaluateSweptContactTemporalEligibility({');
+  const shield = resolve.indexOf('let contactEvaluation = evaluateSweptContactTemporalEligibility({');
   const body = resolve.indexOf('probeBodyHurtboxContact({');
   assert.ok(shield >= 0 && body > shield, 'a blade the guard caught never reaches the body');
   // The body is only offered the sweep inside the branch where the shield was not there.

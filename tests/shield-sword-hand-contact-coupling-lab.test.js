@@ -177,7 +177,7 @@ test('Step 3A starts only after the manual gate confirms eligible real contact',
   assert.ok(resolveStart >= 0 && resolveEnd > resolveStart);
   const resolve = contactLifecycleDirectorSource.slice(resolveStart, resolveEnd);
   const geometry = resolve.indexOf('const geometricContact = probeSweptSwordBucklerContact({');
-  const temporalEligibility = resolve.indexOf('const contactEvaluation = evaluateSweptContactTemporalEligibility({', geometry);
+  const temporalEligibility = resolve.indexOf('let contactEvaluation = evaluateSweptContactTemporalEligibility({', geometry);
   const reject = resolve.indexOf('if (!contactEvaluation.contact) {', temporalEligibility);
   const confirm = resolve.indexOf('confirmParry({ attackSnapshot, contact: contactEvaluation })', reject);
   const resolveCombat = resolve.indexOf('combatResult = resolveCombat({', confirm);
