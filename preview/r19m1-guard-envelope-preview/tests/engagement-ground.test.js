@@ -17,7 +17,7 @@ const START = 2.4;
 const ground = () => createEngagementGround({ startSeparationMeters: START });
 
 test('R18Z.1 takes the ground each blow moves straight from the recoil profiles', () => {
-  assert.equal(ENGAGEMENT_GROUND_STAGE, 'R18Z.1');
+  assert.equal(ENGAGEMENT_GROUND_STAGE, 'R19S.1');
   // Not transcribed: if the recoil is retuned, the ground it transfers moves with it, because they
   // are the same event described once.
   assert.equal(ENGAGEMENT_GROUND_TRANSFERS.block.defenderMeters, BLOCK_ROOT_DISPLACEMENT_PROFILES.defender.peakMeters);
