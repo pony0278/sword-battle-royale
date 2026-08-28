@@ -206,7 +206,7 @@ const preContactController = createShieldParryPreContactController({
     previousBlade,
     defenderSword,
     debugStanceProfile,
-    separationMeters: laneController.separationMeters, // R19N.1: the relevance gate reads the live lane
+    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, // R19N.1 relevance + R19Z.1 cone gate read the live lane
   }),
   services: {
     cloneSurface,
