@@ -9,6 +9,7 @@ import { createTopPrepReadabilityHoldRuntime } from '../../../src/combat/parry-t
 import { createGuardCoverageDirector } from '../../../src/combat/guard-coverage-director.js';
 import { assessSwingThreatRelevance } from '../../../src/combat/swing-threat-relevance.js';
 import { planCloseRangeGuardPosture } from '../../../src/combat/close-range-guard-hold.js';
+import { planGuardFacingTurn } from '../../../src/combat/guard-facing-turn.js';
 import { createParryInterceptDirector } from '../../../src/combat/parry-intercept-director.js';
 
 const TOP_DIRECTION_PROBE_ARM_BONES = Object.freeze(['upperarm.l', 'lowerarm.l']);
@@ -119,6 +120,13 @@ export function createShieldParryPreContactController({
     const engaged = snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
       && relevance.relevant
       && closeRangePosture.plan.posture !== 'hold-at-neutral';
+    // R19Q.1: a fresh plan object every frame is the liveness signal the facing integrator keys
+    // on, so this write doubles as "the exchange is still running" - do not cache it.
+    exchangeState.latestGuardFacingPlan = planGuardFacingTurn({
+      direction: snapshot.direction,
+      engaged: snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED && relevance.relevant,
+      posture: closeRangePosture.plan.posture,
+    });
     const bracePlan = previousBlade && engaged
       ? planArticulatedImpactBracing({
           mode: 'brace-fine', attackDirection: snapshot.direction,
