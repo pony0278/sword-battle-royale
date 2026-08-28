@@ -341,6 +341,31 @@ export function bindShieldParryLabUiEvents({
     handlers.onAttackerIntent?.(intents.attacker);
     handlers.onDefenderLateralIntent?.(lateralIntentFrom(heldLateralKeys, attackerModifierHeld));
   }
+  // R19W.1: the touch pad. Each button is a virtual arrow key: press puts its key code into the
+  // same held-set the keyboard path uses, release takes it out, and everything downstream - the
+  // Shift rules, the publish, the intents - is literally the keyboard code running unchanged.
+  // Pointer events cover mouse and touch alike; capture keeps a finger that slides off the
+  // button from leaving a phantom held key behind.
+  documentRef.querySelectorAll('[data-move]').forEach((button) => {
+    const code = button.dataset.move;
+    const held = LANE_KEYS[code] !== undefined ? heldLaneKeys : heldLateralKeys;
+    const press = (event) => {
+      event.preventDefault();
+      // Capture keeps a sliding finger from leaving a phantom held key, but a pointer that is
+      // already gone by the time capture is requested THROWS - an ultra-quick tap can do it -
+      // and an uncaught throw here would abort before the intent ever registers.
+      try { button.setPointerCapture(event.pointerId); } catch { /* capture is best-effort */ }
+      held.add(code); publishLaneIntent();
+    };
+    const release = (event) => {
+      event.preventDefault();
+      held.delete(code); publishLaneIntent();
+    };
+    button.addEventListener('pointerdown', press);
+    button.addEventListener('pointerup', release);
+    button.addEventListener('pointercancel', release);
+    button.addEventListener('contextmenu', (event) => event.preventDefault());
+  });
   documentRef.querySelectorAll('[data-attack]').forEach((button) =>
     button.addEventListener('click', () => handlers.onAttack(button.dataset.attack)));
   documentRef.querySelectorAll('[data-mode]').forEach((button) =>

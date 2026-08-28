@@ -32,3 +32,18 @@ test('R19V.1 arrows own the sidestep because WASD belongs to the camera', async 
   assert.match(lane, /ground\.moveDefenderLateral\(-lateralStep\.meters\)/);
   assert.match(lane, /defenderLateralIntent = 0/, 'a lane reset clears the held sidestep');
 });
+
+test('R19W.1 the touch pad is virtual arrow keys sharing the keyboard held-sets', async () => {
+  const html = await readFile(
+    new URL('../tools/action-studio/shield-driven-contact-coupling-lab.html', import.meta.url), 'utf8');
+  for (const code of ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']) {
+    assert.match(html, new RegExp(`data-move="${code}"`), code);
+  }
+  const ui = await readFile(
+    new URL('../tools/action-studio/shield-parry-r281/lab-ui.js', import.meta.url), 'utf8');
+  // One pipeline: the pad adds and removes key codes from the SAME held-sets the keyboard uses,
+  // so the Shift rules and intents cannot drift between input methods.
+  assert.match(ui, /LANE_KEYS\[code\] !== undefined \? heldLaneKeys : heldLateralKeys/);
+  assert.match(ui, /button\.addEventListener\('pointerdown', press\)/);
+  assert.match(ui, /button\.addEventListener\('pointercancel', release\)/);
+});
