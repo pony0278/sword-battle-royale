@@ -97,12 +97,34 @@ export function createShieldParryLabScene({
     defenderYawOffsetRadians = Number.isFinite(Number(radians)) ? Number(radians) : 0;
     return applyEngagementStance(engagementStance);
   }
-  function setLanePositions({ attackerMeters, defenderMeters } = {}) {
-    const attacker = Number(attackerMeters);
-    const defender = Number(defenderMeters);
-    attackerAdvanceMeters = Number.isFinite(attacker) ? attacker : 0;
-    defenderAdvanceMeters = Number.isFinite(defender) ? defender : 0;
-    return applyEngagementStance(engagementStance);
+  // R19S.1 (stage B1): the ledger owns where anybody is, so a ledger report that carries world
+  // positions and facing bearings is stamped verbatim - position from the report, base facing
+  // from the report's bearing, the guard's yaw offset on top. The scalar path underneath is kept
+  // for boot and stance changes, and on the line (x = 0) the two produce identical transforms,
+  // which the B1 golden grid holds this scene to.
+  function setLanePositions(report = {}) {
+    const attackerM = Number(report.attackerMeters);
+    const defenderM = Number(report.defenderMeters);
+    attackerAdvanceMeters = Number.isFinite(attackerM) ? attackerM : 0;
+    defenderAdvanceMeters = Number.isFinite(defenderM) ? defenderM : 0;
+    const ap = report.attackerPosition;
+    const dp = report.defenderPosition;
+    if (!ap || !dp
+      || !Number.isFinite(Number(ap.x)) || !Number.isFinite(Number(ap.z))
+      || !Number.isFinite(Number(dp.x)) || !Number.isFinite(Number(dp.z))) {
+      return applyEngagementStance(engagementStance);
+    }
+    attacker.object3d.position.set(Number(ap.x), engagementStance.attacker.position.y, Number(ap.z));
+    attacker.object3d.rotation.y = Number.isFinite(Number(report.attackerFacingRadians))
+      ? Number(report.attackerFacingRadians)
+      : engagementStance.attacker.facingRadians;
+    defender.object3d.position.set(Number(dp.x), engagementStance.defender.position.y, Number(dp.z));
+    defender.object3d.rotation.y = (Number.isFinite(Number(report.defenderFacingRadians))
+      ? Number(report.defenderFacingRadians)
+      : engagementStance.defender.facingRadians) + defenderYawOffsetRadians;
+    attacker.object3d.updateMatrixWorld(true);
+    defender.object3d.updateMatrixWorld(true);
+    return engagementStance;
   }
   scene.add(attacker.object3d, defender.object3d);
 
