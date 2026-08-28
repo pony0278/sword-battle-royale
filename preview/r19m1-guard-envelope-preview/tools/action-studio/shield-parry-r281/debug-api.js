@@ -32,6 +32,7 @@ export function createShieldParryDebugApi({
     captureBladeGeometry: actions.captureBladeGeometry,
     get laneGround() { return runtimes.laneController?.report ?? null; },
     get laneDefenderIntent() { return runtimes.laneController?.defenderIntent ?? 0; },
+    get laneDefenderLateralIntent() { return runtimes.laneController?.defenderLateralIntent ?? 0; },
     get laneAttackerIntent() { return runtimes.laneController?.attackerIntent ?? 0; },
     get laneAttackerGait() { return runtimes.laneController?.attackerGait ?? null; },
     get laneDefenderGait() { return runtimes.laneController?.defenderGait ?? null; },

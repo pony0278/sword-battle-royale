@@ -2,7 +2,7 @@ import { createAttackAdvanceRuntime } from '../../../src/combat/attack-advance.j
 import { createGuardFacingTurnRuntime } from '../../../src/combat/guard-facing-turn.js';
 import { createBaseFacingRuntime } from '../../../src/combat/base-facing.js';
 import { createEngagementGround } from '../../../src/combat/engagement-ground.js';
-import { createLaneLocomotionRuntime } from '../../../src/combat/lane-locomotion.js';
+import { createLaneLocomotionRuntime, planLateralStep } from '../../../src/combat/lane-locomotion.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../../../src/combat/lane-walk-cycle.js';
 import { canWalkOverlayLegs, filterPoseToWalkOverlay } from '../../../src/combat/guard-walk-overlay.js';
 
@@ -26,6 +26,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   const attackerBaseFacing = createBaseFacingRuntime();
   const defenderBaseFacing = createBaseFacingRuntime();
   const defenderFeet = createLaneLocomotionRuntime();
+  let defenderLateralIntent = 0; // R19V.1: A/D, the defender's own left/right
   const attackerFeet = createLaneLocomotionRuntime();
   // R19C.2: the attacker's gait, driven by the distance the ledger actually moved them rather than
   // by elapsed time, so the feet cannot disagree with the ground about how far anybody went.
@@ -97,6 +98,10 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     setDefenderIntent(intent) {
       return defenderFeet.setIntent(intent);
     },
+    setDefenderLateralIntent(intent) {
+      defenderLateralIntent = Math.sign(Number(intent) || 0);
+      return defenderLateralIntent;
+    },
     setAttackerIntent(intent) {
       return attackerFeet.setIntent(intent);
     },
@@ -116,6 +121,12 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       defenderBaseFacing.update(bearings.defenderFacingRadians, deltaSeconds);
       const defenderStep = defenderFeet.update({ deltaSeconds, separationMeters: ground.separationMeters });
       if (defenderStep.meters !== 0) ground.moveDefender(defenderStep.meters);
+      // R19V.1: the sidestep. Body-relative: positive intent is the defender's own right, which
+      // while square on the lane (facing -z) is world -x, so the sign flips on the way into the
+      // ledger's +x convention. Presentation debt accepted knowingly: KayKit ships no strafe
+      // clip, so a sidestep slides on planted legs in the lab.
+      const lateralStep = planLateralStep({ intent: defenderLateralIntent, deltaSeconds });
+      if (lateralStep.meters !== 0) ground.moveDefenderLateral(-lateralStep.meters);
       // R19B.1: the attacker's feet stop while a swing is still travelling. The step into the blow
       // owns their movement for those frames, and letting both drive at once would double the
       // distance every measured coverage band was taken against.
@@ -138,6 +149,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       return Object.freeze({ defenderStep, attackerStep });
     },
     get defenderIntent() { return defenderFeet.intent; },
+    get defenderLateralIntent() { return defenderLateralIntent; },
     get attackerIntent() { return attackerFeet.intent; },
     get attackerFeetLocked() { return attackerFeetLocked(); },
     get attackerGait() { return attackerGait.report; },
@@ -202,6 +214,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     // survive - only the ground is forgotten.
     get defenderFacingYawRadians() { return guardFacingTurn.yawRadians; },
     resetLane() {
+      defenderLateralIntent = 0;
       guardFacingTurn.reset();
       labScene.setDefenderYawOffset(0);
       // The lane reset teleports the fighters back to stance; facing teleports with them.

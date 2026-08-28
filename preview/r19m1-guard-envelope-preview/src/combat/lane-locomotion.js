@@ -21,6 +21,12 @@ export const LANE_LOCOMOTION_STAGE = 'R19A.1';
 export const LANE_LOCOMOTION_PROFILE = Object.freeze({
   forwardSpeedMps: 1.0,
   backwardSpeedMps: 0.75,
+  // R19V.1 (stage B2): sidestepping moves at the backward speed, and that is a reused judgement
+  // rather than a new number - "movement that is not straight at your opponent is slower" is the
+  // call backwardSpeedMps already made, and the games this lab studies price strafing the same
+  // way. A sidestep needs no separation clamp of its own: it is perpendicular to the line between
+  // the fighters, so geometrically it can only open the gap.
+  lateralSpeedMps: 0.75,
   // Measured against Dodge_Backward, the fastest authored travel this character has. A walk that
   // matched or beat its own dodge would make the dodge pointless.
   authoredBurstCeilingMps: 1.62,
@@ -92,6 +98,22 @@ export function planLaneStep(input = {}) {
 
 // Holds one fighter's held intent and turns frames into travel. It writes nothing: the lane ledger
 // owns where anybody is, and this only says how far they asked to go since the last frame.
+// R19V.1: the lateral step. Same shape as planLaneStep minus the clamp it cannot need; positive
+// intent steps toward the defender's own right (+x while square on the lane), negative their left.
+export function planLateralStep(input = {}) {
+  const profile = Object.freeze({ ...LANE_LOCOMOTION_PROFILE, ...(input.profile || {}) });
+  const intent = normalizeLaneIntent(input.intent);
+  const deltaSeconds = Math.max(0, finite(input.deltaSeconds));
+  const meters = zeroed(intent * finite(profile.lateralSpeedMps, 0) * deltaSeconds);
+  return Object.freeze({
+    stage: LANE_LOCOMOTION_STAGE,
+    intent,
+    meters,
+    profile,
+    authority: profile.authority,
+  });
+}
+
 export function createLaneLocomotionRuntime(options = {}) {
   const profile = Object.freeze({ ...LANE_LOCOMOTION_PROFILE, ...(options.profile || {}) });
   let intent = 0;
