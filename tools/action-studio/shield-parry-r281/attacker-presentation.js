@@ -128,9 +128,12 @@ export function createAttackerPresentationAdapter({
     }
     if (snapshot.action) {
       const profile = snapshot.action.runtime;
+      // R20M.1: sample where the clip is, not where the exchange is. For TOP and RIGHT the two are
+      // the same number; LEFT's burst is stretched, so the snapshot carries the conversion and this
+      // adapter keeps reasoning about neither.
       attacker.sampleAnimation(
         profile.clipId,
-        Math.min(profile.durationSeconds, snapshot.elapsedSeconds),
+        Math.min(profile.sourceDurationSeconds ?? profile.durationSeconds, snapshot.sourceTimeSeconds ?? snapshot.elapsedSeconds),
         { loop: false, inPlace: true, rootRotationPolicy: 'lock' },
       );
       attacker.update(0, camera);
