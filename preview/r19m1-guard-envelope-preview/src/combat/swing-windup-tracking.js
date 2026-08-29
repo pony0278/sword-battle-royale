@@ -21,18 +21,14 @@ export const SWING_WINDUP_TRACKING_STAGE = 'R20B.1';
 //   TOP met by a right step at 1.8m:  frozen 2/4 body hits (the -25 cliff's edge) ->
 //     tracked 6/6 blocked, at 20, 45, and 90 deg/s alike.
 //   Every TOP and RIGHT cell at 2.4m and 1.8m: blocked 4/4.
-//   LEFT met by a left step: body hits at EVERY stance and EVERY rate tried - 1.6m, 1.8m,
-//     and 2.4m, where the freeze used to whiff 3/4.
 //
-// The LEFT row is the honest limit of attacker-side tracking, and it is kept, not hidden:
-// the residual 6-8 degrees at outcome is bearing, not aim - the tracker has the attacker
-// pointed true, and what fails is the DEFENDER's left flank, the same zero-margin edge every
-// instrument has found (guard cone from-degrees 0, delivery band from-degrees 0, the -2
-// degree collapse). An attacker rule cannot repair a defender flank. What tracking buys
-// there is consistency: the freeze split the same left step into a reward far and a
-// punishment near, decided by stance; tracked, a step into the low sweep's flank is punished
-// at every range - one learnable rule where a coin used to sit. Widening that flank's
-// margin, if it should be widened, is a defender-side stage with its own measurements.
+// At ship time LEFT met by a left step still read as body hits at every stance and rate, and
+// this stage recorded it as "the honest limit of attacker-side tracking - a defender flank an
+// attacker rule cannot repair". R20C's autopsy corrected the record: what failed was not a
+// flank but the R19Z cone gate enforcing LEFT's unsampled zero band edge - a left step puts a
+// fraction of a degree of negative chase lag on the defender, and the gate stood the entire
+// guard down on that noise. With the edge re-measured to -20 (R20C.1), a tracked left step
+// blocks 4/4 at every stance, like every other cell in the grid.
 //
 // The rate: outcomes were rate-insensitive from 20 deg/s up on every measured cell, because
 // the ledger re-aims the swing's advance along the tracked facing every frame and the lunge

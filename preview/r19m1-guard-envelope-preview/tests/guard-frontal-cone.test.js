@@ -23,9 +23,10 @@ test('R19X.1 the cone is asymmetric because the shield is on one arm', () => {
 });
 
 test('R19X.1 each direction dies at its own away-side angle, LEFT first and RIGHT last', () => {
-  // LEFT already fails at -45 (1/6) while TOP is 6/6 there; RIGHT is clean through -90 and dead
-  // by -110. Ordering, from the trials themselves:
-  assert.equal(MEASURED_GUARD_CONE_TRIALS.left['-45'][0], 1);
+  // LEFT holds full rate to -20 and flickers from -22 (R20C.1 re-measure of the gap R19X never
+  // sampled) while TOP is still 6/6 at -45; RIGHT is clean through -90 and dead by -110.
+  assert.deepEqual(MEASURED_GUARD_CONE_TRIALS.left['-20'], [4, 4]);
+  assert.ok(MEASURED_GUARD_CONE_TRIALS.left['-22'][0] < MEASURED_GUARD_CONE_TRIALS.left['-22'][1]);
   assert.equal(MEASURED_GUARD_CONE_TRIALS.top['-45'][0], 6);
   assert.deepEqual(MEASURED_GUARD_CONE_TRIALS.right['-90'], [2, 2]);
   assert.equal(MEASURED_GUARD_CONE_TRIALS.right['-110'][0], 0);

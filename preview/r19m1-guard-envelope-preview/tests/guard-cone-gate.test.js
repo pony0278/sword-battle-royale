@@ -14,7 +14,7 @@ test('R19Z.1 inside each direction\'s measured band the gate changes nothing', (
   for (const [direction, errorDegrees] of [
     ['top', 0], ['top', -45], ['top', 150],
     ['right', -90], ['right', 120],
-    ['left', 0], ['left', 90],
+    ['left', 0], ['left', 90], ['left', -10], ['left', -20],
   ]) {
     const gate = planGuardConeGate({ direction, facingErrorRadians: rad(errorDegrees) });
     assert.equal(gate.engaged, true, `${direction} at ${errorDegrees} stays engaged`);
@@ -24,13 +24,13 @@ test('R19Z.1 inside each direction\'s measured band the gate changes nothing', (
 });
 
 test('R19Z.1 outside the band coverage stands down, at each direction\'s own edge', () => {
-  // The per-direction choice is the point: LEFT is already out at -10 while TOP holds to -45
-  // and RIGHT to -90. A universal cone would either strip TOP's measured tolerance or hand
-  // LEFT angles it fails at 1-in-6.
+  // The per-direction choice is the point: LEFT is out at -25 while TOP holds to -45 and
+  // RIGHT to -90. And LEFT's edge is -20, not zero: R20C.1 sampled the gap R19X skipped,
+  // after the zero edge was caught standing the guard down on -0.005 degrees of chase noise.
   for (const [direction, errorDegrees] of [
     ['top', -60], ['top', -110], ['top', 180],
     ['right', -100], ['right', 180],
-    ['left', -10], ['left', -45],
+    ['left', -25], ['left', -45],
   ]) {
     const gate = planGuardConeGate({ direction, facingErrorRadians: rad(errorDegrees) });
     assert.equal(gate.engaged, false, `${direction} at ${errorDegrees} stands down`);
