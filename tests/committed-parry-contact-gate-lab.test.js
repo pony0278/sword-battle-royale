@@ -49,15 +49,19 @@ test('Step 2 exposes one manual Parry and removes Perfect from the Lab', () => {
   assert.match(html, /id="slowReview"[^>]*checked/);
   assert.match(html, />PARRY NOW \(F\)</);
   assert.doesNotMatch(html, /data-mode="perfect"/);
-  assert.match(html, /g43b5r281-held-guard-r20g1/);
+  assert.match(html, /g43b5r281-sekiro-tap-r20h2/);
 });
 
 test('Step 2 does not auto-start Parry from predictive timing', () => {
   const preContact = preContactFunctionBody('updateParryPreContact', 'updatePreContact');
   const manualInput = functionBody('triggerParryNow', 'forceOldTwoActorB3');
+  // R20H.1 moved the accepted-arm side effects into driveAcceptedParry, shared with the block-mode
+  // guard raise - still player input only, never predictive timing.
+  const acceptedDrive = functionBody('driveAcceptedParry', 'triggerParryNow');
   assert.doesNotMatch(preContact, /predictivePresentation\.start/);
   assert.match(manualInput, /parryGate\.arm/);
-  assert.match(manualInput, /predictivePresentation\.start/);
+  assert.match(manualInput, /driveAcceptedParry\(/);
+  assert.match(acceptedDrive, /predictivePresentation\.start/);
 });
 
 test('Step 3A requires the gate and real swept contact before live wrist-grip transfer', () => {

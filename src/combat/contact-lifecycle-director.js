@@ -86,6 +86,7 @@ export function createContactLifecycleDirector({
   reactionDirector,
   gripConstraint,
   confirmParry,
+  readParryArmed,
   resolveCombat,
   updateCombat,
   readCombatSnapshot,
@@ -488,7 +489,10 @@ export function createContactLifecycleDirector({
     const surfaceAtContact = readShieldSurface();
     surfaceAtContactForRelease = surfaceAtContact;
     const predictiveHandoff = takePredictiveHandoff();
-    confirmation = selectedMode === 'parry'
+    // R20H.1 (B6c2): a Sekiro raise armed the gate from block mode, so confirmation follows the
+    // armed attempt rather than the mode. Nothing armed keeps the block path's null, and parry
+    // mode confirms exactly as before.
+    confirmation = (selectedMode === 'parry' || readParryArmed?.() === true)
       ? confirmParry({ attackSnapshot, contact: contactEvaluation })
       : null;
     const parryConfirmed = confirmation?.accepted === true;

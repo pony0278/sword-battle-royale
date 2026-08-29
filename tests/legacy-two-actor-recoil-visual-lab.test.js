@@ -33,7 +33,7 @@ function functionBody(source, name, nextName) {
 
 test('current R281 HTML runs the Step 3A shield to sword to hand entry', () => {
   assert.match(html, /Step 3A · Live Shield → Sword → Wrist-Grip Constraint/);
-  assert.match(html, /shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-held-guard-r20g1/);
+  assert.match(html, /shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-sekiro-tap-r20h2/);
   assert.match(html, /PARRY NOW \(F\)/);
   assert.doesNotMatch(html, /data-mode="perfect"/);
 });
@@ -41,8 +41,10 @@ test('current R281 HTML runs the Step 3A shield to sword to hand entry', () => {
 test('current R281 starts shield presentation only from manual Parry input', () => {
   const manual = functionBody(entry, 'triggerParryNow', 'forceOldTwoActorB3');
   const preContact = functionBody(preContactController, 'updateParryPreContact', 'armActiveIntercept');
+  const acceptedDrive = functionBody(entry, 'driveAcceptedParry', 'triggerParryNow');
   assert.match(manual, /parryGate\.arm/);
-  assert.match(manual, /predictivePresentation\.start/);
+  assert.match(manual, /driveAcceptedParry\(/);
+  assert.match(acceptedDrive, /predictivePresentation\.start/);
   assert.doesNotMatch(preContact, /predictivePresentation\.start/);
   assert.match(preContact, /predictivePresentation\.update/);
   assert.match(preContact, /sampleActiveShieldLeadMotion/);

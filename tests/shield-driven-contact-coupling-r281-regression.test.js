@@ -58,7 +58,7 @@ function sliceFunction(text, startMarker) {
 test('R18M.1 baseline targets the actual R18I5 R281 browser entry', () => {
   assert.match(
     html,
-    /<script type="module" src="\.\/shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-held-guard-r20g1"><\/script>/,
+    /<script type="module" src="\.\/shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-sekiro-tap-r20h2"><\/script>/,
   );
   assert.match(html, /BUILD R18I5 TOP\/RIGHT/);
   assert.match(html, /LEFT release (?:仍)?(?:暫緩|deferred)/);
@@ -69,7 +69,7 @@ test('R18M.1 locks manual Parry input and authored commitment\/TTC authority', (
   assert.match(source, /(?:exchangeState\.)?latestParryInput = parryGate\.arm\(\{/);
   assert.match(source, /manual: true,/);
   // R18S.4: the confirmation decision lives in the lifecycle director; the lab injects the gate.
-  assert.match(contactLifecycleDirectorSource, /confirmation = selectedMode === 'parry'[\s\S]*confirmParry\(\{/);
+  assert.match(contactLifecycleDirectorSource, /confirmation = \(selectedMode === 'parry' \|\| readParryArmed\?\.\(\) === true\)[\s\S]*confirmParry\(\{/);
   assert.match(contactHandoffSource, /confirmParry: \(input\) => parryGate\.confirm\(input\)/);
   assert.match(html, /Input authority<\/span><b>manual PARRY NOW<\/b>/);
   assert.match(html, /Attack commitment<\/span><b>authored movementStartSeconds<\/b>/);

@@ -47,6 +47,7 @@ export function createShieldParryContactHandoffController({
     reactionDirector,
     gripConstraint: swordGripConstraint,
     confirmParry: (input) => parryGate.confirm(input),
+    readParryArmed: () => parryGate.armed === true, // R20H.1: a Sekiro raise arms from block mode
     resolveCombat: (input) => combat.resolveContact(input),
     updateCombat: (deltaSeconds, options = {}) => combat.update(deltaSeconds, { camera, ...options }),
     readCombatSnapshot: () => combat.snapshot,
