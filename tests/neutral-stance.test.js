@@ -49,7 +49,8 @@ test('R19I.1 the lab opens on a decision nobody has made yet', () => {
   assert.ok(setMode >= 0 && raises > setMode && raises - setMode < 400,
     'setMode must be what raises the guard');
   // An attack with nothing chosen leaves the defender neutral rather than conjuring a guard.
-  assert.match(entry, /if \(selectedMode && guardMachine\.state !== GUARD_STATES\.HOLD\) enterGuard\(\);/);
+  // B6c: only parry mode (or a held guard key in block mode) raises the guard for an attack.
+  assert.match(entry, /if \(\(selectedMode === 'parry' \|\| \(selectedMode === 'block' && guardKeyHeld\)\) && guardMachine\.state !== GUARD_STATES\.HOLD\) enterGuard\(\);/);
 });
 
 test('R19I.1 the neutral idle sits inside the walk sandwich rather than beside it', () => {

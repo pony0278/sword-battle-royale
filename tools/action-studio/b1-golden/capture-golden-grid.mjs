@@ -36,6 +36,9 @@ export async function runExchange(page, { dir, stance }) {
   await page.waitForFunction(() => {
     try { window.__G43B5R281_LAB__.setMode('block'); return true; } catch { return false; }
   }, null, { timeout: 120000 });
+  // R20G.1 (B6c): the guard is an input now. The golden grid describes the guard-up world, so
+  // the driver holds it for the whole exchange - the cells themselves are unchanged.
+  await page.evaluate(() => window.__G43B5R281_LAB__.setGuardHeld(true));
   await page.evaluate((s) => window.__G43B5R281_LAB__.setEngagementSeparation(s), stance);
   await page.waitForTimeout(500);
   return page.evaluate(async (d) => {
