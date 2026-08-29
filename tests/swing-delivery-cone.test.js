@@ -28,11 +28,13 @@ test('R20A.1 the timeline is the authored one: short windups, ~0.1s active windo
 test('R20A.1 past the block band the first failure mode is the body, not a whiff', () => {
   // The delivery cone mirrors the guard cone: on the shield-flank side a body-hit band sits
   // between blocking and whiffing. TOP blocks at -20, hits the body 4/4 at -25, only whiffs
-  // far past; RIGHT blocks at +12 and hits at +15/+20; LEFT's flank is a cliff at two degrees.
+  // far past; RIGHT blocks at +12 and hits at +15/+20; LEFT's flank cliff sits at -8
+  // (R20C.1 re-measure - the first pass's two-degree cliff was the R19Z gate artifact).
   assert.deepEqual(MEASURED_DELIVERY_CONE_TRIALS.top['-20'], [6, 0, 0]);
   assert.deepEqual(MEASURED_DELIVERY_CONE_TRIALS.top['-25'], [0, 4, 0]);
   assert.deepEqual(MEASURED_DELIVERY_CONE_TRIALS.right['20'], [0, 2, 0]);
-  assert.deepEqual(MEASURED_DELIVERY_CONE_TRIALS.left['-2'], [0, 4, 0]);
+  assert.deepEqual(MEASURED_DELIVERY_CONE_TRIALS.left['-5'], [4, 0, 0]);
+  assert.deepEqual(MEASURED_DELIVERY_CONE_TRIALS.left['-10'], [0, 4, 0]);
   assert.deepEqual(MEASURED_DELIVERY_CONE_TRIALS.left['0'], [2, 0, 0]);
   for (const direction of ['top', 'right', 'left']) {
     const band = MEASURED_DELIVERY_RELIABLE_BAND_DEGREES[direction];
@@ -41,18 +43,15 @@ test('R20A.1 past the block band the first failure mode is the body, not a whiff
 });
 
 test('R20A.1 today\'s sidestep is not a dodge - the named premise reversal', () => {
-  // B4 was scoped as making an "absolutely effective" sidestep conditional. Measured: at 2.4m
-  // every full-speed sidestep against TOP and RIGHT is still blocked; the grid's single true
-  // dodge is LEFT met by a left step; and closer in, stepping mostly hands the defender's own
-  // body to the arc - LEFT/left is 4/4 body hits at 1.8m and 1.6m.
-  const at24 = MEASURED_STRAFE_DODGE_TRIALS['2.4'];
-  assert.deepEqual(at24.top.ownLeft, [4, 0, 0]);
-  assert.deepEqual(at24.top.ownRight, [4, 0, 0]);
-  assert.deepEqual(at24.right.ownLeft, [4, 0, 0]);
-  assert.deepEqual(at24.left.ownLeft, [0, 1, 3], 'the one true dodge, and even it is a rate');
-  assert.deepEqual(MEASURED_STRAFE_DODGE_TRIALS['1.8'].left.ownLeft, [0, 4, 0]);
-  assert.deepEqual(MEASURED_STRAFE_DODGE_TRIALS['1.6'].left.ownLeft, [0, 4, 0]);
-  assert.deepEqual(MEASURED_STRAFE_DODGE_TRIALS['1.8'].top.ownRight, [2, 2, 0]);
+  // B4 was scoped as making an "absolutely effective" sidestep conditional. Measured: every
+  // full-speed sidestep in the grid is blocked. (The first pass's LEFT dodge and punish cells
+  // were the R19Z gate artifact R20C.1 corrected; these rows are the current stack.)
+  for (const rows of Object.values(MEASURED_STRAFE_DODGE_TRIALS)) {
+    for (const [direction, row] of Object.entries(rows)) {
+      assert.deepEqual(row.ownLeft, [4, 0, 0], `${direction} ownLeft blocks`);
+      assert.deepEqual(row.ownRight, [4, 0, 0], `${direction} ownRight blocks`);
+    }
+  }
 });
 
 test('R20A.1 the achievable error grows as stances close, and stays small', () => {

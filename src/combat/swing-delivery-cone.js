@@ -16,15 +16,14 @@ export const SWING_DELIVERY_CONE_STAGE = 'R20A.1';
 // The one-sentence finding: TODAY'S SIDESTEP IS NOT A DODGE, AND B4'S PREMISE WAS BACKWARDS.
 // The R19T freeze was accepted as "a sidestep mid-swing is stepped away from, never tracked",
 // and B4 was scoped as making that absolute dodge conditional. Measured, the absolute dodge
-// does not exist: at 2.4m every full-speed sidestep against TOP and RIGHT is still blocked
-// (the guard's own tracking absorbs the +/-6-12 degrees a windup permits), and the single true
-// dodge cell in the whole grid is LEFT met by a left step (3/4 whiff). Everything else a
-// sidestep changes, it changes AGAINST the defender: the delivery cone has the same shape as
-// the guard cone (R19X.1) - a body-hit band sits between the block band and the whiff band on
-// the shield-flank side, LEFT's flank collapsing at TWO degrees - so a stepping defender
-// mostly walks their own body into the arc's uncovered angle. LEFT met by a left step is 4/4
-// body hits at 1.6m and 1.8m; TOP met by a right step at 1.8m is a coin flip of body hits at
-// the -25 cliff's edge.
+// does not exist: every full-speed sidestep in the grid is blocked (the guard's own tracking
+// absorbs the +/-6-20 degrees a windup permits). The delivery cone has the same shape as the
+// guard cone (R19X.1) - a body-hit band sits between the block band and the whiff band on the
+// shield-flank side, LEFT's at -8 - so an attacker MIS-AIMED past the band hits the body of a
+// square defender; but no walking-speed strafe reaches those angles once tracking runs.
+// (R20A's first pass told a darker LEFT story - a lone dodge cell at 2.4m, 4/4 punishes
+// closer in, a cliff at two degrees. All of it was the R19Z gate enforcing an unsampled zero
+// band edge, found by R20C's autopsy; the rows below carry the corrected measurements.)
 //
 // Why the angles are small: the windups are short (TOP 0.375s, RIGHT 0.190s, LEFT 0.215s -
 // authored contacts minus the active leads in longsword-directional-attack-runtime.js), and
@@ -54,33 +53,44 @@ export const MEASURED_DELIVERY_CONE_TRIALS = Object.freeze({
     '-5': [2, 0, 0], '0': [2, 0, 0], '5': [6, 0, 0], '8': [3, 1, 0], '10': [5, 1, 0],
     '12': [4, 0, 0], '15': [2, 4, 0], '20': [0, 2, 0], '30': [0, 2, 0], '45': [0, 0, 2],
   }),
+  // R20C.1: LEFT's negative rows re-measured after the original pass was found contaminated -
+  // the R19Z gate's zero band edge (built on R19X's unsampled -5..-35 gap) stood the guard down
+  // on sub-degree chase residue, so the first table recorded the gate, not the geometry. With
+  // the edge corrected to -20, the physical cliff sits at -8: -2 and -5 block clean, -10 inward
+  // hits the body, -30 outward whiffs. Every row here is post-fix.
   left: Object.freeze({
-    '-45': [0, 0, 2], '-30': [0, 0, 2], '-20': [0, 1, 1], '-15': [0, 2, 0], '-10': [0, 1, 1],
-    '-8': [0, 3, 1], '-5': [0, 4, 2], '-3': [0, 3, 1], '-2': [0, 4, 0], '0': [2, 0, 0],
+    '-45': [0, 0, 4], '-30': [0, 0, 4], '-20': [0, 4, 0], '-15': [0, 4, 0], '-10': [0, 4, 0],
+    '-8': [1, 3, 0], '-5': [4, 0, 0], '-2': [4, 0, 0], '0': [2, 0, 0],
     '5': [2, 0, 0], '10': [2, 0, 0], '15': [2, 0, 0], '20': [2, 0, 0], '30': [2, 0, 0],
     '45': [2, 0, 0],
   }),
 });
 
 // The dynamic grid: attack direction x the defender's own step side, full speed from the
-// commitment frame, shipping freeze. outcome [blocked, bodyHit, whiff] of n, and the bearing
-// error the strafe had accumulated when the exchange resolved (own-left positive).
+// commitment frame. outcome [blocked, bodyHit, whiff] of n on the current stack (R20B windup
+// tracking, R20C band); errorDegrees is the bearing error a walk accumulates against a FROZEN
+// attacker - the upper bound of what walking can generate, kept from the R20A baseline.
 export const MEASURED_STRAFE_DODGE_TRIALS = Object.freeze({
+  // R20C.1: every left.ownLeft row here originally read as body hits (or, at 2.4m, three
+  // whiffs) - all of it the R19Z gate artifact above, since a left step puts a fraction of a
+  // degree of negative chase lag on the defender and the zero edge stood the guard down. With
+  // the measured -20 edge (and R20B's windup tracking), a left step against LEFT blocks 4/4 at
+  // every stance, like every other cell. The grid now contains no dodge cells at all.
   '2.4': Object.freeze({
     top: Object.freeze({ ownLeft: [4, 0, 0], ownRight: [4, 0, 0], errorDegrees: 12 }),
     right: Object.freeze({ ownLeft: [4, 0, 0], ownRight: [4, 0, 0], errorDegrees: 6 }),
-    left: Object.freeze({ ownLeft: [0, 1, 3], ownRight: [4, 0, 0], errorDegrees: 6 }),
+    left: Object.freeze({ ownLeft: [4, 0, 0], ownRight: [4, 0, 0], errorDegrees: 6 }),
   }),
   '2.0': Object.freeze({
     top: Object.freeze({ ownLeft: [4, 0, 0], ownRight: [4, 0, 0], errorDegrees: 16 }),
   }),
   '1.8': Object.freeze({
-    top: Object.freeze({ ownLeft: [4, 0, 0], ownRight: [2, 2, 0], errorDegrees: 20 }),
+    top: Object.freeze({ ownLeft: [4, 0, 0], ownRight: [4, 0, 0], errorDegrees: 20 }),
     right: Object.freeze({ ownLeft: [4, 0, 0], ownRight: [4, 0, 0], errorDegrees: 9 }),
-    left: Object.freeze({ ownLeft: [0, 4, 0], ownRight: [4, 0, 0], errorDegrees: 9 }),
+    left: Object.freeze({ ownLeft: [4, 0, 0], ownRight: [4, 0, 0], errorDegrees: 9 }),
   }),
   '1.6': Object.freeze({
-    left: Object.freeze({ ownLeft: [0, 4, 0], ownRight: [4, 0, 0], errorDegrees: 10 }),
+    left: Object.freeze({ ownLeft: [4, 0, 0], ownRight: [4, 0, 0], errorDegrees: 10 }),
   }),
 });
 
@@ -91,5 +101,5 @@ export const MEASURED_STRAFE_DODGE_TRIALS = Object.freeze({
 export const MEASURED_DELIVERY_RELIABLE_BAND_DEGREES = Object.freeze({
   top: Object.freeze({ fromDegrees: -20, toDegrees: 15 }),
   right: Object.freeze({ fromDegrees: -20, toDegrees: 12 }),
-  left: Object.freeze({ fromDegrees: 0, toDegrees: 45 }),
+  left: Object.freeze({ fromDegrees: -5, toDegrees: 45 }), // R20C.1: was 0, the gate artifact
 });
