@@ -63,6 +63,8 @@ export function createShieldParryDebugApi({
     get latestSwingRelevance() { return getExchangeState().latestSwingRelevance; },
     get latestCloseRangePosture() { return getExchangeState().latestCloseRangePosture; },
     get latestConeGate() { return getExchangeState().latestConeGate; },
+    get latestDodge() { return getExchangeState().latestDodge; },
+    tryDodge: (direction) => runtimes.laneController?.tryDodge?.(direction) ?? null, // R20F.1 (probes drive it directly)
     get latestHiltClang() { return getExchangeState().latestHiltClang; },
     get latestGuardFacingPlan() { return getExchangeState().latestGuardFacingPlan; },
     get defenderFacingYawRadians() { return runtimes.laneController?.defenderFacingYawRadians ?? 0; },

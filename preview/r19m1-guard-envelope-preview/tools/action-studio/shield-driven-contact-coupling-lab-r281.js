@@ -206,7 +206,7 @@ const preContactController = createShieldParryPreContactController({
     previousBlade,
     defenderSword,
     debugStanceProfile,
-    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, // R19N.1 relevance + R19Z.1 cone gate read the live lane
+    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, // R19N.1 + R19Z.1 + R20F.1 read the live lane
   }),
   services: {
     cloneSurface,
@@ -243,7 +243,7 @@ const contactHandoffController = createShieldParryContactHandoffController({
     measureAttackerRecoilWorldSilhouette,
   },
   callbacks: {
-    onBodyStruck: (bodyContact) => bodyStrikeReaction.start(bodyContact), // R19K.1
+    onBodyStruck: (bodyContact) => bodyStrikeReaction.start(bodyContact), readDodgeReport: () => laneController.dodgeReport, // R19K.1 + R20F.1
     captureCanonicalAttackerOldB3Base: () => attackerPresentation.captureCanonicalOldB3Base(attackRuntime.snapshot.interruption),
     captureAttackerWorldSilhouette: () => attackerPresentation.captureWorldSilhouette(),
     updateLiveContactMarkers: (report) => inspectionOverlay.update(report),
@@ -519,7 +519,7 @@ bindShieldParryLabUiEvents({
     onDebugApplyRetry: () => restartAttack(selectedDirection),
     onDebugResetDefaults: resetDebugStanceDefaults,
     onDefenderIntent: (intent) => laneController.setDefenderIntent(intent), onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
-    onDefenderLateralIntent: (intent) => laneController.setDefenderLateralIntent(intent), // R19V.1 A/D
+    onDefenderLateralIntent: (intent) => laneController.setDefenderLateralIntent(intent), onDodge: (direction) => laneController.tryDodge(direction), // R19V.1 + R20F.1
     onShowSurface: (checked) => buckler.setParrySurfaceVisible(checked),
     onResize: resize,
   },
@@ -577,7 +577,7 @@ function frame(timestamp) {
     laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active);
     guardRuntime.update(deltaMs, camera);
     neutralStance.sample(deltaMs); // R19I.1: no-op unless the guard is neutral
-    laneController.overlayDefenderWalkLegs();
+    laneController.overlayDefenderWalkLegs(); laneController.overlayDefenderDodge(); // R20F.1 dodge outranks the guard, a landed blade outranks the dodge
     bodyStrikeReaction.sample(deltaMs); // R19K.1: last writer - a landed blade owns the fighter
     contactHandoffController.updateDefenderDeflectReleaseGate();
     contactHandoffController.updateLiveConstraintAfterGuard({

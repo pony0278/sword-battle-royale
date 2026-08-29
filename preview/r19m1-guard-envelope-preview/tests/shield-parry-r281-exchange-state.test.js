@@ -74,6 +74,7 @@ const EXPECTED_DIAGNOSTIC_KEYS = [
   'latestDefenderTorsoLeanReport',
   'blockReaction',
   'latestInputSignal',
+  'latestDodge',
 ];
 const EXPECTED_TRACE_KEYS = [
   'interceptDriveTrace',

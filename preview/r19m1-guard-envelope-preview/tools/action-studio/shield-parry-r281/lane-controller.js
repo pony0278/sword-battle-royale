@@ -4,6 +4,7 @@ import { createBaseFacingRuntime, wrapAngleRadians } from '../../../src/combat/b
 import { planSwingFacingPolicy } from '../../../src/combat/swing-windup-tracking.js';
 import { createEngagementGround } from '../../../src/combat/engagement-ground.js';
 import { createLaneLocomotionRuntime, planLateralStep } from '../../../src/combat/lane-locomotion.js';
+import { createDodgeStateRuntime, DODGE_DURATION_SECONDS } from '../../../src/combat/dodge-state.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../../../src/combat/lane-walk-cycle.js';
 import { canWalkOverlayLegs, filterPoseToWalkOverlay } from '../../../src/combat/guard-walk-overlay.js';
 
@@ -28,6 +29,10 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   const defenderBaseFacing = createBaseFacingRuntime();
   const defenderFeet = createLaneLocomotionRuntime();
   let defenderLateralIntent = 0; // R19V.1: A/D, the defender's own left/right
+  // R20F.1: the dodge state. A committed 0.4s burst that owns the defender's feet while it
+  // runs; its i-frames are read by the contact lifecycle, its guard cost by the pre-contact
+  // commitment chain - this controller only moves the body and plays the clip.
+  const dodge = createDodgeStateRuntime();
   const attackerFeet = createLaneLocomotionRuntime();
   // R19C.2: the attacker's gait, driven by the distance the ledger actually moved them rather than
   // by elapsed time, so the feet cannot disagree with the ground about how far anybody went.
@@ -129,13 +134,24 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
         rateRadiansPerSecond: facingPolicy.rateRadiansPerSecond,
       });
       defenderBaseFacing.update(bearings.defenderFacingRadians, deltaSeconds);
-      const defenderStep = defenderFeet.update({ deltaSeconds, separationMeters: ground.separationMeters });
+      // R20F.1: a running dodge owns the defender's movement outright - held walk keys wait.
+      // The authored travel goes into the ledger through the same verbs the feet use, so every
+      // clamp the ground enforces on walking holds for dodging too.
+      const dodgeStep = dodge.advance(deltaSeconds);
+      if (dodgeStep.direction === 'back') ground.moveDefender(dodgeStep.displacementMeters);
+      else if (dodgeStep.direction === 'forward') ground.moveDefender(-dodgeStep.displacementMeters);
+      else if (dodgeStep.direction === 'right') ground.moveDefenderLateral(-dodgeStep.displacementMeters);
+      else if (dodgeStep.direction === 'left') ground.moveDefenderLateral(dodgeStep.displacementMeters);
+      const dodging = Boolean(dodgeStep.direction);
+      const defenderStep = dodging
+        ? Object.freeze({ meters: 0 })
+        : defenderFeet.update({ deltaSeconds, separationMeters: ground.separationMeters });
       if (defenderStep.meters !== 0) ground.moveDefender(defenderStep.meters);
       // R19V.1: the sidestep. Body-relative: positive intent is the defender's own right, which
       // while square on the lane (facing -z) is world -x, so the sign flips on the way into the
       // ledger's +x convention. Presentation debt accepted knowingly: KayKit ships no strafe
       // clip, so a sidestep slides on planted legs in the lab.
-      const lateralStep = planLateralStep({ intent: defenderLateralIntent, deltaSeconds });
+      const lateralStep = planLateralStep({ intent: dodging ? 0 : defenderLateralIntent, deltaSeconds });
       if (lateralStep.meters !== 0) ground.moveDefenderLateral(-lateralStep.meters);
       // R19B.1: the attacker's feet stop while a swing is still travelling. The step into the blow
       // owns their movement for those frames, and letting both drive at once would double the
@@ -192,6 +208,23 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       pendingDefenderLegPose = filterPoseToWalkOverlay(services.captureRigPose(defender.rig));
       return gate;
     },
+    // R20F.1: the dodge is a full-body clip and the last pre-strike writer: it overrides the
+    // guard sample outright, and only a landed blade (the strike reaction, sampled after this)
+    // outranks it. In-place with a locked root - the ledger already moved the body.
+    overlayDefenderDodge() {
+      const running = dodge.report;
+      if (!running.dodging || !labScene.defender?.sampleAnimation) return false;
+      labScene.defender.sampleAnimation(running.clipId,
+        Math.min(running.elapsedSeconds, DODGE_DURATION_SECONDS - 1e-3),
+        { loop: false, inPlace: true, rootRotationPolicy: 'lock' });
+      labScene.defender.update(0, labScene.camera);
+      return true;
+    },
+    // R20F.1: input asks, the state decides - mid-dodge and cooldown refusals live in the rule.
+    tryDodge(direction) {
+      return dodge.tryStart({ direction });
+    },
+    get dodgeReport() { return dodge.report; },
     // Second slice: after the guard has rebuilt the whole rig, lay the walk's legs back on top.
     overlayDefenderWalkLegs() {
       if (!pendingDefenderLegPose) return false;
@@ -235,6 +268,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     },
     resetLane() {
       defenderLateralIntent = 0;
+      dodge.reset();
       guardFacingTurn.reset();
       labScene.setDefenderYawOffset(0);
       // The lane reset teleports the fighters back to stance; facing teleports with them.

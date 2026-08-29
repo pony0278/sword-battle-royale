@@ -72,7 +72,11 @@ export function createShieldParryPreContactController({
   let closeRangePosture = null;
   let coneGate = null;
   function updateBlockPreContact(snapshot, currentBlade, deltaSeconds, context) {
-    const { previousBlade, defenderSword, separationMeters, defenderFacingErrorRadians } = context;
+    const { previousBlade, defenderSword, separationMeters, defenderFacingErrorRadians, dodgeReport } = context;
+    // R20F.1: a dodge's cost is its guard. Read per frame rather than latched per exchange,
+    // because the dodge can begin or end mid-swing and the exposure must follow it exactly.
+    const dodgeGuardDown = dodgeReport?.guardSuppressed === true;
+    exchangeState.latestDodge = dodgeReport ?? null;
     // R19N.1: a swing that cannot reach the defender is nobody's problem. The gate sits on
     // commitment rather than inside the director so that an irrelevant attack is simply never
     // committed to: the latch stays quiet, the anchors never apply, and the arm eases home at its
@@ -107,6 +111,7 @@ export function createShieldParryPreContactController({
     const engaged = snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
       && relevance.relevant
       && coneGate.plan.engaged
+      && !dodgeGuardDown
       && closeRangePosture.plan.posture !== 'hold-at-neutral';
     // R19Q.1: a fresh plan object every frame is the liveness signal the facing integrator keys
     // on, so this write doubles as "the exchange is still running" - do not cache it. The cone
@@ -115,7 +120,7 @@ export function createShieldParryPreContactController({
     exchangeState.latestGuardFacingPlan = planGuardFacingTurn({
       direction: snapshot.direction,
       engaged: snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
-        && relevance.relevant && coneGate.plan.engaged,
+        && relevance.relevant && coneGate.plan.engaged && !dodgeGuardDown,
       posture: closeRangePosture.plan.posture,
     });
     const bracePlan = previousBlade && engaged
