@@ -40,7 +40,22 @@ test('R20H.1 confirmation asks the armed gate, mode cannot veto a Sekiro raise',
 
 test('R20H.1 the page identifies the Sekiro build and documents the windows', () => {
   const html = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab.html', import.meta.url), 'utf8');
-  assert.match(html, /\?v=g43b5r281-sekiro-parry-r20h1/);
+  assert.match(html, /\?v=g43b5r281-sekiro-tap-r20h2/);
   assert.match(html, /B6c2/);
   assert.match(html, /Sekiro/);
+});
+
+test('R20H.2 a released key cannot interrupt an armed attempt or a live deflect', () => {
+  // Measured: releasing F 80-150ms after the raise (an ordinary human tap) used to yank the shield
+  // out of its own parry - the sword slipped off after the deflection peak, direction agreement
+  // 0.18 against the 0.50 floor, both rigs left in garbage poses. The commitment defers the drop.
+  assert.match(entry, /function defenceCommitted\(\) \{ return parryGate\.armed === true \|\| contactHandoffController\.ownsLiveContact\(\); \}/);
+  // Both the input edge and the frame loop arbitrate through the stance, and the guard machine
+  // follows the stance rather than the raw key - otherwise the deferred drop never lands.
+  const armEdge = entry.indexOf("defenceCommitted: defenceCommitted() });\n  syncGuardToStance();");
+  assert.ok(armEdge > 0, 'setGuardHeld must update the stance with the commitment, then sync the machine');
+  assert.match(entry, /defenderStance\.update\(\{ guardKeyHeld, dodgeRunning: laneController\.dodgeReport\.dodging, defenceCommitted: defenceCommitted\(\) \}\); \/\/ R20G\.1 \+ R20H\.2\n  syncGuardToStance\(\);/);
+  assert.match(entry, /function syncGuardToStance\(\) \{[\s\S]*defenderStance\.report\.guardActive === true[\s\S]*GUARD_EVENTS\.RESET/);
+  // The raw key may no longer drive the guard machine anywhere in the entry.
+  assert.doesNotMatch(entry, /guardKeyHeld && guardMachine\.state === GUARD_STATES\.NEUTRAL/);
 });

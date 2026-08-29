@@ -80,3 +80,40 @@ test('R20G.1 reset returns to neutral with no stale edge', () => {
   assert.equal(stanceRuntime.report.justRaisedGuard, false);
   assert.equal(stanceRuntime.mayDodge(), true);
 });
+
+test('R20H.2 a committed defence keeps the guard up after the key is released', () => {
+  const stanceRuntime = createDefenderStanceRuntime();
+  stanceRuntime.update({ guardKeyHeld: true });                       // the tap
+  const released = stanceRuntime.update({ guardKeyHeld: false, defenceCommitted: true });
+  assert.equal(released.guardActive, true, 'an armed parry may not be yanked out by the key release');
+  assert.equal(released.heldByCommitment, true);
+  assert.equal(released.justRaisedGuard, false, 'the hold is not a new press');
+  const stillCommitted = stanceRuntime.update({ guardKeyHeld: false, defenceCommitted: true });
+  assert.equal(stillCommitted.guardActive, true);
+  const ended = stanceRuntime.update({ guardKeyHeld: false, defenceCommitted: false });
+  assert.equal(ended.guardActive, false, 'the deferred stand-down lands the moment the commitment ends');
+  assert.equal(ended.heldByCommitment, false);
+});
+
+test('R20H.2 a commitment can hold a raised guard but can never raise one', () => {
+  const stanceRuntime = createDefenderStanceRuntime();
+  const neutral = stanceRuntime.update({ guardKeyHeld: false, defenceCommitted: true });
+  assert.equal(neutral.guardActive, false, 'nothing was committed from neutral - B6c keeps its cost');
+  assert.equal(neutral.heldByCommitment, false);
+});
+
+test('R20H.2 a dodge still outranks a commitment-held guard', () => {
+  const stanceRuntime = createDefenderStanceRuntime();
+  stanceRuntime.update({ guardKeyHeld: true });
+  const dodging = stanceRuntime.update({ guardKeyHeld: false, defenceCommitted: true, dodgeRunning: true });
+  assert.equal(dodging.stance, 'dodge');
+  assert.equal(dodging.guardActive, false);
+});
+
+test('R20H.2 re-pressing during a commitment hold does not buy a second parry', () => {
+  const stanceRuntime = createDefenderStanceRuntime();
+  stanceRuntime.update({ guardKeyHeld: true });
+  stanceRuntime.update({ guardKeyHeld: false, defenceCommitted: true });
+  const repress = stanceRuntime.update({ guardKeyHeld: true, defenceCommitted: true });
+  assert.equal(repress.justRaisedGuard, false, 'the guard never fell, so there is no rising edge to parry on');
+});
