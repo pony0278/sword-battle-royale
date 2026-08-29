@@ -123,14 +123,24 @@ const exchangeState = createShieldParryExchangeState();
 // behind it) exists only while the key is held; the machine follows this input, never auto-raises.
 const defenderStance = createDefenderStanceRuntime();
 let guardKeyHeld = false;
+// R20H.2: an armed attempt still awaiting its contact, or the live deflect itself - what a released
+// key may not interrupt. Both end on their own; the deferred stand-down lands the frame after. The
+// guard machine follows the stance from here on, never the raw key: the stance is what knows about
+// the dodge mutex and this hold.
+function defenceCommitted() { return parryGate.armed === true || contactHandoffController.ownsLiveContact(); }
+function syncGuardToStance() {
+  if (selectedMode !== 'block') return;
+  const guardActive = defenderStance.report.guardActive === true;
+  if (guardActive && guardMachine.state === GUARD_STATES.NEUTRAL) enterGuard();
+  else if (!guardActive && guardMachine.state !== GUARD_STATES.NEUTRAL) { guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera); }
+}
 function setGuardHeld(held) {
   guardKeyHeld = held === true;
   if (selectedMode !== 'block') return guardKeyHeld;
-  if (guardKeyHeld && guardMachine.state === GUARD_STATES.NEUTRAL) enterGuard();
-  else if (!guardKeyHeld && guardMachine.state !== GUARD_STATES.NEUTRAL) { guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera); }
   // The stance refreshes on the input edge, not the next frame: a guard press and a dodge
   // request in the same tick must already see each other, or the mutex leaks for one frame.
-  const stanceEdge = defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging });
+  const stanceEdge = defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging, defenceCommitted: defenceCommitted() });
+  syncGuardToStance();
   // R20H.1 (B6c2): the rising edge IS the Sekiro attempt. Timing is the gate's whole authority
   // (geometry cannot veto), so the raise needs nothing but the live snapshot; a refusal is
   // silent - the shield still rose, and that is already the answer the player asked for.
@@ -585,7 +595,8 @@ function frame(timestamp) {
   const deltaSeconds = Math.max(1e-5, deltaMs / 1000);
   lastTimestamp = timestamp;
   freeCamera.update(rawDeltaMs / 1000);
-  defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging }); // R20G.1 stance arbitration
+  defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging, defenceCommitted: defenceCommitted() }); // R20G.1 + R20H.2
+  syncGuardToStance(); // a deferred stand-down lands the frame its commitment ends
   laneController.walk(rawDeltaMs / 1000, exchangeState.latestGuardFacingPlan); // real seconds; R19Q.1 facing plan rides along
   if (ready) {
     const snapshot = attackRuntime.update(deltaMs);
