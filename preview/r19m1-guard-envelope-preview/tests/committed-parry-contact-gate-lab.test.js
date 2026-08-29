@@ -122,7 +122,7 @@ test('Step 2 keeps original Block at 1x while Parry review holds a valid prompt'
 });
 
 test('Step 2 uses timing as input authority and treats predictive geometry as clamped guidance', () => {
-  assert.match(source, /committed-parry-contact-gate\.js\?v=g43b5r281-step2-timing-authority-r5/);
+  assert.match(source, /committed-parry-contact-gate\.js'/);
   assert.match(html, /geometry-guided shield motion clamped to the 60cm lunge-reach budget/);
   assert.match(html, /guidance · cannot veto input/);
   assert.doesNotMatch(source, /predicted-intercept-out-of-shield-reach/);
