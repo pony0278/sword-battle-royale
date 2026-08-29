@@ -45,6 +45,10 @@ export function createShieldParryDebugApi({
     triggerParryNow: actions.triggerParryNow,
     dispatchParryInput: actions.dispatchParryInput,
     setGuardHeld: actions.setGuardHeld, // R20G.1: probes and drivers hold the guard directly
+    // R20K.1 (B6e): a harness pins the frame step so a cell's trajectory is reproducible, and
+    // counts frames instead of milliseconds. setFixedStepMs(null) hands the clock back to the wall.
+    setFixedStepMs: actions.setFixedStepMs,
+    get frameClock() { return runtimes.frameClock?.report ?? null; },
     get defenderStance() { return runtimes.defenderStance?.report ?? null; },
     forceOldTwoActorB3: actions.forceOldTwoActorB3,
     get directOldB3Diagnostic() { return getExchangeState().directOldB3Diagnostic; },

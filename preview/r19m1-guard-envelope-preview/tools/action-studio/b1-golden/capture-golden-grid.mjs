@@ -29,6 +29,16 @@ export const GOLDEN_CELLS = [
   { dir: 'top', stance: 7.0, expect: 'ignored' },
 ];
 
+// The waits the driver used to spend in milliseconds, in the only unit that means the same thing
+// twice: 0.5s of settle and 2.5s of exchange at the pinned 1/60 step.
+const SETTLE_FRAMES = 30;
+const EXCHANGE_FRAMES = 150;
+
+async function waitFrames(page, frames) {
+  const target = await page.evaluate((n) => window.__G43B5R281_LAB__.frameClock.frames + n, frames);
+  await page.waitForFunction((n) => window.__G43B5R281_LAB__.frameClock.frames >= n, target, { timeout: 60000 });
+}
+
 export async function runExchange(page, { dir, stance }) {
   await page.goto(URL_, { waitUntil: 'load', timeout: 120000 });
   // Readiness is "block mode actually enters", not "the api object exists": setMode samples the
@@ -36,17 +46,31 @@ export async function runExchange(page, { dir, stance }) {
   await page.waitForFunction(() => {
     try { window.__G43B5R281_LAB__.setMode('block'); return true; } catch { return false; }
   }, null, { timeout: 120000 });
+  // R20K.1 (B6e): pin the frame step before anything moves. These cells clear the shield by as
+  // little as 1cm, so on the wall clock the same cell sampled the swing at whatever phase the
+  // browser happened to deliver and landed on either side of that centimetre - about one flipped
+  // cell per pass, wandering between cells. Pinned, every wait below is an exact sim duration and
+  // a cell reproduces bit for bit: measured 8/8 identical to six decimals, and 5/5 identical
+  // again under synthetic main-thread load that fails the block 4 times in 5 on the wall clock.
+  await page.evaluate(() => {
+    const a = window.__G43B5R281_LAB__;
+    if (typeof a.setFixedStepMs !== 'function') throw new Error('R20K.1: lab has no pinned frame step; goldens would be unreproducible');
+    a.setFixedStepMs(1000 / 60);
+  });
   // R20G.1 (B6c): the guard is an input now. The golden grid describes the guard-up world, so
   // the driver holds it for the whole exchange - the cells themselves are unchanged.
   await page.evaluate(() => window.__G43B5R281_LAB__.setGuardHeld(true));
   await page.evaluate((s) => window.__G43B5R281_LAB__.setEngagementSeparation(s), stance);
-  await page.waitForTimeout(500);
-  return page.evaluate(async (d) => {
+  await waitFrames(page, SETTLE_FRAMES);
+  return page.evaluate(async ({ d, frames }) => {
     const a = window.__G43B5R281_LAB__;
     const startSep = a.laneGround?.separationMeters ?? null;
+    const target = a.frameClock.frames + frames;
     a.restartAttack(d);
-    await new Promise((res) => setTimeout(res, 1600));
-    await new Promise((res) => setTimeout(res, 900));
+    await new Promise((res) => {
+      const check = () => (a.frameClock.frames >= target ? res() : requestAnimationFrame(check));
+      check();
+    });
     const c = a.latestContact;
     return {
       startSep: startSep != null ? +startSep.toFixed(6) : null,
@@ -58,7 +82,7 @@ export async function runExchange(page, { dir, stance }) {
       settledSep: a.laneGround?.separationMeters != null ? +a.laneGround.separationMeters.toFixed(6) : null,
       settledYawDeg: +((a.defenderFacingYawRadians ?? 0) * 180 / Math.PI).toFixed(2),
     };
-  }, dir);
+  }, { d: dir, frames: EXCHANGE_FRAMES });
 }
 
 // Guarded so that importing runExchange (the verifier does) can never re-capture: a golden file
