@@ -362,17 +362,27 @@ export function createGuardThreatTrackingRuntime(THREE, options = {}) {
     return residualLimit;
   }
 
-  function update(plan, deltaSeconds = 1 / 60) {
+  // R20J.1 (B6d): snapTravel places the correction instead of servoing to it. A guard raised
+  // before the swing has the whole windup to travel and converges anyway (measured: ~40cm of
+  // LEFT cover closed by contact); a guard raised into a live swing does not, and at 2.5m/s it
+  // arrives roughly half way - which is why the same late raise blocked or ate the hit depending
+  // on the frame it landed on. The servo is the right model for a stance being carried; it is the
+  // wrong model for a shield being thrown up. The reaction watch (R18R.2) is untouched: what a
+  // late guard may not do is skip watching, not move quickly once it has.
+  function update(plan, deltaSeconds = 1 / 60, options = {}) {
     const mode = plan?.mode || 'off';
     const profile = getGuardThreatTrackingProfile(mode);
     const dt = Math.max(1e-5, finite(deltaSeconds, 1 / 60));
+    const snapTravel = options?.snapTravel === true && mode !== 'off';
     desiredOffset.set(
       finite(plan?.correction?.x), finite(plan?.correction?.y), finite(plan?.correction?.z),
     );
     deltaOffset.copy(desiredOffset).sub(currentOffset);
     const speed = desiredOffset.lengthSq() > 1e-10 ? profile.maxTrackingSpeedMps : profile.returnSpeedMps;
     const maxStep = Math.max(0, speed) * dt;
-    if (deltaOffset.length() > maxStep && maxStep > 0) deltaOffset.setLength(maxStep);
+    // The plan's own appliedDistance is already clamped to the travel budget, so placing it cannot
+    // reach further than the servo ever could - only sooner.
+    if (!snapTravel && deltaOffset.length() > maxStep && maxStep > 0) deltaOffset.setLength(maxStep);
     currentOffset.add(deltaOffset);
     // R18R.6: Guard carries its measured residual across frames for the same reason Parry does -
     // the primary plan is authored against the neutral surface, so the last few centimetres to a
@@ -417,6 +427,7 @@ export function createGuardThreatTrackingRuntime(THREE, options = {}) {
       combinedRequestedOffset: freezeVector({ x: combinedOffset.x, y: combinedOffset.y, z: combinedOffset.z }),
       achievedOffset: freezeVector({ x: achieved.x, y: achieved.y, z: achieved.z }),
       achievedDistance: achieved.length(),
+      snapTravel,
       appliedDegrees: Object.freeze({ ...appliedDegrees }),
       surface: finalSurface,
     });

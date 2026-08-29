@@ -30,8 +30,8 @@ function harness({ refineResult = { achievedDistance: 0.01 } } = {}) {
   const shield = shieldReads();
   const trackingRuntime = {
     offset: { x: 0, y: 0, z: 0 },
-    update(plan, deltaSeconds) {
-      calls.push({ call: 'track', plan, deltaSeconds, readsSoFar: shield.reads.length });
+    update(plan, deltaSeconds, options) {
+      calls.push({ call: 'track', plan, deltaSeconds, options, readsSoFar: shield.reads.length });
       return { achievedDistance: 0.02, appliedDegrees: 3 };
     },
     refineMeasuredContact(plan, deltaSeconds, options) {
@@ -175,4 +175,16 @@ test('R18S.2 the lab wires the director and keeps no coverage pass of its own', 
   ]) {
     assert.doesNotMatch(controller, new RegExp(escaped), `coverage pass left behind in the lab: ${escaped}`);
   }
+});
+
+test('R20J.1 hands the track pass the caller\'s snapTravel answer, defaulting to the servo', () => {
+  const servo = harness();
+  servo.director.update(exchange());
+  const servoTrack = servo.calls.find((call) => call.call === 'track');
+  assert.equal(servoTrack.options?.snapTravel, false, 'a guard carried into the swing keeps the travel budget');
+
+  const placed = harness();
+  placed.director.update(exchange({ snapTravel: true }));
+  const placedTrack = placed.calls.find((call) => call.call === 'track');
+  assert.equal(placedTrack.options?.snapTravel, true, 'a guard thrown up mid-swing places its cover');
 });
