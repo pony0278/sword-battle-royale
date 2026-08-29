@@ -409,6 +409,9 @@ export function bindShieldParryLabUiEvents({
     parryKeyDownObserved = true;
     event.preventDefault();
     event.stopPropagation();
+    // R20G.1 (B6c): F is one key with two readings - a hold (the guard) and a press (the parry
+    // input). Both are reported; the entry routes by mode.
+    handlers.onGuardKey?.(true);
     handlers.onParryInput('keyboard-f', event);
   }, true);
   documentRef.addEventListener('keyup', (event) => {
@@ -431,6 +434,7 @@ export function bindShieldParryLabUiEvents({
     if (!isParryKey(event)) return;
     event.preventDefault();
     event.stopPropagation();
+    handlers.onGuardKey?.(false);
     if (!parryKeyDownObserved) handlers.onParryInput('keyboard-f-keyup-fallback', event);
     parryKeyDownObserved = false;
   }, true);
@@ -440,7 +444,21 @@ export function bindShieldParryLabUiEvents({
     parryKeyDownObserved = false;
     heldLaneKeys.clear();
     attackerModifierHeld = false;
+    handlers.onGuardKey?.(false); // a guard held into a lost window never reports its keyup
     publishLaneIntent();
+  });
+  // R20G.1: the touch pad's guard button is a virtual F hold; the dodge button dodges back.
+  documentRef.querySelectorAll('[data-hold-guard]').forEach((button) => {
+    const press = (event) => { event.preventDefault(); try { button.setPointerCapture(event.pointerId); } catch { /* pointer already gone */ } handlers.onGuardKey?.(true); };
+    const release = () => handlers.onGuardKey?.(false);
+    button.addEventListener('pointerdown', press);
+    button.addEventListener('pointerup', release);
+    button.addEventListener('pointercancel', release);
+    button.addEventListener('contextmenu', (event) => event.preventDefault());
+  });
+  documentRef.querySelectorAll('[data-dodge]').forEach((button) => {
+    button.addEventListener('pointerdown', (event) => { event.preventDefault(); handlers.onDodge?.('back'); });
+    button.addEventListener('contextmenu', (event) => event.preventDefault());
   });
   canvas.addEventListener('pointerdown', () => canvas.focus({ preventScroll: true }));
   elements.showSurface.addEventListener('change', () => handlers.onShowSurface(elements.showSurface.checked));

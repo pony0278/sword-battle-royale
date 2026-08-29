@@ -15,7 +15,11 @@ function indexOfOrFail(source, marker) {
 
 test('R18M.C6 leaves a deliberately thin authority entry without redundant controller getter wrappers', () => {
   const lineCount = entrySource.split('\n').length;
-  assert.ok(lineCount <= 660, `R281 entry should stay at or below the audited 660-line ceiling, got ${lineCount}`);
+  // Raised 660 -> 690 for B6c (R20G.1): the stance runtime, the held-guard input routing, the
+  // stance-gated dodge request, and the guard-authority reader are composition-root wiring that
+  // belongs in the entry, and the old
+  // ceiling was already forcing joined-line workarounds (R19Z, R20F). Deliberate, not drift.
+  assert.ok(lineCount <= 690, `R281 entry should stay at or below the audited 690-line ceiling, got ${lineCount}`);
   for (const redundant of [
     'function step3AOwnsLiveContact()',
     'function updateDefenderDeflectReleaseGate()',

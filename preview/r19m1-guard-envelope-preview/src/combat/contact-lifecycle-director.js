@@ -98,6 +98,7 @@ export function createContactLifecycleDirector({
   readAttackerRootPoint,
   readDefenderBodyPoint,
   readCloseRangePosture,
+  readGuardActive,
   readDodgeIFramesActive,
   fallbackIncomingVelocity,
   releaseReachOwnership,
@@ -418,6 +419,20 @@ export function createContactLifecycleDirector({
           depthOrder,
         });
       }
+    }
+    // R20G.1 (B6c): a shield that is not raised guards nothing. The neutral idle happens to hang
+    // the buckler inside RIGHT's and LEFT's arcs (measured: an unguarded defender 'blocked' both
+    // 4/4 at 2.4m while TOP landed), and a defence nobody chose is exactly what B6 removes. Any
+    // shield or clang contact while the guard is down flips to a non-contact and the ordinary
+    // path asks the body - the same shape as the depth-order flip above. Absent reader = the
+    // legacy always-guarding world, untouched.
+    if (contactEvaluation.contact && readGuardActive && readGuardActive() !== true) {
+      contactEvaluation = Object.freeze({
+        ...contactEvaluation,
+        contact: false,
+        eligible: contactEvaluation.eligible,
+        reason: 'shield-not-raised-guards-nothing',
+      });
     }
     // R20F.1: a dodge's invulnerability window. During i-frames the exchange does not touch the
     // defender at all - shield, clang, and body alike - because the dodge investigation measured
