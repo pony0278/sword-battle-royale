@@ -2,7 +2,7 @@ import { ATTACK_ADVANCE_PROFILES } from './attack-advance.js';
 import { MINIMUM_ENGAGEMENT_SEPARATION_METERS } from './lane-locomotion.js';
 import { effectiveSeparationAtContact } from './engagement-spacing.js';
 
-export const CLOSE_RANGE_GUARD_HOLD_STAGE = 'R19R.1';
+export const CLOSE_RANGE_GUARD_HOLD_STAGE = 'R20E.1';
 
 // R19O.1: at close range the guard stops chasing and holds its shield in front.
 //
@@ -36,9 +36,19 @@ export const CLOSE_RANGE_GUARD_HOLD_STAGE = 'R19R.1';
 // 2.0m (contact 1.138m) and LEFT at 1.6m (contact 1.15m) sit centimetres from these boundaries
 // and both are 8/8 under their measured turns; a global raise would trade that certainty for
 // unmeasured clang corridors.
+// R20E.1 lifted RIGHT's floor again, to 1.35, for the band the first lift exposed: the 1.9m
+// and 2.0m stances (contact 1.24-1.34m) sat in the crack between the mechanisms - past the
+// clang's corridor, short of where the chase settles true - and blocked 1/4 and 5/8, decided
+// by frame phase. The autopsy, passive-probed: the servo spends the windup dragged low-left
+// after the flourish (contact at [-0.39, 0.49] when it does connect), the arc's real crossing
+// appears at the centre-line ([-0.03, 0.68]) with ~30ms left and 0.67m of demand, and the
+// sweep misses by six centimetres. Held, the resting shield IS on the arc's path: 8/8 at both
+// stances, no clang involved (contact arrives well past the 0.95m zone) and no guard turn
+// (hold keeps the turn at zero, and was measured without it). 2.1m (contact 1.44m) chases at
+// 4/4 and stays chase-side of the floor; 1.8m keeps its measured clang answer.
 export const CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS = Object.freeze({
   top: 1.1,
-  right: 1.2,
+  right: 1.35,
   left: 1.1,
 });
 
