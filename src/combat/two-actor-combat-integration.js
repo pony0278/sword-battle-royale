@@ -8,8 +8,8 @@ import { createDirectionalRecoilPlanner } from './directional-recoil-planner.js'
 import {
   ATTACKER_RECOIL_PRESENTATION_PHASE_LATCHES,
   createAttackerRecoilPresentationRuntime,
-} from './attacker-recoil-presentation.js?v=g43b5r281-defender-walk-r19e1';
-import { buildParriedReactionDefinition } from './parried-reaction-definition.js?v=g43b5r281-step3b-body-fusion-r18o';
+} from './attacker-recoil-presentation.js';
+import { buildParriedReactionDefinition } from './parried-reaction-definition.js';
 
 export const TWO_ACTOR_COMBAT_INTEGRATION_STAGE = 'G4.3B.4';
 export const TWO_ACTOR_PARRY_SYNC_STAGE = 'G4.3B.5';

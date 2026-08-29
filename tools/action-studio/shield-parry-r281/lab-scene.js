@@ -6,7 +6,7 @@ import {
   ACCEPTED_OFFHAND_BUCKLER_MOUNT_G423,
   ACCEPTED_OFFHAND_BUCKLER_SHAPE_G423,
 } from '../../../src/character/offhand-buckler-accepted-calibration.js';
-import { createFreeInspectionCameraControls } from '../free-inspection-camera-controls.js?v=g43b5r281-residual-body-reach-r18';
+import { createFreeInspectionCameraControls } from '../free-inspection-camera-controls.js';
 import {
   CALIBRATED_ENGAGEMENT_SEPARATION_METERS,
   planEngagementStance,
