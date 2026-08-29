@@ -8,11 +8,31 @@ import {
   createLongswordDirectionalAttackRuntime,
   getLongswordDirectionalAttackProfile,
 } from '../src/combat/longsword-directional-attack-runtime.js';
+import { warpRuntimeToSource } from '../src/combat/attack-time-warp.js';
 
+// R20M.1 (B6h) split two clocks that used to be one number. SOURCE is where the clip is sampled;
+// RUNTIME is what the exchange counts and the player experiences. TOP and RIGHT are unwarped, so
+// for them the two are identical. LEFT's burst is stretched three times - 3972 deg/s inside one
+// 33ms key was the measurement - which leaves the clip untouched at 0.533s/contact 0.26s in source
+// and moves the exchange to 0.80s/contact 0.38s.
 const EXPECTED = Object.freeze({
-  top: Object.freeze({ clipId: 'UAL1/Sword_Attack', contactSeconds: 0.43, durationSeconds: 1.533 }),
-  right: Object.freeze({ clipId: 'UAL2/Sword_Regular_A', contactSeconds: 0.23, durationSeconds: 0.433 }),
-  left: Object.freeze({ clipId: 'UAL2/Sword_Regular_B', contactSeconds: 0.26, durationSeconds: 0.533 }),
+  top: Object.freeze({
+    clipId: 'UAL1/Sword_Attack', contactSeconds: 0.43, durationSeconds: 1.533,
+    sourceContactSeconds: 0.43, sourceDurationSeconds: 1.533, warped: false,
+  }),
+  right: Object.freeze({
+    clipId: 'UAL2/Sword_Regular_A', contactSeconds: 0.23, durationSeconds: 0.433,
+    sourceContactSeconds: 0.23, sourceDurationSeconds: 0.433, warped: false,
+  }),
+  left: Object.freeze({
+    clipId: 'UAL2/Sword_Regular_B',
+    // Written out from the design rather than read back from the code: the burst is source
+    // [0.2, 1/3] at a third speed, so contact 0.26 lands at 0.2 + 0.06*3 and everything after the
+    // burst is pushed back by what the burst cost.
+    contactSeconds: 0.2 + (0.26 - 0.2) * 3,
+    durationSeconds: 0.533 + (1 / 3 - 0.2) * 2,
+    sourceContactSeconds: 0.26, sourceDurationSeconds: 0.533, warped: true,
+  }),
 });
 
 test('G4.1 canonical directional attacks preserve selected clips and contact timing', () => {
@@ -20,8 +40,15 @@ test('G4.1 canonical directional attacks preserve selected clips and contact tim
     const profile = getLongswordDirectionalAttackProfile(direction);
     assert.equal(profile.direction, direction);
     assert.equal(profile.clipId, expected.clipId);
-    assert.equal(profile.contactSeconds, expected.contactSeconds);
-    assert.equal(profile.durationSeconds, expected.durationSeconds);
+    assert.ok(Math.abs(profile.contactSeconds - expected.contactSeconds) < 1e-9, `${direction} runtime contact`);
+    assert.ok(Math.abs(profile.durationSeconds - expected.durationSeconds) < 1e-9, `${direction} runtime duration`);
+    // The clip itself is never retimed - only when each of its poses is reached.
+    assert.equal(profile.sourceDurationSeconds, expected.sourceDurationSeconds);
+    assert.ok(
+      Math.abs(warpRuntimeToSource(profile.contactSeconds, profile.timeWarp) - expected.sourceContactSeconds) < 1e-9,
+      `${direction} source contact must still be where it was authored`,
+    );
+    assert.equal(Boolean(profile.timeWarp), expected.warped);
     assert.ok(profile.activeStartSeconds < profile.contactSeconds);
     assert.ok(profile.activeEndSeconds > profile.contactSeconds);
     assert.ok(profile.trailStartSeconds <= profile.activeStartSeconds);
@@ -103,7 +130,12 @@ test('G4.3B.1 interrupt freezes the active source pose instead of resetting to i
   assert.equal(interrupted.snapshot.interruption.phaseAtInterrupt, LONGSWORD_ATTACK_PHASES.ACTIVE);
   assert.equal(interrupted.snapshot.interruption.clipId, EXPECTED.left.clipId);
   assert.equal(interrupted.snapshot.interruption.direction, 'left');
-  assert.ok(Math.abs(interrupted.snapshot.sourceTimeSeconds - profile.contactSeconds) < 1e-9);
+  // The frozen pose is a place in the clip, so it is compared in source time; the instant it
+  // happened is runtime, and the interruption now carries both rather than conflating them.
+  assert.ok(Math.abs(
+    interrupted.snapshot.sourceTimeSeconds - warpRuntimeToSource(profile.contactSeconds, profile.timeWarp),
+  ) < 1e-9);
+  assert.ok(Math.abs(interrupted.snapshot.interruption.runtimeSeconds - profile.contactSeconds) < 1e-9);
   assert.equal(runtime.active, false);
   assert.equal(runtime.interrupted, true);
 });

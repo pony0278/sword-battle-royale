@@ -6,6 +6,7 @@ import {
   LONGSWORD_ATTACK_DIRECTIONS,
   LONGSWORD_DIRECTIONAL_ATTACKS,
 } from './longsword-directional-metadata.js';
+import { getAttackTimeWarp, warpSourceToRuntime, warpRuntimeToSource } from './attack-time-warp.js';
 
 export const LONGSWORD_ATTACK_RUNTIME_STAGE = 'G4.1';
 export const LONGSWORD_ATTACK_INTERRUPTION_STAGE = 'G4.3B.1';
@@ -76,16 +77,24 @@ function frameCeil(seconds, fps) {
 
 export function getLongswordDirectionalAttackProfile(direction, options = {}) {
   const { key, entry } = directionEntry(direction);
-  const durationSeconds = Math.max(0.001, Number(options.durationSeconds) || NATURAL_DURATIONS[key]);
-  const contactSeconds = clamp(entry.contactSeconds, 0, durationSeconds);
-  const activeStartSeconds = clamp(contactSeconds - ACTIVE_LEAD_SECONDS[key], 0, durationSeconds);
-  const activeEndSeconds = clamp(contactSeconds + ACTIVE_TRAIL_SECONDS[key], activeStartSeconds, durationSeconds);
-  const trailStartSeconds = clamp(contactSeconds - TRAIL_LEAD_SECONDS[key], 0, durationSeconds);
-  const trailEndSeconds = clamp(contactSeconds + TRAIL_TAIL_SECONDS[key], trailStartSeconds, durationSeconds);
-  const movementStartSeconds = clamp(contactSeconds - Math.max(0.11, TRAIL_LEAD_SECONDS[key]), 0, durationSeconds);
-  const movementEndSeconds = clamp(contactSeconds + 0.04, movementStartSeconds, durationSeconds);
+  const sourceDurationSeconds = Math.max(0.001, Number(options.durationSeconds) || NATURAL_DURATIONS[key]);
+  // R20M.1 (B6h): every window below is authored against the clip, so it is derived in SOURCE time
+  // and then restated in the clock the exchange counts in. Where a direction has no warp - TOP and
+  // RIGHT - the two clocks are the same and this is the identity, byte for byte.
+  const timeWarp = options.timeWarp === null ? null : (options.timeWarp || getAttackTimeWarp(key));
+  const toRuntime = (seconds) => warpSourceToRuntime(seconds, timeWarp);
+  const durationSeconds = toRuntime(sourceDurationSeconds);
+  const contactSeconds = toRuntime(clamp(entry.contactSeconds, 0, sourceDurationSeconds));
+  const activeStartSeconds = toRuntime(clamp(entry.contactSeconds - ACTIVE_LEAD_SECONDS[key], 0, sourceDurationSeconds));
+  const activeEndSeconds = Math.max(activeStartSeconds, toRuntime(clamp(entry.contactSeconds + ACTIVE_TRAIL_SECONDS[key], 0, sourceDurationSeconds)));
+  const trailStartSeconds = toRuntime(clamp(entry.contactSeconds - TRAIL_LEAD_SECONDS[key], 0, sourceDurationSeconds));
+  const trailEndSeconds = Math.max(trailStartSeconds, toRuntime(clamp(entry.contactSeconds + TRAIL_TAIL_SECONDS[key], 0, sourceDurationSeconds)));
+  const movementStartSeconds = toRuntime(clamp(entry.contactSeconds - Math.max(0.11, TRAIL_LEAD_SECONDS[key]), 0, sourceDurationSeconds));
+  const movementEndSeconds = Math.max(movementStartSeconds, toRuntime(clamp(entry.contactSeconds + 0.04, 0, sourceDurationSeconds)));
   const cancelStartSeconds = clamp(Math.max(activeEndSeconds, durationSeconds - Math.min(0.16, durationSeconds * 0.28)), 0, durationSeconds);
   return Object.freeze({
+    timeWarp,
+    sourceDurationSeconds,
     stage: LONGSWORD_ATTACK_RUNTIME_STAGE,
     weapon: 'longsword',
     category: 'attack',
@@ -208,7 +217,10 @@ export function createLongswordDirectionalAttackRuntime(options = {}) {
       phaseBeforeInterruption: interruption?.phaseAtInterrupt || null,
       elapsedMs,
       elapsedSeconds,
-      sourceTimeSeconds: interruption?.sourceTimeSeconds ?? (profile ? elapsedSeconds : null),
+      // R20M.1: the exchange counts in runtime; the clip is sampled in source. Everything else on
+      // this snapshot is runtime - this one field is the sampler's, and says so by its name.
+      sourceTimeSeconds: interruption?.sourceTimeSeconds
+        ?? (profile ? warpRuntimeToSource(elapsedSeconds, profile.timeWarp) : null),
       direction: profile?.direction || interruption?.direction || null,
       clipId: profile?.clipId || interruption?.clipId || null,
       contactSeconds: profile?.contactSeconds ?? null,
@@ -260,14 +272,17 @@ export function createLongswordDirectionalAttackRuntime(options = {}) {
     const sweptTemporalAuthority = contactTemporalEligibility?.authority === SWEPT_CONTACT_TEMPORAL_ELIGIBILITY_AUTHORITY
       && contactTemporalEligibility.eligible === true
       && Number.isFinite(Number(contactTemporalEligibility.contactElapsedSeconds));
-    const sourceTimeSeconds = clamp(
+    // The instant the interruption happened, on the exchange's clock...
+    const runtimeSeconds = clamp(
       sweptTemporalAuthority
         ? Number(contactTemporalEligibility.contactElapsedSeconds)
         : elapsedMs / 1000,
       0,
       profile.durationSeconds,
     );
-    const phaseAtInterrupt = getLongswordAttackPhase(profile, sourceTimeSeconds);
+    // ...and the same instant as a place in the clip, which is what the pose sampler needs.
+    const sourceTimeSeconds = warpRuntimeToSource(runtimeSeconds, profile.timeWarp);
+    const phaseAtInterrupt = getLongswordAttackPhase(profile, runtimeSeconds);
     if (phaseAtInterrupt !== LONGSWORD_ATTACK_PHASES.ACTIVE && input.allowOutsideActive !== true) {
       return Object.freeze({ accepted: false, reason: 'attack-not-active', snapshot: snapshot() });
     }
@@ -278,6 +293,7 @@ export function createLongswordDirectionalAttackRuntime(options = {}) {
       direction: profile.direction,
       clipId: profile.clipId,
       sourceTimeSeconds,
+      runtimeSeconds,
       elapsedMs: sourceTimeSeconds * 1000,
       frameEndElapsedMs: elapsedMs,
       contactTemporalAuthority: sweptTemporalAuthority
