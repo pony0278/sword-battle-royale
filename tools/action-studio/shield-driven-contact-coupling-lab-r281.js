@@ -6,27 +6,27 @@ import { captureRigPose, applyRigPose, blendRecoveryPose } from '../../src/comba
 import { sampleLongswordAttackRecovery } from '../../src/combat/longsword-contact-recovery-presentation.js';
 import {
   measureSweptSwordBucklerClosestApproach,
-} from '../../src/combat/swept-sword-buckler-contact.js?v=g43b5r281-residual-body-reach-r18';
-import { buildParryWhiffDiagnostic } from '../../src/combat/parry-whiff-diagnostic.js?v=g43b5r281-residual-body-reach-r18';
-import { createGuardThreatTrackingRuntime, planGuardThreatCorrection } from '../../src/combat/guard-threat-tracking.js?v=g43b5r281-residual-body-reach-r18';
-import { createGuardResidualBodyReachRuntime } from '../../src/combat/guard-residual-body-reach.js?v=g43b5r281-residual-body-reach-r18';
+} from '../../src/combat/swept-sword-buckler-contact.js';
+import { buildParryWhiffDiagnostic } from '../../src/combat/parry-whiff-diagnostic.js';
+import { createGuardThreatTrackingRuntime, planGuardThreatCorrection } from '../../src/combat/guard-threat-tracking.js';
+import { createGuardResidualBodyReachRuntime } from '../../src/combat/guard-residual-body-reach.js';
 import {
   GUARD_RESIDUAL_STANCE_REACH_PROFILE,
   createGuardResidualStanceReachRuntime,
-} from '../../src/combat/guard-residual-stance-reach.js?v=g43b5r281-debug-low-stance-controls-r18e';
+} from '../../src/combat/guard-residual-stance-reach.js';
 import { planFineGuardTracking } from '../../src/combat/directional-guard-bracing.js';
 import { createArticulatedImpactBracingRuntime, planArticulatedImpactBracing } from '../../src/combat/articulated-impact-bracing.js';
 import {
   analyzePredictiveInterceptParry,
   createPredictiveInterceptParryPresentationRuntime,
-} from '../../src/combat/predictive-intercept-parry.js?v=g43b5r281-parry-sync-r2';
-import { sampleActiveShieldLeadMotion } from '../../src/combat/active-shield-lead-parry.js?v=g43b5r281';
-import { createActiveParryInterceptIntent } from '../../src/combat/active-parry-intercept-intent.js?v=r18n1';
+} from '../../src/combat/predictive-intercept-parry.js';
+import { sampleActiveShieldLeadMotion } from '../../src/combat/active-shield-lead-parry.js';
+import { createActiveParryInterceptIntent } from '../../src/combat/active-parry-intercept-intent.js';
 import {
   TWO_ACTOR_PARRY_REACTION_CHANNELS,
   TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES,
   createTwoActorCombatIntegration,
-} from '../../src/combat/two-actor-combat-integration.js?v=g43b5r281-step3b-body-fusion-r18o';
+} from '../../src/combat/two-actor-combat-integration.js';
 import {
   LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE,
   publishPostCouplingRecoilStaggerHandoff,
@@ -35,17 +35,17 @@ import {
   COMMITTED_PARRY_CONTACT_GATE_STAGE,
   createCommittedParryContactGate,
   evaluateCommittedParryInput,
-} from '../../src/combat/committed-parry-contact-gate.js?v=g43b5r281-step2-timing-authority-r5';
+} from '../../src/combat/committed-parry-contact-gate.js';
 import {
   LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE,
   createLiveShieldSwordGripContactRuntime,
-} from '../../src/combat/live-shield-sword-grip-contact-constraint.js?v=g43b5r281-closed-loop-old-b3-r18i5';
+} from '../../src/combat/live-shield-sword-grip-contact-constraint.js';
 import {
   sampleLiveParryOldB3ReleaseBlend,
-} from '../../src/combat/live-parry-old-b3-handoff.js?v=g43b5r281-closed-loop-old-b3-r18i5';
+} from '../../src/combat/live-parry-old-b3-handoff.js';
 import {
   measureAttackerRecoilWorldSilhouette,
-} from '../../src/combat/attacker-recoil-world-silhouette.js?v=g43b5r281-closed-loop-old-b3-r18i5';
+} from '../../src/combat/attacker-recoil-world-silhouette.js';
 import { maybeStartParryGateProbe } from './shield-parry-r281/parry-gate-probe.js';
 import {
   compactInterceptDriveTelemetry,
