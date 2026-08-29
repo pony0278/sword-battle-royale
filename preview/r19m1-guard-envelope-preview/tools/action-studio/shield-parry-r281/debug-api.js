@@ -29,6 +29,9 @@ export function createShieldParryDebugApi({
     swordGripConstraint: runtimes.swordGripConstraint,
     setEngagementSeparation: actions.setEngagementSeparation,
     resetLane: actions.resetLane,
+    // R20E.1 WARNING: invasive mid-exchange. getWorldParrySurface advances anchor matrices
+    // outside the frame pipeline and measurably flips outcomes (RIGHT@2.1m: passive polling
+    // 3/3 blocked, polling this 3/3 body hits). Call it between exchanges only.
     captureBladeGeometry: actions.captureBladeGeometry,
     get laneGround() { return runtimes.laneController?.report ?? null; },
     get laneDefenderIntent() { return runtimes.laneController?.defenderIntent ?? 0; },
