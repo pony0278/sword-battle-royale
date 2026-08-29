@@ -122,7 +122,7 @@ const exchangeState = createShieldParryExchangeState();
 // R20G.1 (B6c): defence is a choice - in block mode the guard (and the whole measured defence
 // behind it) exists only while the key is held; the machine follows this input, never auto-raises.
 const defenderStance = createDefenderStanceRuntime();
-let guardKeyHeld = false;
+let guardKeyHeld = false; let lateGuardRaise = false; // R20J.1 (B6d): raised before the swing, or into it?
 // R20H.2: an armed attempt still awaiting its contact, or the live deflect itself - what a released
 // key may not interrupt. Both end on their own; the deferred stand-down lands the frame after. The
 // guard machine follows the stance from here on, never the raw key: the stance is what knows about
@@ -145,6 +145,7 @@ function setGuardHeld(held) {
   // (geometry cannot veto), so the raise needs nothing but the live snapshot; a refusal is
   // silent - the shield still rose, and that is already the answer the player asked for.
   if (stanceEdge.justRaisedGuard && attackRuntime.snapshot?.action && !exchangeState.firstContact) {
+    lateGuardRaise = true; // R20J.1: raised into a live swing, whatever the gate makes of the timing
     exchangeState.latestParryInput = parryGate.arm({ attackSnapshot: attackRuntime.snapshot, manual: true, source: 'guard-raise' });
     if (exchangeState.latestParryInput.accepted) driveAcceptedParry(attackRuntime.snapshot);
   }
@@ -243,7 +244,7 @@ const preContactController = createShieldParryPreContactController({
     previousBlade,
     defenderSword,
     debugStanceProfile,
-    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, // R19N.1 + R19Z.1 + R20F.1 + R20G.1 read the live lane
+    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, lateGuardRaise, // R19N.1 + R19Z.1 + R20F.1 + R20G.1 + R20J.1 read the live lane
   }),
   services: {
     cloneSurface,
@@ -379,7 +380,7 @@ function sampleAttackerBase(snapshot, deltaMs) {
   attackerIdleClockSeconds = presentationState.idleClockSeconds;
 }
 function resetExchange() {
-  laneController.endExchange();
+  laneController.endExchange(); lateGuardRaise = false; // R20J.1: the next swing asks again
   parryGate.reset();
   swordGripConstraint.reset();
   bracingRuntime.resetImpact(); fineTrackingRuntime.reset();

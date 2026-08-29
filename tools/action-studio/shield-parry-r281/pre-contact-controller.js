@@ -140,6 +140,10 @@ export function createShieldParryPreContactController({
       previousBlade,
       currentBlade,
       deltaSeconds,
+      // R20J.1 (B6d): a guard that came up after this swing was already live has no windup left to
+      // travel in, so it places its cover rather than servoing toward it. A guard held from before
+      // the swing (the golden-grid world) keeps the servo untouched.
+      snapTravel: context.lateGuardRaise === true,
     });
     exchangeState.latestFinePlan = coverage.plan;
     exchangeState.latestFineTracking = coverage.tracking;
