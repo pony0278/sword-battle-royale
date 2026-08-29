@@ -63,7 +63,8 @@ function fakePresentationCharacter(boneIds) {
 
 test('R18N.1 keeps manual Parry authority in the entry and only latches intent after accepted F', () => {
   assert.match(entry, /latestParryInput = parryGate\.arm\(\{[\s\S]*manual: true,/);
-  assert.match(entry, /if \(exchangeState\.latestParryInput\.accepted\) \{[\s\S]*preContactController\.armActiveIntercept\(snapshot\);/);
+  assert.match(entry, /function driveAcceptedParry\(snapshot\) \{[\s\S]*preContactController\.armActiveIntercept\(snapshot\);/);
+  assert.match(entry, /if \(exchangeState\.latestParryInput\.accepted\) \{\s*\n\s*driveAcceptedParry\(snapshot\);/);
   assert.match(entry, /function resetExchange\(\) \{[\s\S]*preContactController\.resetActiveIntercept\(\);/);
   assert.ok(entry.split('\n').length <= 725, 'R281 entry must stay inside the C6 725-line ceiling');
   assert.doesNotMatch(exchangeState, /activeParryInterceptIntent|activeInterceptIntent/);

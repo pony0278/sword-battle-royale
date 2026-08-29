@@ -390,7 +390,7 @@ test('armed Parry samples a continuous post-tracking shield surface before selec
   assert.match(preContactSource, /surface-relative-measured-contact-correction/);
   assert.match(preContactSource, /correctionDirectionDot/);
   assert.match(preContactSource, /measuredRadialContactCorrectionMeters/);
-  assert.match(source, /if \(exchangeState\.latestParryInput\.accepted\) \{[\s\S]*predictivePresentation\.start/);
+  assert.match(source, /function driveAcceptedParry\(snapshot\) \{[\s\S]*predictivePresentation\.start/);
   assert.match(update, /if \(predictivePresentation\.active\) \{/);
   assert.match(diagnosticFormattersSource, /selector NO ARMED DRIVE FRAME/);
   assert.match(html, /BEST PARRY TIMING · R18I/);
