@@ -227,3 +227,15 @@ test('R18R.4 an unknown extrapolation or selection falls back to the original be
   assert.equal(fallback.extrapolation, 'linear');
   assert.deepEqual(fallback.point, original.point);
 });
+
+test('R20J.1 lets a placed guard skip the speed clamp without widening its travel budget', async () => {
+  const source = await readFile(new URL('../src/combat/guard-threat-tracking.js', import.meta.url), 'utf8');
+  // The clamp is skipped, nothing else: the step still ends at the plan's own correction, and the
+  // plan's appliedDistance is already clamped to maxCorrectionMeters, so placing can never reach
+  // further than the servo would have - only sooner.
+  assert.match(source, /const snapTravel = options\?\.snapTravel === true && mode !== 'off';/);
+  assert.match(source, /if \(!snapTravel && deltaOffset\.length\(\) > maxStep && maxStep > 0\) deltaOffset\.setLength\(maxStep\);/);
+  assert.match(source, /const appliedDistance = Math\.min\(requiredDistance, profile\.maxCorrectionMeters\);/);
+  // Off is off: a stood-down guard may not be placed anywhere.
+  assert.match(source, /snapTravel === true && mode !== 'off'/);
+});
