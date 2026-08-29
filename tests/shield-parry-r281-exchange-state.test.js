@@ -162,7 +162,8 @@ test('R18M.4 entry uses one explicit exchange owner while lab/runtime lifetime s
     'ready',
     'selectedDirection',
     'selectedMode',
-    'lastTimestamp',
+    // R20K.1 moved the frame timestamp into frame-clock.js, where the pinned-step measurement
+    // mode lives with it. It is still persistent lab state, just no longer the entry's to hold.
     'attackerIdleDuration',
     'attackerIdleClockSeconds',
     'attackerRecovery',
