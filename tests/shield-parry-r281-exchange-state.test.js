@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   SHIELD_PARRY_EXCHANGE_STATE_KEYS,
+  SHIELD_PARRY_EXCHANGE_STATE_GROUPS,
   createShieldParryExchangeState,
   resetShieldParryExchangeState,
 } from '../tools/action-studio/shield-parry-r281/exchange-state.js';
@@ -15,48 +16,55 @@ const debugApi = await readFile(new URL('../tools/action-studio/shield-parry-r28
 const frameReporting = await readFile(new URL('../tools/action-studio/shield-parry-r281/frame-reporting.js', import.meta.url), 'utf8');
 const exchangeOwnershipSources = `${entry}\n${preContactController}\n${contactHandoffController}\n${visualOwnershipRuntimeTaps}\n${debugApi}\n${frameReporting}`;
 
-const EXPECTED_EXCHANGE_KEYS = [
-  'previousShieldLeadSurface',
+// R20D.1: pasted literals, grouped. The groups are the map the eventual multiplayer split
+// follows - outcomes and handoffs are simulation, diagnostics and traces are client-side.
+const EXPECTED_OUTCOME_KEYS = [
   'firstContact',
   'latestContact',
   'latestBodyHit',
+  'latestHiltClang',
   'latestCombatResult',
   'latestCombatUpdate',
-  'latestFinePlan',
-  'latestGuardCoverage',
-  'latestSwingRelevance',
-  'latestCloseRangePosture',
-  'latestConeGate',
-  'latestHiltClang',
-  'latestGuardFacingPlan',
-  'latestGuardResidual',
-  'latestGuardStanceReach',
-  'latestFineTracking',
-  'latestPredictiveAnalysis',
-  'latestReachableInterceptTarget',
-  'latestInterceptDriveReport',
-  'interceptDriveTrace',
-  'latestVisualOwnershipBaseline',
-  'visualOwnershipTrace',
-  'latestPredictiveReport',
-  'latestPredictiveHandoff',
-  'latestShieldLeadMotion',
-  'latestLeadHandoff',
-  'directOldB3Diagnostic',
   'latestParryInput',
   'latestParryOpportunity',
   'latestParryConfirmation',
+  'latestParryWhiff',
+];
+const EXPECTED_HANDOFF_KEYS = [
+  'previousShieldLeadSurface',
+  'latestPredictiveAnalysis',
+  'latestPredictiveReport',
+  'latestPredictiveHandoff',
+  'latestShieldLeadMotion',
+  'latestCloseRangePosture',
+  'latestGuardFacingPlan',
   'frozenAttackerContactPose',
   'canonicalAttackerOldB3Pose',
   'canonicalAttackerOldB3WorldSilhouette',
-  'step3AContactTransfer',
-  'latestGripConstraintReport',
-  'latestLiveSurfaceAtContact',
   'step3AReleaseBlend',
+  'latestGripConstraintReport',
   'visibleOldB3Peak',
   'latchedDefenderDeflectReleaseGate',
-  'latestEngagementGround',
   'latestRootDisplacement',
+  'parryPromptHold',
+  'parryPromptHoldSequence',
+];
+const EXPECTED_DIAGNOSTIC_KEYS = [
+  'latestFinePlan',
+  'latestFineTracking',
+  'latestGuardCoverage',
+  'latestSwingRelevance',
+  'latestConeGate',
+  'latestGuardResidual',
+  'latestGuardStanceReach',
+  'latestReachableInterceptTarget',
+  'latestInterceptDriveReport',
+  'latestVisualOwnershipBaseline',
+  'latestLeadHandoff',
+  'directOldB3Diagnostic',
+  'step3AContactTransfer',
+  'latestLiveSurfaceAtContact',
+  'latestEngagementGround',
   'latestAttackerRootDisplacement',
   'latestDefenderRootDisplacement',
   'latestArmFling',
@@ -65,17 +73,44 @@ const EXPECTED_EXCHANGE_KEYS = [
   'latestTorsoLeanReport',
   'latestDefenderTorsoLeanReport',
   'blockReaction',
-  'latestParryWhiff',
+  'latestInputSignal',
+];
+const EXPECTED_TRACE_KEYS = [
+  'interceptDriveTrace',
+  'visualOwnershipTrace',
   'whiffProbeFrames',
   'closestWhiffApproach',
   'outsideActiveContact',
-  'latestInputSignal',
-  'parryPromptHold',
-  'parryPromptHoldSequence',
+];
+const EXPECTED_EXCHANGE_KEYS = [
+  ...EXPECTED_OUTCOME_KEYS,
+  ...EXPECTED_HANDOFF_KEYS,
+  ...EXPECTED_DIAGNOSTIC_KEYS,
+  ...EXPECTED_TRACE_KEYS,
 ];
 
-test('R18M.4 exchange state owns exactly the mutable values reset per exchange', () => {
+test('R20D.1 every key belongs to exactly one group, and the groups are the key list', () => {
+  assert.deepEqual(SHIELD_PARRY_EXCHANGE_STATE_GROUPS.outcome, EXPECTED_OUTCOME_KEYS);
+  assert.deepEqual(SHIELD_PARRY_EXCHANGE_STATE_GROUPS.handoff, EXPECTED_HANDOFF_KEYS);
+  assert.deepEqual(SHIELD_PARRY_EXCHANGE_STATE_GROUPS.diagnostic, EXPECTED_DIAGNOSTIC_KEYS);
+  assert.deepEqual(SHIELD_PARRY_EXCHANGE_STATE_GROUPS.trace, EXPECTED_TRACE_KEYS);
   assert.deepEqual(SHIELD_PARRY_EXCHANGE_STATE_KEYS, EXPECTED_EXCHANGE_KEYS);
+  assert.equal(new Set(SHIELD_PARRY_EXCHANGE_STATE_KEYS).size, SHIELD_PARRY_EXCHANGE_STATE_KEYS.length,
+    'no key sits in two groups');
+});
+
+test('R20D.1 rule modules never read the blackboard, and diagnostics never feed a rule', async () => {
+  // src/combat must stay pure: no rule module may touch exchangeState at all - the blackboard
+  // is the lab's, and the R19Z incident is what a rule quietly keyed to lab state costs.
+  const { readdir } = await import('node:fs/promises');
+  const combatFiles = (await readdir(new URL('../src/combat', import.meta.url))).filter((f) => f.endsWith('.js'));
+  for (const file of combatFiles) {
+    const source = await readFile(new URL(`../src/combat/${file}`, import.meta.url), 'utf8');
+    assert.ok(!source.includes('exchangeState'), `src/combat/${file} must not touch the exchange blackboard`);
+  }
+});
+
+test('R18M.4 exchange state owns exactly the mutable values reset per exchange', () => {
   const state = createShieldParryExchangeState();
   assert.deepEqual(Object.keys(state), EXPECTED_EXCHANGE_KEYS);
   assert.equal(state.whiffProbeFrames, 0);
