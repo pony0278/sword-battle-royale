@@ -563,7 +563,7 @@ function frame(timestamp) {
       status.className = 'bad';
     }
 
-    laneController.update(snapshot.elapsedSeconds, Boolean(snapshot.action));
+    laneController.update(snapshot.elapsedSeconds, Boolean(snapshot.action), snapshot.phase); // R20B.1 phase rides along
 
     const contactFrame = contactHandoffController.updateCombatBeforeGuard({
       deltaSeconds,

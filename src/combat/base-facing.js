@@ -42,12 +42,17 @@ export function createBaseFacingRuntime(options = {}) {
   let facingRadians = null; // null until the first bearing: a body spawns facing its opponent,
   // it does not swivel there from world zero.
 
-  function update(targetBearingRadians, deltaSeconds, { frozen = false } = {}) {
+  // R20B.1: a caller may cap this update's rate below the runtime's own - the swing's windup
+  // tracker chases the same bearing as everyone else, only slower. The override can only
+  // slow: a committed body must never turn faster than a free one.
+  function update(targetBearingRadians, deltaSeconds, { frozen = false, rateRadiansPerSecond = null } = {}) {
     const target = finite(targetBearingRadians, facingRadians ?? 0);
     if (facingRadians == null) { facingRadians = target; return facingRadians; }
     if (frozen) return facingRadians;
+    const override = Number(rateRadiansPerSecond);
+    const rate = Number.isFinite(override) && override > 0 ? Math.min(override, turnRate) : turnRate;
     const delta = wrapAngleRadians(target - facingRadians);
-    const step = Math.min(Math.abs(delta), turnRate * Math.max(0, finite(deltaSeconds)));
+    const step = Math.min(Math.abs(delta), rate * Math.max(0, finite(deltaSeconds)));
     facingRadians = wrapAngleRadians(facingRadians + Math.sign(delta) * step);
     return facingRadians;
   }
