@@ -74,6 +74,7 @@ import { createShieldParryLabScene } from './shield-parry-r281/lab-scene.js';
 import { cloneSurface, magnitude, createBladePolylineSampler } from './shield-parry-r281/lab-geometry.js';
 import { createShieldParryFrameReporting } from './shield-parry-r281/frame-reporting.js';
 import { createShieldParryLaneController } from './shield-parry-r281/lane-controller.js';
+import { createDefenderStanceRuntime } from '../../src/combat/defender-stance.js';
 import { createShieldParryInspectionOverlay } from './shield-parry-r281/inspection-overlay.js';
 import { createAttackerPresentationAdapter } from './shield-parry-r281/attacker-presentation.js';
 import { createDirectOldB3DiagnosticController } from './shield-parry-r281/direct-old-b3-diagnostic.js';
@@ -118,6 +119,25 @@ const parryGate = createCommittedParryContactGate();
 const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
   labScene, walkClips: ATTACKER_WALK_CLIPS, services: { captureRigPose, applyRigPose } });
 const exchangeState = createShieldParryExchangeState();
+// R20G.1 (B6c): defence is a choice - in block mode the guard (and the whole measured defence
+// behind it) exists only while the key is held; the machine follows this input, never auto-raises.
+const defenderStance = createDefenderStanceRuntime();
+let guardKeyHeld = false;
+function setGuardHeld(held) {
+  guardKeyHeld = held === true;
+  if (selectedMode !== 'block') return guardKeyHeld;
+  if (guardKeyHeld && guardMachine.state === GUARD_STATES.NEUTRAL) enterGuard();
+  else if (!guardKeyHeld && guardMachine.state !== GUARD_STATES.NEUTRAL) { guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera); }
+  // The stance refreshes on the input edge, not the next frame: a guard press and a dodge
+  // request in the same tick must already see each other, or the mutex leaks for one frame.
+  defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging });
+  return guardKeyHeld;
+}
+// Every dodge request - keyboard, touch, or probe - walks through the stance gate here.
+function requestDodge(direction) {
+  if (!defenderStance.mayDodge()) return Object.freeze({ accepted: false, reason: 'guard-refuses-the-dodge' });
+  return laneController.tryDodge(direction);
+}
 const neutralStance = createNeutralStanceController({
   defender, camera, readGuardState: () => guardMachine.state,
 });
@@ -206,7 +226,7 @@ const preContactController = createShieldParryPreContactController({
     previousBlade,
     defenderSword,
     debugStanceProfile,
-    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, // R19N.1 relevance + R19Z.1 cone gate read the live lane
+    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, // R19N.1 + R19Z.1 + R20F.1 + R20G.1 read the live lane
   }),
   services: {
     cloneSurface,
@@ -243,7 +263,8 @@ const contactHandoffController = createShieldParryContactHandoffController({
     measureAttackerRecoilWorldSilhouette,
   },
   callbacks: {
-    onBodyStruck: (bodyContact) => bodyStrikeReaction.start(bodyContact), // R19K.1
+    onBodyStruck: (bodyContact) => bodyStrikeReaction.start(bodyContact), readDodgeReport: () => laneController.dodgeReport, // R19K.1 + R20F.1
+    readGuardActive: () => selectedMode !== 'block' || defenderStance.report.guardActive === true, // R20G.1: parry mode keeps its armed guard
     captureCanonicalAttackerOldB3Base: () => attackerPresentation.captureCanonicalOldB3Base(attackRuntime.snapshot.interruption),
     captureAttackerWorldSilhouette: () => attackerPresentation.captureWorldSilhouette(),
     updateLiveContactMarkers: (report) => inspectionOverlay.update(report),
@@ -423,7 +444,8 @@ function forceOldTwoActorB3(direction = selectedDirection) {
 }
 function startAttack(direction = selectedDirection) {
   if (!ready || combat.active || attackRuntime.active || attackerRecovery) return false;
-  if (selectedMode && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
+  // B6c: parry mode keeps its armed guard; block mode raises only what the held key says.
+  if ((selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
   selectedDirection = direction;
   resetExchange();
   previousBlade = captureBladePolyline();
@@ -444,7 +466,8 @@ function restartAttack(direction = selectedDirection) {
   }
   combat.reset();
   attackerRecovery = null;
-  if (selectedMode) enterGuard();
+  if (selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) enterGuard();
+  else if (selectedMode === 'block') { guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera); }
   const started = startAttack(direction);
   if (started) {
     hudInput.textContent = 'NEW ATTACK · input available · wait for PARRY NOW prompt';
@@ -455,8 +478,10 @@ function restartAttack(direction = selectedDirection) {
 function setMode(mode) {
   if (!['block', 'parry'].includes(mode)) return;
   selectedMode = mode;
-  // R19I.1: choosing a defence is what raises the guard - before that both fighters just stand.
-  if (guardMachine.state === GUARD_STATES.NEUTRAL) enterGuard();
+  // R19I.1 said choosing a defence raises the guard; B6c narrows that to parry mode - in block
+  // mode the held key is the only thing that raises it, so entering block re-reads the key.
+  if (mode === 'parry' && guardMachine.state === GUARD_STATES.NEUTRAL) enterGuard();
+  if (mode === 'block') setGuardHeld(guardKeyHeld);
   if (mode !== 'parry') {
     exchangeState.parryPromptHold = null;
     residualBodyReachRuntime.reset();
@@ -519,7 +544,8 @@ bindShieldParryLabUiEvents({
     onDebugApplyRetry: () => restartAttack(selectedDirection),
     onDebugResetDefaults: resetDebugStanceDefaults,
     onDefenderIntent: (intent) => laneController.setDefenderIntent(intent), onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
-    onDefenderLateralIntent: (intent) => laneController.setDefenderLateralIntent(intent), // R19V.1 A/D
+    onDefenderLateralIntent: (intent) => laneController.setDefenderLateralIntent(intent), onGuardKey: (held) => setGuardHeld(held), // R19V.1 + R20G.1
+    onDodge: (direction) => requestDodge(direction), // R20F.1 through the stance gate
     onShowSurface: (checked) => buckler.setParrySurfaceVisible(checked),
     onResize: resize,
   },
@@ -541,6 +567,7 @@ function frame(timestamp) {
   const deltaSeconds = Math.max(1e-5, deltaMs / 1000);
   lastTimestamp = timestamp;
   freeCamera.update(rawDeltaMs / 1000);
+  defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging }); // R20G.1 stance arbitration
   laneController.walk(rawDeltaMs / 1000, exchangeState.latestGuardFacingPlan); // real seconds; R19Q.1 facing plan rides along
   if (ready) {
     const snapshot = attackRuntime.update(deltaMs);
@@ -577,7 +604,7 @@ function frame(timestamp) {
     laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active);
     guardRuntime.update(deltaMs, camera);
     neutralStance.sample(deltaMs); // R19I.1: no-op unless the guard is neutral
-    laneController.overlayDefenderWalkLegs();
+    laneController.overlayDefenderWalkLegs(); laneController.overlayDefenderDodge(); // R20F.1 dodge outranks the guard, a landed blade outranks the dodge
     bodyStrikeReaction.sample(deltaMs); // R19K.1: last writer - a landed blade owns the fighter
     contactHandoffController.updateDefenderDeflectReleaseGate();
     contactHandoffController.updateLiveConstraintAfterGuard({
@@ -600,7 +627,7 @@ function frame(timestamp) {
     if (hudClockMs >= HUD_INTERVAL_MS) { hudClockMs %= HUD_INTERVAL_MS; updateHud(snapshot, combatSnapshot); }
     if (reportClockMs >= REPORT_INTERVAL_MS) { reportClockMs %= REPORT_INTERVAL_MS; buildReport(combatSnapshot); }
 
-    if (!combat.active && !attackRuntime.active && !attackerRecovery && guardMachine.state === GUARD_STATES.HOLD && autoRepeat.checked) {
+    if (!combat.active && !attackRuntime.active && !attackerRecovery && (guardMachine.state === GUARD_STATES.HOLD || selectedMode === 'block') && autoRepeat.checked) {
       repeatCooldownMs += deltaMs;
       if (repeatCooldownMs >= 700) startAttack(selectedDirection);
     }
@@ -626,6 +653,8 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     resetDebugStanceDefaults,
     triggerParryNow,
     dispatchParryInput,
+    setGuardHeld, // R20G.1: probes and drivers hold the guard programmatically
+    tryDodge: requestDodge, // R20G.1: same gate as the keys - the facade may not skip the stance
     forceOldTwoActorB3,
     resetLane: () => (combat.active || attackRuntime.active ? null : laneController.resetLane()),
     captureBladeGeometry: () => ({ blade: captureBladePolyline(), surface: buckler.getWorldParrySurface() }),
@@ -641,6 +670,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
   },
   runtimes: {
     laneController,
+    defenderStance,
     combat,
     attackRuntime,
     guardMachine,

@@ -58,9 +58,9 @@ test('R19Z.1 the gate is decided at commitment and stands the whole response dow
   assert.match(controller, /exchangeState\.latestConeGate = coneGate\.plan/);
   // Folded into the one commitment flag, and into the guard turn's - the sweep measured turn
   // and coverage running together, so they stand down together.
-  const engagedFlag = controller.indexOf('&& coneGate.plan.engaged\n      && closeRangePosture.plan.posture');
-  assert.ok(engagedFlag >= 0, 'coverage commitment carries the cone gate');
-  assert.match(controller, /relevance\.relevant && coneGate\.plan\.engaged,\n\s+posture:/);
+  const engagedFlag = controller.indexOf('&& coneGate.plan.engaged\n      && !dodgeGuardDown\n      && closeRangePosture.plan.posture');
+  assert.ok(engagedFlag >= 0, 'coverage commitment carries the cone gate and the dodge cost');
+  assert.match(controller, /relevance\.relevant && coneGate\.plan\.engaged && !dodgeGuardDown,\n\s+posture:/);
 });
 
 test('R19Z.1 the facing error is the base facing against the bearing, guard turn excluded', async () => {

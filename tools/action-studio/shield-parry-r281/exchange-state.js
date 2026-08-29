@@ -93,6 +93,7 @@ export const FRAME_DIAGNOSTIC_KEYS = Object.freeze([
   'latestDefenderTorsoLeanReport',
   'blockReaction',
   'latestInputSignal',
+  'latestDodge',
 ]);
 
 // Bounded accumulators: ring buffers and best-of records that grow during an exchange.

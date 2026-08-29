@@ -31,7 +31,7 @@
     #touchPad {
     position: fixed; right: 14px; bottom: 14px; z-index: 30;
     display: grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px;
-    grid-template-areas: ". up ." "left . right" ". down ."; gap: 6px;
+    grid-template-areas: ". up dodge" "left guard right" ". down ."; gap: 6px;
     opacity: 0.85; touch-action: none;
   }
   #touchPad button {
@@ -42,6 +42,7 @@
   #touchPad button:active { background: rgba(70, 110, 150, 0.9); }
   .pad-up { grid-area: up; } .pad-down { grid-area: down; }
   .pad-left { grid-area: left; } .pad-right { grid-area: right; }
+  .pad-guard { grid-area: guard; } .pad-dodge { grid-area: dodge; }
 </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -57,6 +58,8 @@
       <button data-move="ArrowLeft" class="pad-left">◀</button>
       <button data-move="ArrowRight" class="pad-right">▶</button>
       <button data-move="ArrowDown" class="pad-down">▼</button>
+      <button data-hold-guard class="pad-guard">🛡</button>
+      <button data-dodge class="pad-dodge">✦</button>
     </div>
     <div id="parryCue" class="parry-cue wait"><span>BEST PARRY TIMING · R18I5</span><strong id="parryCueMain">LOADING…</strong><small id="parryCueDetail">等待即時 attack gate</small></div>
     <div class="hud">
@@ -72,7 +75,7 @@
       <div id="hudRecoil">OLD B3 recoil: —</div>
       <div id="hudDiagnostic">STEP 3A diagnostic: —</div>
     </div>
-    <div class="legend">↑↓ 防守者進退 · ←→ 防守者側移(R19V.1,繞著對手轉)· 觸控:右下方向鈕· Shift+↑↓ 攻擊者進退(揮擊中攻擊者由步伐接管)· WASD 仍是自由觀察相機 · Cyan = shield target · yellow = sword contact · red = original attack axis · green/orange = current sword axis PASS/FAIL · purple = wrist→hilt line</div>
+    <div class="legend">B6c:BLOCK 模式預設不設防,按住 F 才舉盾(放開即收),不舉盾會挨打 · ↑↓ 防守者進退 · ←→ 防守者側移(R19V.1,繞著對手轉)· Space 閃避(R20F.1,配方向鍵選向,無鍵=後閃;i-frame 窗 0.1–0.3s,持盾中不可閃,冷卻 1s)· 觸控:右下方向鈕+🛡持盾+✦閃避· Shift+↑↓ 攻擊者進退(揮擊中攻擊者由步伐接管)· WASD 仍是自由觀察相機 · Cyan = shield target · yellow = sword contact · red = original attack axis · green/orange = current sword axis PASS/FAIL · purple = wrist→hilt line</div>
   </main>
   <aside>
     <h1>Step 3A · Live Shield → Sword → Wrist-Grip</h1>
@@ -148,6 +151,6 @@
       this.classList.toggle('expanded');
     });
   </script>
-  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-body-strike-reaction-r19k1"></script>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-held-guard-r20g1"></script>
 </body>
 </html>

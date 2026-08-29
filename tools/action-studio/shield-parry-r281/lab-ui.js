@@ -395,10 +395,23 @@ export function bindShieldParryLabUiEvents({
       if (!event.repeat) { heldLateralKeys.add(event.code); publishLaneIntent(); }
       return;
     }
+    if (event.code === 'Space' && !event.repeat) {
+      // R20F.1: dodge. Direction comes from whatever movement keys are held at the press -
+      // lateral wins over lane, nothing held dodges back - and the state itself refuses
+      // mid-dodge or cooldown presses, so this only ever asks.
+      event.preventDefault();
+      let lateral = 0; for (const code of heldLateralKeys) lateral += LATERAL_KEYS[code] || 0;
+      let lane = 0; for (const code of heldLaneKeys) lane += LANE_KEYS[code] || 0;
+      handlers.onDodge?.(lateral > 0 ? 'right' : lateral < 0 ? 'left' : lane < 0 ? 'forward' : 'back');
+      return;
+    }
     if (!isParryKey(event) || event.repeat) return;
     parryKeyDownObserved = true;
     event.preventDefault();
     event.stopPropagation();
+    // R20G.1 (B6c): F is one key with two readings - a hold (the guard) and a press (the parry
+    // input). Both are reported; the entry routes by mode.
+    handlers.onGuardKey?.(true);
     handlers.onParryInput('keyboard-f', event);
   }, true);
   documentRef.addEventListener('keyup', (event) => {
@@ -421,6 +434,7 @@ export function bindShieldParryLabUiEvents({
     if (!isParryKey(event)) return;
     event.preventDefault();
     event.stopPropagation();
+    handlers.onGuardKey?.(false);
     if (!parryKeyDownObserved) handlers.onParryInput('keyboard-f-keyup-fallback', event);
     parryKeyDownObserved = false;
   }, true);
@@ -430,7 +444,21 @@ export function bindShieldParryLabUiEvents({
     parryKeyDownObserved = false;
     heldLaneKeys.clear();
     attackerModifierHeld = false;
+    handlers.onGuardKey?.(false); // a guard held into a lost window never reports its keyup
     publishLaneIntent();
+  });
+  // R20G.1: the touch pad's guard button is a virtual F hold; the dodge button dodges back.
+  documentRef.querySelectorAll('[data-hold-guard]').forEach((button) => {
+    const press = (event) => { event.preventDefault(); try { button.setPointerCapture(event.pointerId); } catch { /* pointer already gone */ } handlers.onGuardKey?.(true); };
+    const release = () => handlers.onGuardKey?.(false);
+    button.addEventListener('pointerdown', press);
+    button.addEventListener('pointerup', release);
+    button.addEventListener('pointercancel', release);
+    button.addEventListener('contextmenu', (event) => event.preventDefault());
+  });
+  documentRef.querySelectorAll('[data-dodge]').forEach((button) => {
+    button.addEventListener('pointerdown', (event) => { event.preventDefault(); handlers.onDodge?.('back'); });
+    button.addEventListener('contextmenu', (event) => event.preventDefault());
   });
   canvas.addEventListener('pointerdown', () => canvas.focus({ preventScroll: true }));
   elements.showSurface.addEventListener('change', () => handlers.onShowSurface(elements.showSurface.checked));

@@ -44,6 +44,8 @@ export function createShieldParryDebugApi({
     setDefenderYawOffset: (radians) => runtimes.labScene?.setDefenderYawOffset?.(radians) ?? null, // R19Q.1 facing seam (tests drive it directly)
     triggerParryNow: actions.triggerParryNow,
     dispatchParryInput: actions.dispatchParryInput,
+    setGuardHeld: actions.setGuardHeld, // R20G.1: probes and drivers hold the guard directly
+    get defenderStance() { return runtimes.defenderStance?.report ?? null; },
     forceOldTwoActorB3: actions.forceOldTwoActorB3,
     get directOldB3Diagnostic() { return getExchangeState().directOldB3Diagnostic; },
     get latestPredictiveReport() { return getExchangeState().latestPredictiveReport; },
@@ -63,6 +65,8 @@ export function createShieldParryDebugApi({
     get latestSwingRelevance() { return getExchangeState().latestSwingRelevance; },
     get latestCloseRangePosture() { return getExchangeState().latestCloseRangePosture; },
     get latestConeGate() { return getExchangeState().latestConeGate; },
+    get latestDodge() { return getExchangeState().latestDodge; },
+    tryDodge: (direction) => actions.tryDodge?.(direction) ?? null, // R20G.1: routed through the stance gate
     get latestHiltClang() { return getExchangeState().latestHiltClang; },
     get latestGuardFacingPlan() { return getExchangeState().latestGuardFacingPlan; },
     get defenderFacingYawRadians() { return runtimes.laneController?.defenderFacingYawRadians ?? 0; },

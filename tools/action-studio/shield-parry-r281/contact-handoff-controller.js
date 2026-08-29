@@ -76,6 +76,10 @@ export function createShieldParryContactHandoffController({
       return { x: world.x, y: world.y, z: world.z };
     },
     readCloseRangePosture: () => exchangeState.latestCloseRangePosture,
+    // R20F.1: the dodge window, read live from the lane's own state rather than the blackboard
+    // copy - the veto must see this frame's window, not last frame's diagnostic.
+    readDodgeIFramesActive: () => callbacks.readDodgeReport?.()?.iFramesActive === true,
+    readGuardActive: callbacks.readGuardActive, // R20G.1: absent = the legacy always-guarding world
     // R19Y.1: the two points the depth order compares - both read live, like the hurtbox, so a
     // displaced or turned fighter is judged where they actually stand.
     readAttackerRootPoint: () => {
