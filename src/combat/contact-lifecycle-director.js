@@ -1,4 +1,5 @@
 import { probeSweptSwordBucklerContact } from './swept-sword-buckler-contact.js';
+import { applyShieldContactSkin } from './shield-contact-skin.js';
 import { evaluateSweptContactTemporalEligibility } from './swept-contact-temporal-eligibility.js';
 import { probeHiltClangContact, buildHiltPolyline } from './hilt-clang-contact.js';
 import { decideContactDepthOrder } from './contact-depth-order.js';
@@ -294,10 +295,14 @@ export function createContactLifecycleDirector({
   } = {}) {
     if (!previousBlade || !attackSnapshot?.action || firstContact) return null;
     const currentShieldSurface = readShieldSurface();
+    // R20L.1 (B6f): the blade is tested against the declared blocking volume, which is the disc
+    // plus a stated skin. Only the two blade probes use it - the clang, the depth order, the
+    // coverage planner and the visual all keep the true surface.
+    const blockingSurface = applyShieldContactSkin(currentShieldSurface);
     const geometricContact = probeSweptSwordBucklerContact({
       previousBlade,
       currentBlade,
-      bucklerSurface: currentShieldSurface,
+      bucklerSurface: blockingSurface,
       deltaSeconds,
       active: true,
     });
@@ -330,7 +335,7 @@ export function createContactLifecycleDirector({
       ? probeSweptSwordBucklerContact({
           previousBlade: relativePreviousBlade,
           currentBlade,
-          bucklerSurface: currentShieldSurface,
+          bucklerSurface: blockingSurface,
           deltaSeconds,
           active: true,
         })
