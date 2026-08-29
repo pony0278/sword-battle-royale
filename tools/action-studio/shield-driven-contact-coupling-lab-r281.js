@@ -82,6 +82,7 @@ import { ATTACKER_WALK_CLIPS, bootstrapShieldParryLabAssets } from './shield-par
 import { createNeutralStanceController } from './shield-parry-r281/neutral-stance.js';
 import { createBodyStrikeReactionController } from './shield-parry-r281/body-strike-reaction-controller.js';
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
+import { createLabFrameClock } from './shield-parry-r281/frame-clock.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
@@ -214,7 +215,7 @@ const labUi = createShieldParryLabUi(uiElements);
 let ready = false;
 let selectedDirection = 'right';
 let selectedMode = null; // R19I.1: chosen, never assumed
-let lastTimestamp = performance.now();
+const frameClock = createLabFrameClock(); // R20K.1: the wall clock, until a harness pins it
 let attackerIdleDuration = 1;
 let attackerIdleClockSeconds = 0;
 let attackerRecovery = null;
@@ -581,7 +582,7 @@ bindShieldParryLabUiEvents({
 });
 
 function frame(timestamp) {
-  const rawDeltaMs = Math.min(50, Math.max(0, timestamp - lastTimestamp));
+  const rawDeltaMs = frameClock.tick(timestamp);
   const preUpdateSnapshot = attackRuntime.snapshot;
   const parryReviewActive = isParryPreContactReviewActive(preUpdateSnapshot);
   const holdingParryPrompt = parryReviewActive
@@ -594,7 +595,6 @@ function frame(timestamp) {
   const reviewRate = parryReviewActive ? PARRY_REVIEW_RATE : 1;
   const deltaMs = holdingParryPrompt ? 0 : rawDeltaMs * reviewRate;
   const deltaSeconds = Math.max(1e-5, deltaMs / 1000);
-  lastTimestamp = timestamp;
   freeCamera.update(rawDeltaMs / 1000);
   defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging, defenceCommitted: defenceCommitted() }); // R20G.1 + R20H.2
   syncGuardToStance(); // a deferred stand-down lands the frame its commitment ends
@@ -683,7 +683,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     resetDebugStanceDefaults,
     triggerParryNow,
     dispatchParryInput,
-    setGuardHeld, // R20G.1: probes and drivers hold the guard programmatically
+    setGuardHeld, setFixedStepMs: (ms) => frameClock.setFixedStep(ms), // R20G.1 + R20K.1: drivers hold the guard, harnesses pin the clock
     tryDodge: requestDodge, // R20G.1: same gate as the keys - the facade may not skip the stance
     forceOldTwoActorB3,
     resetLane: () => (combat.active || attackRuntime.active ? null : laneController.resetLane()),
@@ -700,7 +700,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
   },
   runtimes: {
     laneController,
-    defenderStance,
+    defenderStance, frameClock,
     combat,
     attackRuntime,
     guardMachine,
