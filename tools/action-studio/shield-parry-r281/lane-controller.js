@@ -1,6 +1,7 @@
 import { createAttackAdvanceRuntime } from '../../../src/combat/attack-advance.js';
 import { createGuardFacingTurnRuntime } from '../../../src/combat/guard-facing-turn.js';
 import { createBaseFacingRuntime, wrapAngleRadians } from '../../../src/combat/base-facing.js';
+import { planSwingFacingPolicy } from '../../../src/combat/swing-windup-tracking.js';
 import { createEngagementGround } from '../../../src/combat/engagement-ground.js';
 import { createLaneLocomotionRuntime, planLateralStep } from '../../../src/combat/lane-locomotion.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../../../src/combat/lane-walk-cycle.js';
@@ -46,6 +47,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   // that has not started yet - so asking it whether a swing is live gave the wrong answer in both
   // directions, and locked the attacker's feet from the first swing of the session onwards.
   let swingLive = false;
+  let swingPhase = null; // R20B.1: the runtime's word on windup vs active, told alongside swingLive
   // R19B.2: once a blow has settled, its step is banked and must never be fed back in. The attack
   // animation keeps running past contact, so the frame loop would otherwise re-report the same
   // travel as an unspent swing on top of the ground it had already become - and the next exchange
@@ -83,8 +85,9 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     // Called every frame of a live swing, before anything reads a world position: the guard tracks
     // the attacker and the swept probe measures the blade, so both must see where the step has
     // actually carried him.
-    update(elapsedSeconds, attacking = true) {
+    update(elapsedSeconds, attacking = true, phase = null) {
       swingLive = Boolean(attacking);
+      swingPhase = swingLive ? phase : null;
       if (!swingLive || exchangeSettled) return ground.report;
       // R19U.1: the swing spends its metres along the attacker's frozen facing - the same value
       // the R19T freeze holds for the length of the commitment. On the lane that facing is zero
@@ -117,7 +120,14 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       // committed so a sidestep mid-swing is stepped AWAY from, not tracked. On the line the
       // bearings never move and both integrators sit at them - the golden grid holds that case.
       const bearings = ground.report;
-      attackerBaseFacing.update(bearings.attackerFacingRadians, deltaSeconds, { frozen: swingLive });
+      // R20B.1: track-then-freeze. The windup chases the bearing at the measured 45 deg/s, the
+      // active window and everything after stay frozen - the release point a future dodge verb
+      // will be timed against. On the line the bearing never moves and tracking is inert.
+      const facingPolicy = planSwingFacingPolicy({ swingLive, phase: swingPhase });
+      attackerBaseFacing.update(bearings.attackerFacingRadians, deltaSeconds, {
+        frozen: facingPolicy.mode === 'frozen',
+        rateRadiansPerSecond: facingPolicy.rateRadiansPerSecond,
+      });
       defenderBaseFacing.update(bearings.defenderFacingRadians, deltaSeconds);
       const defenderStep = defenderFeet.update({ deltaSeconds, separationMeters: ground.separationMeters });
       if (defenderStep.meters !== 0) ground.moveDefender(defenderStep.meters);
@@ -201,6 +211,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     // held key is still held.
     endExchange() {
       swingLive = false;
+      swingPhase = null;
       advance.reset();
       // A settled exchange already banked its step; only an unresolved one still has travel to keep.
       if (!exchangeSettled) ground.settleWhiff();
@@ -230,6 +241,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       attackerBaseFacing.snapTo(0);
       defenderBaseFacing.snapTo(Math.PI);
       swingLive = false;
+      swingPhase = null;
       exchangeSettled = false;
       advance.reset();
       ground.rebase(labScene.engagementStance.separationMeters);
