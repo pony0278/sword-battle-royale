@@ -382,7 +382,11 @@ export function createShieldParryPreContactController({
     const observeVisualOwnership = context.selectedMode === 'parry';
     if (observeVisualOwnership) visualOwnership.beginFrame(snapshot);
     try {
-      if (context.selectedMode === 'block') updateBlockPreContact(snapshot, currentBlade, deltaSeconds, context);
+      // R20H.1 (B6c2): an armed Sekiro raise hands the frame to the parry chain - the intercept
+      // drive is what turns a raise into a deflect (without it every in-window LEFT raise still
+      // lands on the body, measured: the whole LEFT window sits past the B6b conversion cliff).
+      // A plain held guard keeps the block chain and its coverage machinery.
+      if (context.selectedMode === 'block' && parryGate.armed !== true) updateBlockPreContact(snapshot, currentBlade, deltaSeconds, context);
       else updateParryPreContact(snapshot, currentBlade, deltaSeconds, context);
     } finally {
       if (observeVisualOwnership) visualOwnership.finishFrame();

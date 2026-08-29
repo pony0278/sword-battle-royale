@@ -130,7 +130,14 @@ function setGuardHeld(held) {
   else if (!guardKeyHeld && guardMachine.state !== GUARD_STATES.NEUTRAL) { guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera); }
   // The stance refreshes on the input edge, not the next frame: a guard press and a dodge
   // request in the same tick must already see each other, or the mutex leaks for one frame.
-  defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging });
+  const stanceEdge = defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging });
+  // R20H.1 (B6c2): the rising edge IS the Sekiro attempt. Timing is the gate's whole authority
+  // (geometry cannot veto), so the raise needs nothing but the live snapshot; a refusal is
+  // silent - the shield still rose, and that is already the answer the player asked for.
+  if (stanceEdge.justRaisedGuard && attackRuntime.snapshot?.action && !exchangeState.firstContact) {
+    exchangeState.latestParryInput = parryGate.arm({ attackSnapshot: attackRuntime.snapshot, manual: true, source: 'guard-raise' });
+    if (exchangeState.latestParryInput.accepted) driveAcceptedParry(attackRuntime.snapshot);
+  }
   return guardKeyHeld;
 }
 // Every dodge request - keyboard, touch, or probe - walks through the stance gate here.
@@ -375,6 +382,25 @@ function resetExchange() {
   inspectionOverlay.clear();
 }
 
+// R20H.1: everything an accepted arm sets in motion besides the gate itself - the whiff-probe
+// resets, the intercept drive, the predictive presentation. Shared by the parry-mode trigger and
+// the block-mode guard raise: without the drive, a LEFT raise inside the timing window still eats
+// the hit on the body (the whole window sits past the B6b raise-conversion cliff, measured).
+function driveAcceptedParry(snapshot) {
+  exchangeState.whiffProbeFrames = 0;
+  exchangeState.closestWhiffApproach = null;
+  exchangeState.outsideActiveContact = null;
+  exchangeState.latestReachableInterceptTarget = null;
+  exchangeState.latestInterceptDriveReport = null;
+  exchangeState.interceptDriveTrace = [];
+  preContactController.armActiveIntercept(snapshot);
+  predictivePresentation.start({
+    sequence: snapshot.sequence,
+    requestedGrade: 'parry',
+    triggerTtcSeconds: exchangeState.latestParryInput.timeToContactSeconds,
+  });
+}
+
 function triggerParryNow(source = 'button') {
   if (!ready) {
     exchangeState.latestParryInput = Object.freeze({ accepted: false, reason: 'lab-not-ready', source });
@@ -398,18 +424,7 @@ function triggerParryNow(source = 'button') {
   });
 
   if (exchangeState.latestParryInput.accepted) {
-    exchangeState.whiffProbeFrames = 0;
-    exchangeState.closestWhiffApproach = null;
-    exchangeState.outsideActiveContact = null;
-    exchangeState.latestReachableInterceptTarget = null;
-    exchangeState.latestInterceptDriveReport = null;
-    exchangeState.interceptDriveTrace = [];
-    preContactController.armActiveIntercept(snapshot);
-    predictivePresentation.start({
-      sequence: snapshot.sequence,
-      requestedGrade: 'parry',
-      triggerTtcSeconds: exchangeState.latestParryInput.timeToContactSeconds,
-    });
+    driveAcceptedParry(snapshot);
     const trackingDistance = exchangeState.latestParryInput.requiredShieldTravelMeters == null
       ? 'path pending'
       : `${(exchangeState.latestParryInput.requiredShieldTravelMeters * 100).toFixed(1)}cm${exchangeState.latestParryInput.gates.trackingClamped ? ' → CLAMPED' : ''}`;
@@ -432,6 +447,9 @@ function dispatchParryInput(source, event = null) {
     elapsedSeconds: attackRuntime.snapshot.elapsedSeconds,
   });
   labUi.flashParryInput();
+  // R20H.1: in block mode F IS the guard raise - setGuardHeld already armed the Sekiro attempt on
+  // this keydown; the legacy trigger would only clobber that verdict with 'select-parry-mode-first'.
+  if (selectedMode === 'block' && source.startsWith('keyboard-f')) return exchangeState.latestParryInput;
   const result = triggerParryNow(source);
   exchangeState.parryPromptHold = null;
   labUi.setInputReceipt(source, result);
