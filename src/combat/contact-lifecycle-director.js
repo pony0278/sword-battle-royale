@@ -98,6 +98,7 @@ export function createContactLifecycleDirector({
   readAttackerRootPoint,
   readDefenderBodyPoint,
   readCloseRangePosture,
+  readDodgeIFramesActive,
   fallbackIncomingVelocity,
   releaseReachOwnership,
   observe = {},
@@ -417,6 +418,22 @@ export function createContactLifecycleDirector({
           depthOrder,
         });
       }
+    }
+    // R20F.1: a dodge's invulnerability window. During i-frames the exchange does not touch the
+    // defender at all - shield, clang, and body alike - because the dodge investigation measured
+    // that geometry alone can never make the blade miss (orbit-preserving lateral, lunge-eaten
+    // retreat, and a resting shield or body always on the arc's path). The veto sits after every
+    // contact question has been asked and answered, so the diagnostics still record what WOULD
+    // have connected, and it returns before the body is offered anything.
+    if (readDodgeIFramesActive?.() === true) {
+      const passedEvaluation = Object.freeze({
+        ...contactEvaluation,
+        contact: false,
+        eligible: contactEvaluation.eligible,
+        reason: 'dodge-i-frames-let-it-pass',
+      });
+      observe.contactEvaluated?.(passedEvaluation, attackSnapshot);
+      return Object.freeze({ contactEvaluation: passedEvaluation, contacted: false, bodyContact: null, event: null });
     }
     // Announced before the contact branch, because the caller's whiff diagnostics read the parry
     // gate's armed state and the confirmation below is what consumes it.

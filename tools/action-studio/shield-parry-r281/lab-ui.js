@@ -395,6 +395,16 @@ export function bindShieldParryLabUiEvents({
       if (!event.repeat) { heldLateralKeys.add(event.code); publishLaneIntent(); }
       return;
     }
+    if (event.code === 'Space' && !event.repeat) {
+      // R20F.1: dodge. Direction comes from whatever movement keys are held at the press -
+      // lateral wins over lane, nothing held dodges back - and the state itself refuses
+      // mid-dodge or cooldown presses, so this only ever asks.
+      event.preventDefault();
+      let lateral = 0; for (const code of heldLateralKeys) lateral += LATERAL_KEYS[code] || 0;
+      let lane = 0; for (const code of heldLaneKeys) lane += LANE_KEYS[code] || 0;
+      handlers.onDodge?.(lateral > 0 ? 'right' : lateral < 0 ? 'left' : lane < 0 ? 'forward' : 'back');
+      return;
+    }
     if (!isParryKey(event) || event.repeat) return;
     parryKeyDownObserved = true;
     event.preventDefault();
