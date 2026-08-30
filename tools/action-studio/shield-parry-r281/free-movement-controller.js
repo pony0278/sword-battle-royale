@@ -1,6 +1,7 @@
 import { createLockOnRuntime } from '../../../src/combat/lock-on.js';
 import { LANE_LOCOMOTION_PROFILE } from '../../../src/combat/lane-locomotion.js';
 import { THIRD_PERSON_CAMERA_PROFILE } from '../../../src/combat/third-person-camera.js';
+import { planSprint } from '../../../src/combat/sprint-locomotion.js';
 
 export const FREE_MOVEMENT_STAGE = 'R20S.3';
 // The one opponent this lab has. A battle royale will hand a list; the selection rule does not
@@ -26,7 +27,16 @@ const LAB_TARGET_ID = 'attacker';
 // covers what it covers, and the measured reliable cone (-20..+150 degrees, LEFT setting the tight
 // edge) is what decides whether the shield is where the blade is. Turning your back on someone is
 // already answered by geometry, and a rule saying so would be a second, weaker copy of it.
-export function createFreeMovementController({ laneController, lockOn = createLockOnRuntime(), profile = THIRD_PERSON_CAMERA_PROFILE }) {
+export function createFreeMovementController({
+  laneController,
+  lockOn = createLockOnRuntime(),
+  profile = THIRD_PERSON_CAMERA_PROFILE,
+  // What the sprint has to ask about before it is allowed to run. Defaults say no, so a caller
+  // that forgets to wire the state gets a fighter who cannot sprint rather than one who sprints
+  // through their own guard.
+  readGuardActive = () => true,
+  readAttacking = () => true,
+} = {}) {
   if (!laneController?.report) throw new Error(`${FREE_MOVEMENT_STAGE} needs the lane controller`);
   // Where the camera looks when nothing is locked. It has to be state of its own, and finding that
   // out cost a bug worth recording: the first version used the fighter's own facing as the movement
@@ -34,6 +44,8 @@ export function createFreeMovementController({ laneController, lockOn = createLo
   // circle - 1.2cm of travel in a second of holding a key. The frame you move in cannot be the
   // thing your movement steers.
   let freeYawRadians = Math.PI;
+  let sprintRequested = false;
+  let sprintReport = planSprint({});
   const lookSensitivity = Number(profile?.free?.mouseSensitivityRadiansPerPixel) || 0.0032;
 
   function candidates() {
@@ -55,6 +67,8 @@ export function createFreeMovementController({ laneController, lockOn = createLo
   return Object.freeze({
     get lockReport() { return lockOn.report; },
     get freeYawRadians() { return freeYawRadians; },
+    setSprintRequested(requested) { sprintRequested = requested === true; return sprintRequested; },
+    get sprintReport() { return sprintReport; },
     // Mouse look, in free mode only - locked, the camera is following the person you chose and
     // taking it off them by hand is the thing locking exists to stop.
     look(deltaPixels) {
@@ -99,16 +113,42 @@ export function createFreeMovementController({ laneController, lockOn = createLo
       const lateralInput = Math.sign(Number(intent.lateral) || 0);
       const axis = forwardRadians();
       if (forwardInput === 0 && lateralInput === 0) {
+        sprintReport = planSprint({ requested: sprintRequested, forwardInput: 0, lateralInput: 0 });
         // Standing still still owns your facing: locked hands it back to the geometry, free keeps
         // whatever you last turned to.
         if (lockOn.report.locked) laneController.setDefenderFacing(null);
         return null;
       }
-      const speed = forwardInput >= 0 ? LANE_LOCOMOTION_PROFILE.forwardSpeedMps : LANE_LOCOMOTION_PROFILE.backwardSpeedMps;
-      const forwardMeters = forwardInput * speed * deltaSeconds;
-      const lateralMeters = lateralInput * LANE_LOCOMOTION_PROFILE.lateralSpeedMps * deltaSeconds;
-      // forward is (sin, cos); the player's right is (-cos, sin) - see the note in
-      // third-person-camera.js, where the same sign decides where the camera stands.
+      // R20U.1: running. Refused while locked, guarding, swinging or dodging, and forward only -
+      // in free mode you face where you are going, so fleeing is turning round and running.
+      sprintReport = planSprint({
+        requested: sprintRequested,
+        locked: lockOn.report.locked,
+        guardActive: readGuardActive() === true,
+        attacking: readAttacking() === true,
+        dodging: laneController.dodgeReport?.dodging === true,
+        forwardInput,
+        lateralInput,
+      });
+      // Diagonals are not faster. Scaling the intent to unit length first is the fix for a
+      // straight-line-versus-diagonal gap that measured 1.46x - two axes added at full speed each.
+      const magnitude = Math.hypot(forwardInput, lateralInput) || 1;
+      const forwardShare = forwardInput / magnitude;
+      const lateralShare = lateralInput / magnitude;
+      // Which speeds apply is decided by who owns the facing, which is the honest version of the
+      // rule and the reason all three of these were wrong together. LOCKED: the gap owns facing, so
+      // a backpedal is a real backpedal and the walk profile's three speeds mean what they say.
+      // FREE: the body turns to face wherever it is going, so there is only one speed - every
+      // direction is forward once the turn finishes, and the turn is visible at 180 deg/s.
+      const forwardSpeed = sprintReport.sprinting
+        ? sprintReport.speedMps
+        : LANE_LOCOMOTION_PROFILE.forwardSpeedMps;
+      const forwardMeters = forwardShare * (lockOn.report.locked
+        ? (forwardInput >= 0 ? LANE_LOCOMOTION_PROFILE.forwardSpeedMps : LANE_LOCOMOTION_PROFILE.backwardSpeedMps)
+        : forwardSpeed) * deltaSeconds;
+      const lateralMeters = lateralShare * (lockOn.report.locked
+        ? LANE_LOCOMOTION_PROFILE.lateralSpeedMps
+        : forwardSpeed) * deltaSeconds;
       const dx = Math.sin(axis) * forwardMeters - Math.cos(axis) * lateralMeters;
       const dz = Math.cos(axis) * forwardMeters + Math.sin(axis) * lateralMeters;
       // Free: you face where you are going. Locked: the gap decides, as it always has.

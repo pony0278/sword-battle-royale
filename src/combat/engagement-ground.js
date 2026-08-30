@@ -181,6 +181,14 @@ export function createEngagementGround(options = {}) {
       defenderGroundMeters += delta * (gap.longitudinal / gap.separation);
       defenderLateralMeters += delta * (gap.lateral / gap.separation);
     }
+    // R20T.4: and the floor holds here too. It used to hold only because the walk PLANNER refused
+    // to close past it - which covered walking and nothing else, so a forward dodge went straight
+    // through and left the fighters 25cm inside the contact floor. This is where R19B.2 said the
+    // floor belongs: on the ledger, where every source of movement has to pass it.
+    pushMoverOutOfContact((backX, backZ) => {
+      defenderLateralMeters -= backX;
+      defenderGroundMeters -= backZ;
+    });
     return report();
   }
 
@@ -193,6 +201,12 @@ export function createEngagementGround(options = {}) {
       attackerGroundMeters -= delta * (gap.longitudinal / gap.separation);
       attackerLateralMeters -= delta * (gap.lateral / gap.separation);
     }
+    // The same floor, for the same reason - the attacker has a dash coming, and it will arrive
+    // through a verb rather than through the walk planner that used to be the only guard.
+    pushMoverOutOfContact((backX, backZ) => {
+      attackerLateralMeters += backX;
+      attackerGroundMeters += backZ;
+    });
     return report();
   }
 
