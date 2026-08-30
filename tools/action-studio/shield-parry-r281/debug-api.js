@@ -39,6 +39,9 @@ export function createShieldParryDebugApi({
     get laneAttackerIntent() { return runtimes.laneController?.attackerIntent ?? 0; },
     get laneAttackerGait() { return runtimes.laneController?.attackerGait ?? null; },
     get laneDefenderGait() { return runtimes.laneController?.defenderGait ?? null; },
+    // R20W.2: how much of the defender the walk took this frame - legs under a raised guard, the
+    // whole fighter when there is no guard to hold, none while an exchange owns them.
+    get laneDefenderWalkOverlay() { return runtimes.laneController?.defenderWalkOverlay ?? null; },
     get laneAttackerWalkSample() { return runtimes.laneController?.attackerWalkSample ?? null; },
     get engagementStance() { return runtimes.labScene?.engagementStance ?? null; },
     setDefenderYawOffset: (radians) => runtimes.labScene?.setDefenderYawOffset?.(radians) ?? null, // R19Q.1 facing seam (tests drive it directly)

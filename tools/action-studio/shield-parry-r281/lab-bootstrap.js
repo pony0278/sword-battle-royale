@@ -8,18 +8,17 @@ import { loadUal2AnimationLibrary } from '../../../src/animation/ual2-animation-
 import { loadSkyrimConvertedAnimationLibrary } from '../../../src/animation/skyrim-converted-animation-library.js';
 import { loadKayKitAnimationLibrary } from '../../../src/animation/kaykit-animation-library.js';
 import { composeSkyrimWeaponMountCalibration } from '../../../src/animation/skyrim-weapon-bind-calibration.js';
+import { LANE_WALK_CLIPS } from '../../../src/combat/lane-walk-cycle.js';
 
-// The two directions are different clips rather than one played backwards: a reversed walk reads
-// as a moonwalk, because the foot that plants is the wrong one.
 // R19I.1: the clip both fighters stand in when nobody has chosen anything yet. The attacker
 // already idled on it out of combat; the defender now shares it so "no state" is one pose for
 // both of them rather than a guard on one side and a rest pose on the other.
 export const NEUTRAL_IDLE_CLIP_ID = 'UAL1/Sword_Idle';
 
-export const ATTACKER_WALK_CLIPS = Object.freeze({
-  forward: 'Walking_A',
-  backward: 'Walking_Backwards',
-});
+// R20W.1: which walk clips play is now a measured decision rather than a local constant, so it
+// lives with the measurements. The two directions are different clips rather than one played
+// backwards: a reversed walk reads as a moonwalk, because the foot that plants is the wrong one.
+export { LANE_WALK_CLIPS };
 
 export async function bootstrapShieldParryLabAssets({ THREE, attacker, defender, labStage }) {
   const [ual1, ual2, skyrim, kaykit, defenderUal1] = await Promise.all([
@@ -58,9 +57,12 @@ export async function bootstrapShieldParryLabAssets({ THREE, attacker, defender,
   );
 
   const defenderIdleDuration = defender.getAnimationDuration(NEUTRAL_IDLE_CLIP_ID) || 1;
-  const walkForwardDuration = attacker.getAnimationDuration(ATTACKER_WALK_CLIPS.forward) || 1;
-  const walkBackwardDuration = attacker.getAnimationDuration(ATTACKER_WALK_CLIPS.backward) || 1;
+  // R20W.2: measured off the registered clips rather than restated, and keyed by clip id because
+  // the gait picks between three of them now - walk, backwards walk and run.
+  const locomotionClipDurations = Object.freeze(Object.fromEntries(
+    [...new Set(Object.values(LANE_WALK_CLIPS))].map((clipId) => [clipId, attacker.getAnimationDuration(clipId) || 1]),
+  ));
   return Object.freeze({
-    attackerIdleDuration, defenderIdleDuration, walkForwardDuration, walkBackwardDuration, defenderSword,
+    attackerIdleDuration, defenderIdleDuration, locomotionClipDurations, defenderSword,
   });
 }

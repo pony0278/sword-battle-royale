@@ -63,7 +63,9 @@ test('R18M.C5 bootstrap owns only async asset registration and defender weapon b
 
 test('R18M.C5 bootstrap relative imports resolve to real repository files', () => {
   const imports = [...bootstrapSource.matchAll(/from\s+['"](\.\.\/[^'"]+)['"]/g)].map((match) => match[1]);
-  assert.equal(imports.length, 7);
+  // R20W.1 added the eighth: which walk clips play is a measured decision now, so the ids come
+  // from lane-walk-cycle.js rather than being declared here.
+  assert.equal(imports.length, 8);
   for (const specifier of imports) {
     const resolved = new URL(specifier, bootstrapUrl);
     assert.ok(existsSync(resolved), `${specifier} must resolve from lab-bootstrap.js`);
@@ -110,7 +112,7 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
     'residualStanceReachRuntime', 'debugMode', 'debugStanceProfile', 'refreshDebugStanceProfile',
     'resetDebugStanceDefaults', 'swordGripConstraint', 'setEngagementSeparation', 'resetLane',
     'captureBladeGeometry',
-    'laneGround', 'laneDefenderIntent', 'laneDefenderLateralIntent', 'laneAttackerIntent', 'laneAttackerGait', 'laneDefenderGait',
+    'laneGround', 'laneDefenderIntent', 'laneDefenderLateralIntent', 'laneAttackerIntent', 'laneAttackerGait', 'laneDefenderGait', 'laneDefenderWalkOverlay',
     'laneAttackerWalkSample', 'engagementStance', 'setDefenderYawOffset',
     'triggerParryNow', 'dispatchParryInput', 'setGuardHeld', 'setFixedStepMs',
     'playerController', 'toggleLock', 'setMoveIntent', 'lockReport', 'cameraPose',
