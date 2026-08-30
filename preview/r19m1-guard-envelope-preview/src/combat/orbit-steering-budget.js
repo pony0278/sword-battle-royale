@@ -81,22 +81,42 @@ export const ORBIT_IS_NOT_A_DODGE = Object.freeze({
   tightestDeliveryConeEdgeDegrees: -8,
 });
 
-// The thing this investigation found that it was not looking for: LEFT does not reach an UNGUARDED
-// body inside 1.4m, whether the defender orbits or stands perfectly still. Movement is not the
-// cause and the measurement says so - the still control misses identically.
+// The thing this investigation found that it was not looking for, and then explained: LEFT does not
+// reach an UNGUARDED body inside 1.4m of starting stance, whether the defender orbits or stands
+// perfectly still. Movement is not the cause - the still control misses identically.
 //
-// Guard up, the same cell blocks: the shield is held out in front, so it intercepts a blade that
-// passes the body. The hole is only against a defender who is not defending, which is exactly the
-// player a close-range attacker expects to punish.
+// ROOT CAUSE, measured rather than reasoned: you can get INSIDE the arc. LEFT is a low horizontal
+// sweep, and at the moment of closest approach its blade passes at a fixed radius from the
+// attacker - about 1.10m. When the pair is closer than that, the sweep goes BEHIND the target:
 //
-// Sampled n=3 per stance, guard down, no movement. The golden grid's LEFT cells start at 1.6m, so
-// this band had never been looked at.
+//   start 1.0m -> clamped at 0.90m, blade radius 1.102m against a body surface at 0.946m: the
+//                 blade passes 15.5cm beyond the body, missing the waist disc by 2.6cm
+//   start 1.2m -> identical, 15.5cm beyond, 2.4cm miss
+//   start 1.4m -> 13.8cm beyond, 0.9mm miss (which is why that stance is a coin flip, 1/3)
+//   start 1.5m -> separation at contact 1.058m, blade and body meet, 3/3 hit
+//
+// The gap closes monotonically from windup into the active window in both the hit and the miss, so
+// this is not an eligibility gate refusing a contact that happened - the blade genuinely never
+// arrives. What makes the starting stance matter is the ledger's 0.90m minimum separation: inside
+// 1.4m the clamp eats the attacker's authored 0.45m advance, so they cannot close to the ~1.0m the
+// sweep needs at contact.
+//
+// TOP is immune because a vertical chop lands on top of whatever is under it, and RIGHT connects
+// 3/3 from 1.0m as well. This is LEFT's alone, and it is geometry behaving correctly - being
+// inside a horizontal sweep is a real thing about swords. Whether it stays a mechanic is a design
+// decision, not a bug report; what is recorded here is the band and the reason.
 export const MEASURED_LEFT_CLOSE_RANGE_BODY_REACH = Object.freeze({
   stage: ORBIT_STEERING_BUDGET_STAGE,
   hitsByStance: Object.freeze({ 1.0: 0, 1.1: 0, 1.2: 0, 1.3: 0, 1.4: 1, 1.5: 3, 1.6: 3, 1.8: 3 }),
   trialsPerStance: 3,
-  // TOP and RIGHT connect 3/3 at every stance from 1.0m out, so this is LEFT's alone.
   unaffectedDirections: Object.freeze(['top', 'right']),
   reliableFromMeters: 1.5,
-  status: 'open-finding-root-cause-not-yet-established',
+  // What the sweep actually needs between the two of them when it arrives, and how far past the
+  // body it travels when it does not get it.
+  requiredSeparationAtContactMeters: 1.05,
+  bladeSweepRadiusMeters: 1.10,
+  overshootBeyondBodyMeters: 0.155,
+  missDistanceMeters: 0.026,
+  rootCause: 'the-defender-is-inside-the-sweep-arc-clamped-below-the-radius-it-passes-at',
+  status: 'root-cause-established-design-decision-open',
 });

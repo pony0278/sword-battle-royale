@@ -117,12 +117,27 @@ and direction, against delivery-cone edges of −8° (LEFT) to ±20°; 24/24 orb
 with the guard up, and every TOP and RIGHT swing connected with it down. `orbit-steering-budget.js`
 carries the model and the browser numbers together.
 
-**Open finding, found while measuring that:** LEFT does not reach an unguarded body inside 1.4m —
-0/3 at 1.0–1.3m, 1/3 at 1.4m, 3/3 from 1.5m. The still control misses identically, so movement is
-not the cause. Guard up, the same cell blocks (the shield is out in front and intercepts a blade
-that passes the body), so the hole is only against a defender who is not defending — exactly the
-player a close-range attacker expects to punish. TOP and RIGHT connect 3/3 from 1.0m. Root cause not
-established; the golden grid's LEFT cells start at 1.6m, so this band had never been sampled.
+**Found while measuring that, and then explained:** LEFT does not reach an unguarded body inside
+1.4m — 0/3 at 1.0–1.3m, 1/3 at 1.4m, 3/3 from 1.5m; the still control misses identically, so
+movement is not the cause.
+
+Root cause: **you can get inside the arc.** LEFT is a low horizontal sweep whose blade passes at a
+radius of about 1.10m from the attacker. Clamped at the ledger's 0.90m minimum separation, the
+blade travels 15.5cm *beyond* the body and misses the waist disc by 2.6cm. At 1.4m it overshoots by
+13.8cm and misses by 0.9mm, which is why that stance is a coin flip. From 1.5m the pair is still
+1.058m apart when the swing arrives and it connects 3/3. The gap closes monotonically from windup
+into the active window in both cases, so nothing is gating a contact that happened — the blade
+never arrives. TOP is immune (a chop lands on whatever is under it) and RIGHT connects from 1.0m.
+
+Guard up, the same cell blocks: the shield is out in front and intercepts a blade that passes the
+body. So the hole is only against a defender who is *not defending* — and at hugging range it
+removes one of the three directions from the mixup.
+
+**Design decision still open** (see `orbit-steering-budget.js` for all the numbers):
+- keep it as a mechanic — being inside a sweep is a real thing about swords — and make it legible,
+  so an attacker is not left wondering why their swing passed through nothing;
+- or give LEFT a close-range variant with a tighter arc (animation or procedural);
+- or raise the minimum separation to ~1.05m, which touches every measured band and is the riskiest.
 
 ## Also open from this arc
 
