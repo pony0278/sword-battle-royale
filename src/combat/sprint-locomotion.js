@@ -54,18 +54,21 @@ function finite(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
-// Forward only. In free mode a fighter faces where they are going, so running away is turning
-// round and running - and a sprint that also carried a backpedal would make retreating faster than
-// advancing, which is the one thing the walk profile deliberately refuses.
+// Any direction, and that is not a relaxation - it is what free mode already is. A fighter with no
+// lock faces wherever they are going: press the key that used to mean "back" and the body turns
+// through 180 degrees at its own rate and runs that way. So there is no backpedal here to keep
+// slow, and a rule that refused it was reading the KEY rather than the motion. In an exchange the
+// distinction is real and the lock refusal below is what keeps it - facing is derived from the gap
+// there, so backing off really is backing off, and it stays a walk.
 export function planSprint(input = {}) {
   const requested = input.requested === true;
-  const forwardInput = Math.sign(finite(input.forwardInput));
+  const moving = Math.hypot(finite(input.forwardInput), finite(input.lateralInput)) > 0;
   const refusal = !requested ? 'not-requested'
     : input.locked === true ? 'locked-on-let-go-of-the-lock-to-run'
       : input.guardActive === true ? 'guard-is-up'
         : input.attacking === true ? 'mid-swing'
           : input.dodging === true ? 'mid-dodge'
-            : forwardInput <= 0 ? 'sprint-is-forward-only'
+            : !moving ? 'standing-still'
               : null;
   return Object.freeze({
     stage: SPRINT_LOCOMOTION_STAGE,

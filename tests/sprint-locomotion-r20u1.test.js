@@ -57,13 +57,59 @@ test('R20U.1 an exchange refuses it, and says which part of the exchange refused
   assert.equal(planSprint({ ...running, guardActive: true }).reason, 'guard-is-up');
   assert.equal(planSprint({ ...running, attacking: true }).reason, 'mid-swing');
   assert.equal(planSprint({ ...running, dodging: true }).reason, 'mid-dodge');
-  // Forward only: fleeing is turning round and running, and a fast backpedal would undo the one
-  // thing the walk profile deliberately refuses.
-  assert.equal(planSprint({ ...running, forwardInput: -1 }).reason, 'sprint-is-forward-only');
-  assert.equal(planSprint({ ...running, forwardInput: 0 }).reason, 'sprint-is-forward-only');
+  // Any direction, because free mode has no backpedal: the body turns through 180 degrees and runs
+  // that way. Measured before the rule was written - pressing the old "back" key turns the fighter
+  // at 180 deg/s and the motion is forward for the body the moment the turn lands.
+  assert.equal(planSprint({ ...running, forwardInput: -1 }).sprinting, true);
+  assert.equal(planSprint({ ...running, forwardInput: 0, lateralInput: 1 }).sprinting, true);
+  // Standing still is not running.
+  assert.equal(planSprint({ ...running, forwardInput: 0 }).reason, 'standing-still');
+  assert.equal(planSprint({ ...running, forwardInput: 0, lateralInput: 0 }).sprinting, false);
   // A refusal still hands back a usable speed rather than zero, so a caller cannot freeze someone.
   assert.equal(planSprint({ ...running, locked: true }).speedMps, LANE_LOCOMOTION_PROFILE.forwardSpeedMps);
   assert.equal(planSprint({ requested: false, forwardInput: 1 }).reason, 'not-requested');
+});
+
+test('R20U.1 free mode has one speed in every direction, and diagonals are not faster', () => {
+  // Two bugs with one cause, both found by measuring rather than reading: the old code read the
+  // KEY, so "back" got the backpedal speed even though the body had turned to face that way, and
+  // two axes were added at full speed each, so a diagonal ran 1.46x - the square root of two,
+  // visible in the numbers before anybody looked at the line.
+  const distance = (intent, seconds = 1) => {
+    const { ground, movement } = harness();
+    const before = ground.report.defenderPosition;
+    hold(movement, seconds, intent);
+    const after = ground.report.defenderPosition;
+    return Math.hypot(after.x - before.x, after.z - before.z);
+  };
+  const straight = distance({ forward: 1, lateral: 0 });
+  assert.ok(Math.abs(straight - LANE_LOCOMOTION_PROFILE.forwardSpeedMps) < 0.03);
+  for (const intent of [{ forward: -1, lateral: 0 }, { forward: 0, lateral: 1 }, { forward: 0, lateral: -1 }]) {
+    assert.ok(Math.abs(distance(intent) - straight) < 0.03,
+      `unlocked, ${JSON.stringify(intent)} must cover the same ground as forward`);
+  }
+  for (const intent of [{ forward: 1, lateral: 1 }, { forward: -1, lateral: -1 }]) {
+    assert.ok(Math.abs(distance(intent) - straight) < 0.03,
+      `a diagonal must not outrun a straight line, ${JSON.stringify(intent)}`);
+  }
+});
+
+test('R20U.1 locked keeps the three walk speeds, because there the gap owns the facing', () => {
+  // The distinction the free-mode rule was wrongly generalising from: locked, a backpedal really is
+  // one, and it stays slower than an advance.
+  const walk = (intent, seconds = 1) => {
+    const { ground, movement } = harness();
+    movement.requestToggle();
+    const before = ground.report.defenderPosition;
+    hold(movement, seconds, intent);
+    const after = ground.report.defenderPosition;
+    return Math.hypot(after.x - before.x, after.z - before.z);
+  };
+  assert.ok(Math.abs(walk({ forward: 1, lateral: 0 }) - LANE_LOCOMOTION_PROFILE.forwardSpeedMps) < 0.03);
+  assert.ok(Math.abs(walk({ forward: -1, lateral: 0 }) - LANE_LOCOMOTION_PROFILE.backwardSpeedMps) < 0.03);
+  assert.ok(Math.abs(walk({ forward: 0, lateral: 1 }) - LANE_LOCOMOTION_PROFILE.lateralSpeedMps) < 0.03);
+  // And a diagonal still does not beat the fastest single axis.
+  assert.ok(walk({ forward: 1, lateral: 1 }) <= LANE_LOCOMOTION_PROFILE.forwardSpeedMps + 0.03);
 });
 
 test('R20U.1 running actually covers more ground, and only when unlocked', () => {
@@ -94,6 +140,21 @@ test('R20U.1 a raised guard or a live swing keeps the feet at walking pace', () 
       `${JSON.stringify(state)} must not run, travelled ${travelled.toFixed(3)}`);
     assert.equal(movement.sprintReport.sprinting, false);
   }
+});
+
+test('R20U.1 running away is running, not backpedalling fast', () => {
+  // The report: "Shift + S should sprint too". It should, because there is no S-is-backwards in
+  // free mode - the body turns. Every direction runs at the sprint speed once the sprint is on.
+  const { ground, movement } = harness();
+  movement.setSprintRequested(true);
+  const before = ground.report.defenderPosition;
+  hold(movement, 1, { forward: -1, lateral: 0 });
+  const after = ground.report.defenderPosition;
+  const travelled = Math.hypot(after.x - before.x, after.z - before.z);
+  assert.ok(Math.abs(travelled - SPRINT_SPEED_MPS) < 0.03, `running the other way is still running, got ${travelled.toFixed(3)}`);
+  assert.equal(movement.sprintReport.sprinting, true);
+  // And the body is pointed where it is going, which is what makes that true.
+  assert.equal(ground.report.defenderFacingSource, 'owned');
 });
 
 test('R20U.1 a runner outpaces a walking follower, which is the whole point', () => {

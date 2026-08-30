@@ -113,7 +113,7 @@ export function createFreeMovementController({
       const lateralInput = Math.sign(Number(intent.lateral) || 0);
       const axis = forwardRadians();
       if (forwardInput === 0 && lateralInput === 0) {
-        sprintReport = planSprint({ requested: sprintRequested, forwardInput: 0 });
+        sprintReport = planSprint({ requested: sprintRequested, forwardInput: 0, lateralInput: 0 });
         // Standing still still owns your facing: locked hands it back to the geometry, free keeps
         // whatever you last turned to.
         if (lockOn.report.locked) laneController.setDefenderFacing(null);
@@ -128,14 +128,27 @@ export function createFreeMovementController({
         attacking: readAttacking() === true,
         dodging: laneController.dodgeReport?.dodging === true,
         forwardInput,
+        lateralInput,
       });
-      const speed = forwardInput >= 0
-        ? (sprintReport.sprinting ? sprintReport.speedMps : LANE_LOCOMOTION_PROFILE.forwardSpeedMps)
-        : LANE_LOCOMOTION_PROFILE.backwardSpeedMps;
-      const forwardMeters = forwardInput * speed * deltaSeconds;
-      const lateralMeters = lateralInput * LANE_LOCOMOTION_PROFILE.lateralSpeedMps * deltaSeconds;
-      // forward is (sin, cos); the player's right is (-cos, sin) - see the note in
-      // third-person-camera.js, where the same sign decides where the camera stands.
+      // Diagonals are not faster. Scaling the intent to unit length first is the fix for a
+      // straight-line-versus-diagonal gap that measured 1.46x - two axes added at full speed each.
+      const magnitude = Math.hypot(forwardInput, lateralInput) || 1;
+      const forwardShare = forwardInput / magnitude;
+      const lateralShare = lateralInput / magnitude;
+      // Which speeds apply is decided by who owns the facing, which is the honest version of the
+      // rule and the reason all three of these were wrong together. LOCKED: the gap owns facing, so
+      // a backpedal is a real backpedal and the walk profile's three speeds mean what they say.
+      // FREE: the body turns to face wherever it is going, so there is only one speed - every
+      // direction is forward once the turn finishes, and the turn is visible at 180 deg/s.
+      const forwardSpeed = sprintReport.sprinting
+        ? sprintReport.speedMps
+        : LANE_LOCOMOTION_PROFILE.forwardSpeedMps;
+      const forwardMeters = forwardShare * (lockOn.report.locked
+        ? (forwardInput >= 0 ? LANE_LOCOMOTION_PROFILE.forwardSpeedMps : LANE_LOCOMOTION_PROFILE.backwardSpeedMps)
+        : forwardSpeed) * deltaSeconds;
+      const lateralMeters = lateralShare * (lockOn.report.locked
+        ? LANE_LOCOMOTION_PROFILE.lateralSpeedMps
+        : forwardSpeed) * deltaSeconds;
       const dx = Math.sin(axis) * forwardMeters - Math.cos(axis) * lateralMeters;
       const dz = Math.cos(axis) * forwardMeters + Math.sin(axis) * lateralMeters;
       // Free: you face where you are going. Locked: the gap decides, as it always has.
