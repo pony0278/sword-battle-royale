@@ -6,7 +6,7 @@ import { createEngagementGround } from '../../../src/combat/engagement-ground.js
 import { createLaneLocomotionRuntime, planLateralStep } from '../../../src/combat/lane-locomotion.js';
 import { createDodgeStateRuntime, DODGE_DURATION_SECONDS } from '../../../src/combat/dodge-state.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../../../src/combat/lane-walk-cycle.js';
-import { canWalkOverlayLegs, filterPoseToWalkOverlay } from '../../../src/combat/guard-walk-overlay.js';
+import { filterPoseToWalkOverlay, planWalkOverlay } from '../../../src/combat/guard-walk-overlay.js';
 
 // R18Z.1 — where the two fighters are standing, and nothing else.
 //
@@ -19,7 +19,8 @@ import { canWalkOverlayLegs, filterPoseToWalkOverlay } from '../../../src/combat
 // It owns no authority over whether anything was hit. It is told an outcome and moves people.
 export function createShieldParryLaneController({ labScene, walkClips, services }) {
   // Durations arrive after the assets load, so the clips are described here and measured later.
-  let walkDurations = { forward: 1, backward: 1 };
+  // R20W.2: keyed by clip id rather than by direction, because the gait now picks between three.
+  let clipDurations = {};
   const advance = createAttackAdvanceRuntime();
   const guardFacingTurn = createGuardFacingTurnRuntime();
   // R19T.1: each body's facing is integrated, not read off the bearing - the ledger keeps
@@ -43,6 +44,9 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   // two steps of that sandwich.
   const defenderGait = createLaneWalkCycle();
   let pendingDefenderLegPose = null;
+  // R20W.2: the last overlay decision, kept for the HUD and for probes - which of the fighter the
+  // walk got this frame, and why it did not get any of them when it did not.
+  let lastWalkOverlayPlan = null;
   // R20W.1: ground the player took this frame through the world-frame verbs, waiting to be spent
   // on the gait. Free movement writes straight to the ledger, so before this the defender's legs
   // were fed a lane step that is always zero for the player - measured in the lab as 1.04 m/s of
@@ -74,7 +78,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     // R20W.1: the gait names its own clip now, because the phase it holds was advanced against
     // that clip's measured stride. Choosing the clip out here a second time could disagree.
     if (!gait?.moving || !gait.clipId || !walkClips) return null;
-    const duration = gait.direction > 0 ? walkDurations.forward : walkDurations.backward;
+    const duration = clipDurations[gait.clipId] || 1;
     return Object.freeze({ clipId: gait.clipId, timeSeconds: walkClipTimeSeconds(gait.phase, duration) });
   }
 
@@ -217,32 +221,39 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     get attackerFeetLocked() { return attackerFeetLocked(); },
     get attackerGait() { return attackerGait.report; },
     setWalkDurations(durations) {
-      walkDurations = { forward: durations?.forward || 1, backward: durations?.backward || 1 };
-      return walkDurations;
+      clipDurations = { ...(durations || {}) };
+      return clipDurations;
     },
     // Null when that fighter is standing, which is the caller's signal to keep the idle.
     get attackerWalkSample() { return walkSampleFor(attackerGait.report); },
     get defenderGait() { return defenderGait.report; },
+    get defenderWalkOverlay() { return lastWalkOverlayPlan; },
     // R19E.1, first slice of the sandwich: sample the walk on the defender and keep only the leg
     // chain. Called immediately before the guard runtime samples its own clip over the whole rig.
     // `exchangeIdle` is the caller's word that no attack is in flight and no impact is resolving -
     // the guard owns the entire fighter during an exchange, planted crouch included, and every
     // coverage band was measured on those planted legs.
-    sampleDefenderWalk(exchangeIdle) {
+    sampleDefenderWalk(exchangeIdle, guardOwnsUpperBody = true) {
       pendingDefenderLegPose = null;
       const defender = labScene.defender;
-      const sample = walkSampleFor(defenderGait.report);
+      const gaitReport = defenderGait.report;
+      const sample = walkSampleFor(gaitReport);
       if (!sample || !defender?.sampleAnimation || !services?.captureRigPose) return null;
-      const gate = canWalkOverlayLegs({
+      // R20W.2: how much of the fighter the walk gets. A run has no legs-only reading, and the
+      // gait says so itself, so a run clip can never be handed to a guarding fighter's legs.
+      const gate = planWalkOverlay({
         attackInFlight: !exchangeIdle,
         combatResolving: !exchangeIdle,
+        guardOwnsUpperBody,
+        wholeBodyClip: gaitReport.wholeBodyOnly === true,
       });
+      lastWalkOverlayPlan = gate;
       if (!gate.allowed) return gate;
       defender.sampleAnimation(sample.clipId, sample.timeSeconds, {
         loop: true, inPlace: true, rootRotationPolicy: 'lock',
       });
       defender.update(0, labScene.camera);
-      pendingDefenderLegPose = filterPoseToWalkOverlay(services.captureRigPose(defender.rig));
+      pendingDefenderLegPose = filterPoseToWalkOverlay(services.captureRigPose(defender.rig), gate.scope);
       return gate;
     },
     // R20F.1: the dodge is a full-body clip and the last pre-strike writer: it overrides the

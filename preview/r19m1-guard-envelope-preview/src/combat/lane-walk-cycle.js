@@ -1,5 +1,6 @@
 import {
   KAYKIT_LEG_CHAIN_METERS,
+  WALK_TO_RUN_TRANSITION,
   clipPlaybackRate,
   strideMetersFor,
 } from './locomotion-clip-measurements.js';
@@ -29,13 +30,28 @@ export const LANE_WALK_CLIPS = Object.freeze({
   // Walking_B is authored at 1.053 - so the clip that matches the game was in the pack all along.
   forward: 'Walking_B',
   backward: 'Walking_Backwards',
+  // R20W.2: the run. Where it takes over is measured rather than tied to the sprint key: a gait is
+  // a run when the body is going fast enough to be running, which for this rig's 0.3765m leg is
+  // 1.36 m/s (Froude 0.5). Sprint at 1.5 is past it and walking at 1.0 is not, so the same rule
+  // that reads as "sprint runs" keeps meaning the right thing if either speed ever moves.
+  //
+  // The cost is on the record: Running_A is drawn for 3.27 m/s, so at 1.5 it plays at 0.46x and
+  // holds a 63%-airborne pose for over a second. Walking_B stretched to 1.42x is the less distorted
+  // of the two, and R20W.1 chose it on that basis. This is the other option, taken deliberately -
+  // if the float reads badly, the fix is sprint speed (Running_A is honest from about 2.0 m/s up),
+  // not another clip.
+  run: 'Running_A',
+  // Backing away has no run: KayKit ships no backwards run, and a locked retreat is a walk anyway.
 });
 
 export const LANE_WALK_CYCLE_PROFILE = Object.freeze({
   forwardClipId: LANE_WALK_CLIPS.forward,
   backwardClipId: LANE_WALK_CLIPS.backward,
+  runClipId: LANE_WALK_CLIPS.run,
   forwardCycleMeters: strideMetersFor(LANE_WALK_CLIPS.forward),
   backwardCycleMeters: strideMetersFor(LANE_WALK_CLIPS.backward),
+  runCycleMeters: strideMetersFor(LANE_WALK_CLIPS.run),
+  runThresholdMetersPerSecond: WALK_TO_RUN_TRANSITION.biomechanicalTransitionMps,
   // Below this the fighter is standing rather than walking, and the legs should settle rather than
   // creep through a stride one millimetre at a time. Chosen as the distance a walk covers in a
   // single frame at 60Hz, so it is "moved less than one frame's worth", not an arbitrary epsilon.
@@ -63,16 +79,31 @@ export function createLaneWalkCycle(options = {}) {
   const profile = Object.freeze({
     forwardClipId: clips.forward,
     backwardClipId: clips.backward,
+    runClipId: clips.run ?? null,
     forwardCycleMeters: strideMetersFor(clips.forward),
     backwardCycleMeters: strideMetersFor(clips.backward),
+    runCycleMeters: clips.run ? strideMetersFor(clips.run) : null,
+    runThresholdMetersPerSecond: LANE_WALK_CYCLE_PROFILE.runThresholdMetersPerSecond,
     movingThresholdMetersPerSecond: LANE_WALK_CYCLE_PROFILE.movingThresholdMetersPerSecond,
     authority: LANE_WALK_CYCLE_PROFILE.authority,
     ...(options.profile || {}),
   });
-  if (!Number.isFinite(profile.forwardCycleMeters) || !Number.isFinite(profile.backwardCycleMeters)) {
+  const measured = [profile.forwardCycleMeters, profile.backwardCycleMeters]
+    .concat(profile.runClipId ? [profile.runCycleMeters] : []);
+  if (measured.some((stride) => !Number.isFinite(stride))) {
     // A clip nobody measured has no stride, and guessing one is exactly what this module stopped
     // doing. Fail where the clip is chosen rather than skate at runtime.
-    throw new Error(`createLaneWalkCycle needs measured strides for ${clips.forward} and ${clips.backward}`);
+    throw new Error(`createLaneWalkCycle needs measured strides for ${Object.values(clips).join(', ')}`);
+  }
+
+  // Which clip a speed belongs to. Backwards has only the one; forwards, the run takes over at the
+  // measured transition rather than at whichever verb the player pressed.
+  function clipFor(speedMetersPerSecond) {
+    if (speedMetersPerSecond < 0) return { clipId: profile.backwardClipId, cycleMeters: profile.backwardCycleMeters };
+    if (profile.runClipId && speedMetersPerSecond >= profile.runThresholdMetersPerSecond) {
+      return { clipId: profile.runClipId, cycleMeters: profile.runCycleMeters };
+    }
+    return { clipId: profile.forwardClipId, cycleMeters: profile.forwardCycleMeters };
   }
   let phase = 0;
   let lastReport = null;
@@ -81,14 +112,19 @@ export function createLaneWalkCycle(options = {}) {
     const moving = Math.abs(speedMetersPerSecond) >= profile.movingThresholdMetersPerSecond;
     // Backwards walking has its own clip; the sign says which clip, not which way to play it.
     const direction = !moving ? 0 : Math.sign(speedMetersPerSecond);
-    const clipId = !moving ? null : (direction > 0 ? profile.forwardClipId : profile.backwardClipId);
+    const chosen = moving ? clipFor(speedMetersPerSecond) : { clipId: null, cycleMeters: null };
+    const clipId = chosen.clipId;
     lastReport = Object.freeze({
       stage: LANE_WALK_CYCLE_STAGE,
       phase,
       moving,
       direction,
       clipId,
-      cycleMeters: !moving ? null : (direction > 0 ? profile.forwardCycleMeters : profile.backwardCycleMeters),
+      // R20W.2: a run is a whole-body clip, and a guard cannot borrow only its legs without the
+      // torso disagreeing. Sprinting already requires the guard down, so this never contradicts
+      // the overlay - it is stated so a caller cannot quietly overlay a run onto a guard.
+      wholeBodyOnly: clipId != null && clipId === profile.runClipId,
+      cycleMeters: chosen.cycleMeters,
       // 1 is the gait as drawn. Above 1 the legs hurry, below 1 they float. Nothing reads this to
       // decide anything - it is here so the stretch is a number somebody can see.
       playbackRate: clipId ? clipPlaybackRate(clipId, speedMetersPerSecond) : null,
@@ -108,7 +144,7 @@ export function createLaneWalkCycle(options = {}) {
       // Divided by the SIGNED stride of the clip that is about to play, so both clips run forwards
       // in time: walking backwards at -0.1m against a -0.665m stride advances the phase, exactly
       // as walking forwards does. Dividing by an unsigned stride ran the backwards clip in reverse.
-      const cycleMeters = speed > 0 ? profile.forwardCycleMeters : profile.backwardCycleMeters;
+      const { cycleMeters } = clipFor(speed);
       if (Math.abs(cycleMeters) > 1e-9) phase = wrapCyclePhase(phase + travelled / cycleMeters);
     }
     return report(travelled, speed);

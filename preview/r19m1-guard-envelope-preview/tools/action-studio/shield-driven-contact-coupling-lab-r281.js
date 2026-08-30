@@ -558,7 +558,7 @@ async function main() {
     labStage: LAB_STAGE,
   });
   attackerIdleDuration = bootstrap.attackerIdleDuration;
-  laneController.setWalkDurations({ forward: bootstrap.walkForwardDuration, backward: bootstrap.walkBackwardDuration });
+  laneController.setWalkDurations(bootstrap.locomotionClipDurations);
   neutralStance.setIdleDuration(bootstrap.defenderIdleDuration);
   defenderSword = bootstrap.defenderSword;
   exchangeState.previousShieldLeadSurface = cloneSurface(buckler.getWorldParrySurface());
@@ -629,7 +629,8 @@ function frame(timestamp) {
     });
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
 
-    laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active);
+    laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active, // R20W.2: and whether
+      selectedMode !== 'block' || defenderStance.report.guardActive === true); // the guard owns the torso
     guardRuntime.update(deltaMs, camera);
     neutralStance.sample(deltaMs); // R19I.1: no-op unless the guard is neutral
     laneController.overlayDefenderWalkLegs(); laneController.overlayDefenderDodge(); // R20F.1 dodge outranks the guard, a landed blade outranks the dodge
@@ -660,7 +661,8 @@ function frame(timestamp) {
       if (repeatCooldownMs >= 700) startAttack(selectedDirection);
     }
   }
-  renderer.render(scene, camera);
+  defender.update(0, camera); attacker.update(0, camera); // R20W.2: rebuild the skeleton lines from
+  renderer.render(scene, camera); // the bones AFTER every pose writer, or they draw a stale pose
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

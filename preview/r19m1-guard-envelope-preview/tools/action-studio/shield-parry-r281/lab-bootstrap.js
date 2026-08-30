@@ -57,9 +57,12 @@ export async function bootstrapShieldParryLabAssets({ THREE, attacker, defender,
   );
 
   const defenderIdleDuration = defender.getAnimationDuration(NEUTRAL_IDLE_CLIP_ID) || 1;
-  const walkForwardDuration = attacker.getAnimationDuration(LANE_WALK_CLIPS.forward) || 1;
-  const walkBackwardDuration = attacker.getAnimationDuration(LANE_WALK_CLIPS.backward) || 1;
+  // R20W.2: measured off the registered clips rather than restated, and keyed by clip id because
+  // the gait picks between three of them now - walk, backwards walk and run.
+  const locomotionClipDurations = Object.freeze(Object.fromEntries(
+    [...new Set(Object.values(LANE_WALK_CLIPS))].map((clipId) => [clipId, attacker.getAnimationDuration(clipId) || 1]),
+  ));
   return Object.freeze({
-    attackerIdleDuration, defenderIdleDuration, walkForwardDuration, walkBackwardDuration, defenderSword,
+    attackerIdleDuration, defenderIdleDuration, locomotionClipDurations, defenderSword,
   });
 }
