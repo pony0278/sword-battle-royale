@@ -34,6 +34,14 @@ const frameReportingSource = readFileSync(
   new URL('../tools/action-studio/shield-parry-r281/frame-reporting.js', import.meta.url),
   'utf8',
 );
+const playerControllerSource = readFileSync(
+  new URL('../tools/action-studio/shield-parry-r281/player-controller.js', import.meta.url),
+  'utf8',
+);
+const whiffReporterSource = readFileSync(
+  new URL('../tools/action-studio/shield-parry-r281/parry-whiff-reporter.js', import.meta.url),
+  'utf8',
+);
 const diagnosticFormattersSource = readFileSync(
   new URL('../tools/action-studio/shield-parry-r281/diagnostic-formatters.js', import.meta.url),
   'utf8',
@@ -117,11 +125,14 @@ test('Step 3A exposes an explicit live contact inspection state and markers', ()
 
 test('Step 3A provides a free inspection camera without changing combat time', () => {
   assert.match(sceneCompositionSource, /createFreeInspectionCameraControls/);
-  assert.match(source, /freeCamera\.update\(rawDeltaMs \/ 1000\)/);
+  // R20S.3: the inspection camera is opt-in, and the frame that drives it moved into the player
+  // controller alongside the game camera it stands in for - only one of them may own a frame.
+  assert.match(playerControllerSource, /if \(inspectionCamera\) \{ freeCamera\?\.update\?\.\(deltaSeconds\); return null; \}/);
+  assert.match(source, /INSPECTION_CAMERA = DEBUG_QUERY\.get\('camera'\) === 'free'/);
   assert.match(frameReportingSource, /inspectionCameraSnapshot: freeCamera\.snapshot\(\)/);
   assert.match(verificationReportSource, /inspectionCamera: inspectionCameraSnapshot/);
   assert.match(html, /Free inspection camera/);
-  assert.match(html, /W A S D · Q down · E up/);
+  assert.match(html, /\?camera=free/);
   assert.match(cameraSource, /pointerdown/);
   assert.match(cameraSource, /pointermove/);
   assert.match(cameraSource, /wheel/);
@@ -342,7 +353,11 @@ test('Step 1 direct OLD B3 remains independent of Step 3A runtime', () => {
 test('Step 3A classifies a Parry whiff from measured sweep geometry without changing contact authority', () => {
   assert.match(html, /outside shield edge \/ missed shield plane \/ outside active window/);
   assert.match(html, /final plane\/edge gap · persistent arm tracking/);
-  assert.match(source, /buildParryWhiffDiagnostic/);
+  // R20S.1 moved the diagnosis out of the entry's frame loop into its own reporter - it is a
+  // report about a finished attack, not a decision made during one. The entry still triggers it.
+  assert.match(source, /parryWhiffReporter\.report\(snapshot, selectedDirection\)/);
+  assert.match(whiffReporterSource, /buildParryWhiffDiagnostic/);
+  assert.match(whiffReporterSource, /if \(!parryGate\.armed \|\| snapshot\.action \|\| exchangeState\.firstContact \|\| exchangeState\.latestParryWhiff\) return null;/);
   assert.match(preContactSource, /function recordWhiffProbe/);
   assert.match(preContactSource, /probe\.diagnostics\?\.closestApproach/);
   assert.match(diagnosticFormattersSource, /CONTACT_OUTSIDE_ACTIVE_WINDOW: 'CONTACT OUTSIDE ACTIVE WINDOW'/);

@@ -7,7 +7,6 @@ import { sampleLongswordAttackRecovery } from '../../src/combat/longsword-contac
 import {
   measureSweptSwordBucklerClosestApproach,
 } from '../../src/combat/swept-sword-buckler-contact.js';
-import { buildParryWhiffDiagnostic } from '../../src/combat/parry-whiff-diagnostic.js';
 import { createGuardThreatTrackingRuntime, planGuardThreatCorrection } from '../../src/combat/guard-threat-tracking.js';
 import { createGuardResidualBodyReachRuntime } from '../../src/combat/guard-residual-body-reach.js';
 import {
@@ -57,7 +56,6 @@ import {
 import {
   formatInspectionFailureSummary,
   formatTerminalState,
-  formatWhiffDiagnostic,
 } from './shield-parry-r281/diagnostic-formatters.js';
 import { serializeVerificationReport } from './shield-parry-r281/report-serialization.js';
 import { buildShieldParryVerificationReport } from './shield-parry-r281/verification-report.js';
@@ -83,6 +81,8 @@ import { createNeutralStanceController } from './shield-parry-r281/neutral-stanc
 import { createBodyStrikeReactionController } from './shield-parry-r281/body-strike-reaction-controller.js';
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
 import { createLabFrameClock } from './shield-parry-r281/frame-clock.js';
+import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-reporter.js';
+import { createShieldParryPlayerController } from './shield-parry-r281/player-controller.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
@@ -104,6 +104,9 @@ const labScene = createShieldParryLabScene({
 const {
   canvas, renderer, scene, camera, freeCamera, attacker, defender, attackerSword, buckler, resize, setView,
 } = labScene;
+// R20S.2: the game's camera by default; ?camera=free hands the frame back to the inspection rig,
+// which is a debugging tool rather than a way anyone plays.
+const INSPECTION_CAMERA = DEBUG_QUERY.get('camera') === 'free';
 const inspectionOverlay = createShieldParryInspectionOverlay({ THREE, scene });
 let defenderSword = null;
 
@@ -119,6 +122,8 @@ const activeParryInterceptIntent = createActiveParryInterceptIntent();
 const parryGate = createCommittedParryContactGate();
 const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
   labScene, walkClips: ATTACKER_WALK_CLIPS, services: { captureRigPose, applyRigPose } });
+const playerController = createShieldParryPlayerController({ // R20S.3: feet, lock-on and the camera
+  camera, laneController, freeCamera, inspectionCamera: INSPECTION_CAMERA });
 const exchangeState = createShieldParryExchangeState();
 // R20G.1 (B6c): defence is a choice - in block mode the guard (and the whole measured defence
 // behind it) exists only while the key is held; the machine follows this input, never auto-raises.
@@ -211,6 +216,7 @@ const refreshDebugStanceProfile = (syncUrl = true) => stanceDebug.refresh(syncUr
 const resetDebugStanceDefaults = () => stanceDebug.resetDefaults();
 stanceDebug.initialize();
 const labUi = createShieldParryLabUi(uiElements);
+const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
 let ready = false;
 let selectedDirection = 'right';
@@ -355,6 +361,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     selectedDirection: () => selectedDirection,
     debugStanceProfile: () => debugStanceProfile,
     parryReviewActive: (snapshot) => isParryPreContactReviewActive(snapshot),
+    lockReport: () => playerController.lockReport, // R20S.3
   },
 });
 
@@ -576,6 +583,9 @@ bindShieldParryLabUiEvents({
     onDefenderIntent: (intent) => laneController.setDefenderIntent(intent), onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
     onDefenderLateralIntent: (intent) => laneController.setDefenderLateralIntent(intent), onGuardKey: (held) => setGuardHeld(held), // R19V.1 + R20G.1
     onDodge: (direction) => requestDodge(direction), // R20F.1 through the stance gate
+    onMoveIntent: (moveIntent) => playerController.setMoveIntent(moveIntent), // R20S.3 WASD, world frame
+    onLockToggle: () => playerController.toggleLock(), // R20S.3 Tab
+    onLook: (deltaPixels) => (INSPECTION_CAMERA ? null : playerController.look(deltaPixels)), // R20S.3 free look
     onShowSurface: (checked) => buckler.setParrySurfaceVisible(checked),
     onResize: resize,
   },
@@ -595,30 +605,15 @@ function frame(timestamp) {
   const reviewRate = parryReviewActive ? PARRY_REVIEW_RATE : 1;
   const deltaMs = holdingParryPrompt ? 0 : rawDeltaMs * reviewRate;
   const deltaSeconds = Math.max(1e-5, deltaMs / 1000);
-  freeCamera.update(rawDeltaMs / 1000);
+
   defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging, defenceCommitted: defenceCommitted() }); // R20G.1 + R20H.2
   syncGuardToStance(); // a deferred stand-down lands the frame its commitment ends
+  playerController.frame(rawDeltaMs / 1000); // R20S.3: lock, then feet, then the camera - in that order
   laneController.walk(rawDeltaMs / 1000, exchangeState.latestGuardFacingPlan); // real seconds; R19Q.1 facing plan rides along
   if (ready) {
     const snapshot = attackRuntime.update(deltaMs);
 
-    if (parryGate.armed && !snapshot.action && !exchangeState.firstContact && !exchangeState.latestParryWhiff) {
-      exchangeState.latestParryWhiff = buildParryWhiffDiagnostic({
-        sequence: parryGate.attempt?.sequence ?? null,
-        direction: selectedDirection,
-        probeFrames: exchangeState.whiffProbeFrames,
-        closestApproachRecord: exchangeState.closestWhiffApproach,
-        outsideActiveContact: exchangeState.outsideActiveContact,
-        predictiveAnalysis: exchangeState.latestPredictiveAnalysis,
-        finePlan: exchangeState.latestFinePlan,
-        fineTracking: exchangeState.latestFineTracking,
-        shieldLeadMotion: exchangeState.latestShieldLeadMotion,
-        parryInput: exchangeState.latestParryInput,
-      });
-      const whiff = formatWhiffDiagnostic(exchangeState.latestParryWhiff, { debugMode: DEBUG_MODE });
-      status.textContent = `PARRY WHIFF · ${whiff.label} · ${whiff.detail}`;
-      status.className = 'bad';
-    }
+    parryWhiffReporter.report(snapshot, selectedDirection); // R20S.1: a report about a finished attack, never a decision
 
     laneController.update(snapshot.elapsedSeconds, Boolean(snapshot.action), snapshot.phase); // R20B.1 phase rides along
 
@@ -699,7 +694,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     },
   },
   runtimes: {
-    laneController,
+    laneController, playerController, // R20S.3
     defenderStance, frameClock,
     combat,
     attackRuntime,

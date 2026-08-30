@@ -103,6 +103,13 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     },
     // Feet run every frame, attack or no attack, which is the point: standing still is a choice
     // somebody is making rather than the only thing available to them.
+    // R20S.3: the world-frame verbs, for free movement. Pass-throughs rather than new mechanism -
+    // the ledger already clamps a world move exactly as it clamps a lane step, and routing them
+    // here keeps the ledger's ownership intact (nothing outside this file holds `ground`).
+    moveDefenderWorld(deltaX, deltaZ) { return ground.moveDefenderWorld(deltaX, deltaZ); },
+    // null hands facing back to the gap, which is what a lock does. Anything else is owned facing,
+    // and the base-facing integrator gives it the same inertia every other turn in this lab has.
+    setDefenderFacing(radians) { return ground.setDefenderFacing(radians); },
     setDefenderIntent(intent) {
       return defenderFeet.setIntent(intent);
     },

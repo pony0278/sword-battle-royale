@@ -71,6 +71,10 @@ python -m http.server 4173 --bind 127.0.0.1
 
 - `http://127.0.0.1:4173/tools/action-studio/shield-driven-contact-coupling-lab.html`
 - Add `?debug=1` for the low-stance tuning sliders.
+- `http://127.0.0.1:4173/tools/action-studio/camera-lab.html` — the third-person camera
+  (R20Q.1). A separate page whose only product is the numbers in
+  `src/combat/third-person-camera.js`; add `?local=1` to load Three.js from `node_modules`
+  instead of the CDN.
 
 A static HTTP server is required either way; the labs are ES modules and fetch GLB
 animation packs, so `file://` does not work.

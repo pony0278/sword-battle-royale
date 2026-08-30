@@ -45,6 +45,7 @@ export function createShieldParryFrameReporting({
     return labUi.updateParryCue({
       snapshot,
       ready: read.ready(),
+      lockReport: read.lockReport?.() ?? null, // R20S.3
       selectedMode: read.selectedMode(),
       step3AContactTransfer: exchangeState.step3AContactTransfer,
       latestGripConstraintReport: exchangeState.latestGripConstraintReport,
@@ -68,6 +69,7 @@ export function createShieldParryFrameReporting({
       latestParryWhiff: exchangeState.latestParryWhiff,
       latestParryConfirmation: exchangeState.latestParryConfirmation,
       latestParryInput: exchangeState.latestParryInput,
+      lockReport: read.lockReport?.() ?? null, // R20S.3
       selectedMode: read.selectedMode(),
       requestedOutcome: read.selectedMode(),
       parryReviewActive: read.parryReviewActive(snapshot),
@@ -108,6 +110,7 @@ export function createShieldParryFrameReporting({
       recoilStage,
       ready: read.ready(),
       selectedDirection: read.selectedDirection(),
+      lockReport: read.lockReport?.() ?? null, // R20S.3
       selectedMode: read.selectedMode(),
       parryProfile: parryGate.profile,
       defenderReleaseGate: contactHandoffController.defenderDeflectReleaseGate(),
