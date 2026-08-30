@@ -61,3 +61,47 @@ test('R20Q.1 the page identifies its build and states the sweep it verifies', ()
   assert.match(labJs, /SWEEP_MIN_METERS = 1\.1/);
   assert.match(labJs, /SWEEP_MAX_METERS = 5/);
 });
+
+test('R20Q.1 the page can be driven from the console, which is how sets get compared', () => {
+  // Twenty-one sliders is a way to hunt for a number, not a way to compare two candidate sets. So
+  // the whole working profile is writable from the console, in every shape a person would have one
+  // in: a preset name, an array of keys, or the text the output box just printed.
+  assert.match(labJs, /load: loadProfile/);
+  assert.match(labJs, /setKey,/);
+  assert.match(labJs, /measure: \(profile\) => measureProfile\(profile\)/);
+  assert.match(labJs, /help\(\)/);
+  const loader = labJs.slice(labJs.indexOf('function loadProfile'), labJs.indexOf('function setKey'));
+  assert.match(loader, /PRESETS\[parsed\.trim\(\)\]/, 'a preset name');
+  assert.match(loader, /Array\.isArray\(parsed\)/, 'an array of keys');
+  assert.match(loader, /new Function\(`return \(\{\$\{parsed\}\}\)`\)/, 'the printed text');
+  // A partial key is a tweak, not a pose full of holes.
+  assert.match(loader, /const base = sampleCameraKeys\(seed\.locked\.distanceKeys, key\.separationMeters\);/);
+  // Rebuilding the controls must not leave the old refreshers behind, or every load doubles the
+  // number of sliders writing to the same field.
+  assert.ok(/function buildControls\(\) \{\s*refreshers\.length = 0;/.test(labJs), 'buildControls must clear the refreshers it rebuilds');
+});
+
+test('R20Q.1 the presets are complete poses, so loading one cannot half-apply', () => {
+  const presets = labJs.slice(labJs.indexOf('const PRESETS = Object.freeze({'), labJs.indexOf('const FIELD_SPECS'));
+  for (const name of ['seed:', 'yours:', 'propagated:', 'softened:']) {
+    assert.ok(presets.includes(name), `missing preset ${name}`);
+  }
+  // Three keys each, at the separations the profile keys on, and every one of them spread from a
+  // named character block rather than typed out twice.
+  for (const separation of ['1.4', '2.4', '4']) {
+    assert.ok(presets.includes(`separationMeters: ${separation},`), `presets skip the ${separation}m key`);
+  }
+  assert.match(labJs, /PRESET_MIDDLE = \{ fovDegrees: 59[^}]*azimuthDegrees: 40/);
+  assert.equal((presets.match(/\.\.\.PRESET_MIDDLE/g) || []).length, 5, 'the tuned character is written once and spread, not retyped');
+});
+
+test('R20Q.1 the measurement says what a slider cannot: what the camera does on its own', () => {
+  // Keys that disagree with each other turn walking into camera work nobody asked for, and that is
+  // invisible while you hold the separation still. The rate is measured against the same sidestep
+  // speed the lane profile states, so it can be compared with how fast the opponent crosses screen.
+  const measure = labJs.slice(labJs.indexOf('function measureProfile'), labJs.indexOf('function sweepFraming'));
+  assert.match(measure, /azimuthDegreesPerSecond/);
+  assert.match(measure, /LANE_LOCOMOTION_PROFILE\.lateralSpeedMps/);
+  assert.match(measure, /screenGap/);
+  assert.match(labJs, /swing > 18/, 'the warning threshold is the opponent\'s own on-screen rate at 2.4m');
+});
