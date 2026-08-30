@@ -15,6 +15,7 @@ import {
   solveLockedCameraPose,
 } from '../src/combat/third-person-camera.js';
 import { CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS } from '../src/combat/close-range-guard-hold.js';
+import { MINIMUM_SUPPORTED_ASPECT_RATIO } from '../src/combat/supported-viewport.js';
 
 // R20Q.1 - the shared camera. These lock the geometry and the shape of the profile, NOT the
 // numbers in it: the numbers are seeds for camera-lab.html to replace, and a test that pinned them
@@ -42,8 +43,10 @@ test('R20Q.1 the profile carries every field a pose needs, at every distance key
   for (const field of ['positionLagSeconds', 'rotationLagSeconds', 'transitionSeconds']) {
     assert.ok(THIRD_PERSON_CAMERA_PROFILE.dynamics[field] >= 0);
   }
-  // The honesty label travels with the numbers, so nobody downstream mistakes a seed for a measurement.
-  assert.equal(THIRD_PERSON_CAMERA_PROFILE.provenance, 'seed-values-awaiting-camera-lab-tuning');
+  // The honesty label travels with the numbers: what came back from the lab, and what is still a
+  // seed nobody has looked at. A downstream reader must never have to guess which is which.
+  assert.match(THIRD_PERSON_CAMERA_PROFILE.provenance, /^locked-tuned-in-camera-lab/);
+  assert.match(THIRD_PERSON_CAMERA_PROFILE.provenance, /free-and-dynamics-still-seeds$/);
 });
 
 test('R20Q.1 horizontal field follows the aspect, which is the whole reason it is computed', () => {
@@ -168,8 +171,13 @@ test('R20Q.1 framing is measured against the same projection the renderer perfor
   const pose = solveLockedCameraPose({ player: { x: 0, z: 0 }, target: { x: 0, z: 2.4 } });
   const both = [...fighterSilhouettePoints({ x: 0, z: 0 }), ...fighterSilhouettePoints({ x: 0, z: 2.4 })];
   const framed = evaluateFraming({ pose, aspectRatio: 16 / 9, points: both });
-  assert.equal(framed.inFrame, true, 'the seed pose must at least hold the two of them at 2.4m');
-  assert.ok(framed.marginNdc > 0 && framed.marginNdc <= 1);
+  // The shipped framing crops the player's legs on purpose, so the whole-body reading is negative.
+  // That is what this function is for: it reports geometry, and something else decides whether the
+  // geometry is a decision or a bug.
+  assert.ok(framed.marginNdc < 0);
+  const opponentOnly = evaluateFraming({ pose, aspectRatio: 16 / 9, points: fighterSilhouettePoints({ x: 0, z: 2.4 }) });
+  assert.equal(opponentOnly.inFrame, true, 'the opponent is never the one cropped');
+  assert.ok(opponentOnly.marginNdc > 0 && opponentOnly.marginNdc <= 1);
 
   // Somebody a long way off to the side is off screen, and the report says who.
   const wide = evaluateFraming({ pose, aspectRatio: 16 / 9, points: [...both, { x: 9, y: 1.7, z: 1 }] });
@@ -201,26 +209,43 @@ test('R20Q.1 a fighter is a cylinder, so the silhouette cannot depend on which w
   assert.equal(points.length, 8);
 });
 
-test('R20Q.1 the seed profile holds both fighters on screen at every distance AND every bearing', () => {
-  // This is the sweep the camera lab runs, as a test: from the 1.1m contact floor to the 5m break,
-  // at 16:9 - and now at every bearing round the circle, because a lock follows the pair round and
-  // a framing that only survives a straight-line duel is not a framing. It is not a claim that the
-  // seeds look good, only that they are a starting point rather than one where somebody is
-  // already cropped.
-  for (let separation = 1.1; separation <= 5.001; separation += 0.1) {
-    for (let bearing = 0; bearing < Math.PI * 2 - 1e-9; bearing += Math.PI / 6) {
-      const player = { x: 0, z: 0 };
-      const target = { x: Math.sin(bearing) * separation, z: Math.cos(bearing) * separation };
-      const framed = evaluateFraming({
-        pose: solveLockedCameraPose({ player, target }),
-        aspectRatio: 16 / 9,
-        points: [...fighterSilhouettePoints(player), ...fighterSilhouettePoints(target)],
-      });
-      assert.equal(framed.inFrame, true,
-        `both fighters must be on screen at ${separation.toFixed(1)}m, bearing ${(bearing * 180 / Math.PI).toFixed(0)}deg`);
+test('R20R.2 the shipped profile holds the opponent and the guard, in every supported window', () => {
+  // The sweep the camera lab runs, as a test: the whole lock band, every bearing, and every aspect
+  // the game is played in - starting at the orientation contract's own floor. Judged the way the
+  // two fighters are actually read, because the shipped framing crops the player's legs on purpose
+  // and a whole-body check would call that a failure.
+  for (const aspectRatio of [MINIMUM_SUPPORTED_ASPECT_RATIO, 4 / 3, 16 / 9, 19.5 / 9]) {
+    for (let separation = 1.1; separation <= 5.001; separation += 0.1) {
+      for (let index = 0; index < 12; index += 1) {
+        const bearing = (index / 12) * Math.PI * 2;
+        const player = { x: 0, z: 0 };
+        const target = { x: Math.sin(bearing) * separation, z: Math.cos(bearing) * separation };
+        const framed = evaluateLockedFraming({
+          pose: solveLockedCameraPose({ player, target }), aspectRatio, player, target,
+        });
+        assert.equal(framed.inFrame, true,
+          `${aspectRatio.toFixed(2)}:1 at ${separation.toFixed(1)}m, bearing ${(bearing * 180 / Math.PI).toFixed(0)}deg`);
+      }
     }
   }
+  // And it is the half-body look that was chosen, not an accident of the numbers.
+  const player = { x: 0, z: 0 };
+  const target = { x: 0, z: 2.4 };
+  assert.equal(evaluateLockedFraming({
+    pose: solveLockedCameraPose({ player, target }), aspectRatio: 16 / 9, player, target,
+  }).croppingPlayerLegs, true, 'the shipped look crops the player, deliberately');
 });
+
+test('R20R.2 one pose for the whole band, so walking cannot swing the camera', () => {
+  // The fault this profile exists to avoid: keys that disagree turn a closing distance into camera
+  // rotation - the first tuning pass had 30 deg/s of it, faster than the opponent crosses screen.
+  // Every key identical is the strongest available statement that it cannot happen.
+  const keys = THIRD_PERSON_CAMERA_PROFILE.locked.distanceKeys;
+  for (const field of ['fovDegrees', 'angleDegrees', 'distanceMeters', 'lookHeightMeters', 'azimuthDegrees', 'panX', 'panZ']) {
+    for (const key of keys) assert.equal(key[field], keys[0][field], `${field} must not vary with separation`);
+  }
+});
+
 
 test('R20Q.1 the two fighters are framed by what each of them is for', () => {
   // You read an attack off the opponent's whole body; you read your own state off your guard, and

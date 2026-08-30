@@ -2,9 +2,19 @@
 
 ## Status
 
-The camera lab (`tools/action-studio/camera-lab.html`) is built and in use; the profile in
-`src/combat/third-person-camera.js` is still seeds. Tuning is in progress and the combat lab is
-untouched while it happens. Nothing here is wired into the fight yet.
+Locked-mode framing is **decided and written into `src/combat/third-person-camera.js`** (R20R.2):
+half-body over the shoulder — FOV 74, angle 19, distance 2.85, look height 0.69, azimuth 20,
+panX 0.01, panZ 1.45, the same on all three keys. Free mode and the lag constants have not been
+through the lab and are still seeds. The combat lab is still untouched; nothing is wired into the
+fight yet.
+
+Two things follow for whoever wires it:
+
+- **Always run `fitLockedProfileToAspect` at startup and on resize.** At the contract floor (1.2:1)
+  the tuned profile leaves the guard 3% inside the frame unfitted; the fit eases the shoulder from
+  20° to 15° there and restores the margin. Wider windows take it unchanged.
+- The azimuth is identical on all three keys on purpose. Anything that makes it vary with
+  separation puts camera rotation back into ordinary walking.
 
 ## The decision this stage produced
 
@@ -67,10 +77,16 @@ window shape, so a fit can never quietly stand in for a profile that does not wo
 
 ## Orientation contract (R20R.1)
 
-**Landscape only, minimum aspect 1.2:1.** `src/combat/supported-viewport.js` states it, with the
-measurements behind the number. A viewport under the floor stops INPUT and asks to be rotated (a
-phone) or widened (a browser window); it never stops the simulation, because a screen a player can
-turn sideways to freeze a fight with is a cheat.
+**Landscape only, minimum aspect 1.2:1 — as advice, not a gate.** `src/combat/supported-viewport.js`
+states it with the measurements behind the number. CrazyGames asks for a prompt about the best
+experience rather than a lock-out, and once nothing is blocked the reason to block disappears too:
+a rotate gate that freezes input is only needed if freezing is possible. Below the floor the game
+still plays, `describeViewport` returns `recommend: true` with the remedy (rotate a phone, widen a
+window) and a list of what actually degrades, and nothing lies — the camera's secondary lever holds
+the framing and the lock cone stays honestly narrow.
+
+What the number is FOR is verification: the narrowest window a framing must be tuned against, and
+the narrowest one the lock rules are guaranteed honest in.
 
 The decision was not made on taste. Portrait is the only aspect where the other rules have to lie:
 
@@ -89,8 +105,8 @@ margin and sits between the widest portrait (9:16 = 0.5625) and the narrowest la
 worth supporting (4:3 = 1.333). The camera's secondary lever stays in the solver as a net for
 windows outside the contract, and a test asserts it is never needed inside it.
 
-**Unverified and still to check:** whether CrazyGames requires a mobile title to handle portrait. If
-it does, the rotate gate is the handling — the contract does not change.
+Confirmed with the platform: a prompt about the best experience is what is expected, which is why
+the posture is advisory.
 
 ## Also open from this arc
 
