@@ -1,4 +1,4 @@
-export const GUARD_WALK_OVERLAY_STAGE = 'R19E.1';
+export const GUARD_WALK_OVERLAY_STAGE = 'R20W.2';
 
 // R19E.1: which bones a walk may borrow from a guarding fighter, and when it must give them back.
 //
@@ -43,10 +43,53 @@ export function canWalkOverlayLegs(input = {}) {
   });
 }
 
+// R20W.2: how much of the fighter the walk gets. The legs-only overlay above exists because the
+// guard IS the upper body - but that stopped being the only case the moment free movement let a
+// fighter travel with the guard down. With nothing to protect up there, keeping the torso in a
+// sword idle while the legs stride is not caution, it is a fighter walking from the waist down.
+//
+// So the scope is decided by whether the guard actually owns the upper body this frame, not by
+// which controller is driving: guard up, legs only and the torso stays the guard's; guard down,
+// the walk owns the whole rig, arms and spine included. A run clip is whole-body only - it has no
+// legs-only reading - and sprinting already requires the guard down, so the two rules agree.
+export const WALK_OVERLAY_SCOPES = Object.freeze({ NONE: 'none', LEGS: 'legs', WHOLE_BODY: 'whole-body' });
+
+export function planWalkOverlay(input = {}) {
+  const gate = canWalkOverlayLegs(input);
+  const guardOwnsUpperBody = input.guardOwnsUpperBody !== false;
+  const wholeBodyClip = Boolean(input.wholeBodyClip);
+  if (!gate.allowed) return Object.freeze({ ...gate, scope: WALK_OVERLAY_SCOPES.NONE });
+  // A clip with no legs-only reading cannot be worn from the waist down. Rather than let it take
+  // the torso from a raised guard, the guard keeps the fighter and the locomotion is dropped for
+  // those frames. In practice the pair never meets - a run needs the guard down - and saying so
+  // here is what stops the next caller from discovering that by accident.
+  if (guardOwnsUpperBody && wholeBodyClip) {
+    return Object.freeze({
+      stage: GUARD_WALK_OVERLAY_STAGE,
+      allowed: false,
+      scope: WALK_OVERLAY_SCOPES.NONE,
+      reason: 'a-whole-body-clip-cannot-be-worn-from-the-waist-down-guard-owns-the-fighter',
+      authority: 'walk-presentation-only-no-contact-authority',
+    });
+  }
+  const scope = guardOwnsUpperBody ? WALK_OVERLAY_SCOPES.LEGS : WALK_OVERLAY_SCOPES.WHOLE_BODY;
+  return Object.freeze({
+    stage: GUARD_WALK_OVERLAY_STAGE,
+    allowed: true,
+    scope,
+    reason: guardOwnsUpperBody
+      ? 'guard-holds-the-upper-body-walk-takes-the-legs'
+      : 'no-guard-to-protect-so-the-walk-takes-the-whole-fighter',
+    authority: 'walk-presentation-only-no-contact-authority',
+  });
+}
+
 // Reduces a whole-rig pose capture to the overlay's bones. Bones the capture does not carry are
-// simply absent, which applyRigPose treats as "leave that bone alone".
-export function filterPoseToWalkOverlay(pose) {
+// simply absent, which applyRigPose treats as "leave that bone alone". At whole-body scope nothing
+// is dropped, which is the same statement with the filter removed.
+export function filterPoseToWalkOverlay(pose, scope = WALK_OVERLAY_SCOPES.LEGS) {
   const source = pose || {};
+  if (scope === WALK_OVERLAY_SCOPES.WHOLE_BODY) return Object.freeze({ ...source });
   const subset = {};
   for (const bone of WALK_OVERLAY_BONES) {
     if (source[bone]) subset[bone] = source[bone];

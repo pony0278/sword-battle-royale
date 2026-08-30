@@ -84,6 +84,35 @@ The consequence is worth stating plainly, because it is the next decision and no
 roughly 2.0–2.3 m/s. That is above the 1.62 m/s authored burst ceiling the attack advances imply,
 and it would make disengaging genuinely possible — which is the chase-terminus question, still open.
 
+## R20W.2 — three things the first playtest found
+
+**The skeleton lines were drawing a stale pose.** Each fighter is rendered as line segments rebuilt
+from the bone positions inside `rig.updateAppearance()`, while the joint dots are meshes parented to
+the bones and follow on their own. Every pose writer in the frame — the guard runtime, the walk
+overlay's `applyRigPose`, the dodge — moves bones without rebuilding those lines, so the lines showed
+whichever pose happened to repaint last and the dots showed the truth. Walking legs with a still
+skeleton was the visible result. Fixed by repainting both fighters immediately before
+`renderer.render`, which is by definition after the last writer of the frame. No behaviour changes:
+the line buffers are presentation only, and the golden grid measures bone matrices.
+
+**The walk was worn from the waist down.** R19E.1 made the walk a legs-only overlay because the
+guard *is* the upper body — correct while the defender was always guarding. Free movement created a
+second case: travelling with the guard down, where keeping the torso in a sword idle while the legs
+stride is a fighter walking from the waist down. `planWalkOverlay` now decides scope from whether
+the guard actually owns the upper body this frame: guard up, legs only as before; guard down, the
+walk takes the whole rig.
+
+**Sprint took the run clip after all.** R20W.1 chose the stretched walk on the measurement, and the
+playtest asked for Running_A. It is wired by the measured transition rather than by the sprint key:
+a gait is a run at 1.36 m/s for this rig, walking at 1.0 is below it, sprinting at 1.5 is above. The
+cost stands exactly as measured — 0.46× playback, a 63%-airborne pose held for over a second — and
+it is recorded in the clip table and in the gait's own `playbackRate`. If it reads floaty, the fix
+is sprint speed (Running_A is honest from about 2.0 m/s), not another clip.
+
+A run has no legs-only reading, so `planWalkOverlay` refuses to lend one to a raised guard rather
+than letting it take the torso. Sprinting already requires the guard down, so the two rules never
+actually meet — saying so is what stops the next caller from finding out by accident.
+
 ## Still open
 
 - **The sidestep has no clip at any speed.** KayKit ships a running strafe (±3.0 m/s) and no walking

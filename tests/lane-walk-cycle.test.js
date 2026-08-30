@@ -12,6 +12,7 @@ import {
 } from '../src/combat/lane-walk-cycle.js';
 import { LANE_LOCOMOTION_PROFILE } from '../src/combat/lane-locomotion.js';
 import { MEASURED_LOCOMOTION_CLIPS } from '../src/combat/locomotion-clip-measurements.js';
+import { SPRINT_SPEED_MPS } from '../src/combat/sprint-locomotion.js';
 
 test('R20W.1 takes its stride from the clip rather than from the skeleton', () => {
   assert.equal(LANE_WALK_CYCLE_STAGE, 'R20W.1');
@@ -36,12 +37,38 @@ test('R20W.1 the walk clip is the one authored for the speed we walk at', () => 
 
 test('R19C.1 a foot on the ground stays there: phase tracks distance, not time', () => {
   // The whole reason this module exists. The same distance must give the same phase however long
-  // it took to cover it, or the feet skate whenever speed changes.
+  // it took to cover it, or the feet skate whenever speed changes. R20W.2 narrowed the claim to
+  // what it can actually mean: within one clip. A walk and a run have different strides by
+  // definition, so the invariant is per clip, and the next test covers what crossing between them
+  // does instead.
   const slow = createLaneWalkCycle();
   const fast = createLaneWalkCycle();
-  for (let i = 0; i < 10; i += 1) slow.advance({ travelledMeters: 0.03, deltaSeconds: 1 / 30 });
-  fast.advance({ travelledMeters: 0.3, deltaSeconds: 1 / 30 });
+  for (let i = 0; i < 10; i += 1) slow.advance({ travelledMeters: 0.02, deltaSeconds: 1 / 30 });
+  fast.advance({ travelledMeters: 0.2, deltaSeconds: 10 / 30 });
+  assert.equal(slow.report.clipId, fast.report.clipId, 'both are walking');
   assert.ok(Math.abs(slow.phase - fast.phase) < 1e-9, 'same ground covered, same point in the stride');
+});
+
+test('R20W.2 the run takes over where this body stops walking, not where a key is pressed', () => {
+  const cycle = createLaneWalkCycle();
+  const threshold = LANE_WALK_CYCLE_PROFILE.runThresholdMetersPerSecond;
+  assert.ok(Math.abs(threshold - 1.359) < 0.01, 'Froude 0.5 on this rig, not a chosen number');
+  assert.ok(LANE_LOCOMOTION_PROFILE.forwardSpeedMps < threshold, 'walking is below it');
+  assert.ok(SPRINT_SPEED_MPS > threshold, 'sprinting is above it');
+
+  const walking = cycle.advance({ travelledMeters: (threshold - 0.1) * 0.1, deltaSeconds: 0.1 });
+  assert.equal(walking.clipId, LANE_WALK_CLIPS.forward);
+  assert.equal(walking.wholeBodyOnly, false);
+
+  const running = cycle.advance({ travelledMeters: (threshold + 0.1) * 0.1, deltaSeconds: 0.1 });
+  assert.equal(running.clipId, LANE_WALK_CLIPS.run);
+  assert.equal(running.cycleMeters, MEASURED_LOCOMOTION_CLIPS[LANE_WALK_CLIPS.run].strideMeters);
+  // A run is its own gait through the whole body, so it cannot be lent to a guard's legs alone.
+  assert.equal(running.wholeBodyOnly, true);
+
+  // Backing away has no run clip at any speed - KayKit ships none, and a locked retreat is a walk.
+  const backingHard = cycle.advance({ travelledMeters: -3 * 0.1, deltaSeconds: 0.1 });
+  assert.equal(backingHard.clipId, LANE_WALK_CLIPS.backward);
 });
 
 test('R19C.1 a full cycle of ground is exactly one cycle of the clip', () => {
@@ -58,11 +85,11 @@ test('R20W.1 the gait names the clip it advanced against, and how hard it is bei
   assert.equal(walking.clipId, LANE_WALK_CLIPS.forward);
   assert.ok(Math.abs(walking.playbackRate - 1) < 0.06, `walking should run near as drawn, got ${walking.playbackRate}`);
 
-  // Sprint is the same clip driven harder - measured, not chosen: at 1.5 m/s the only run clip in
-  // the pack would play at 0.46x, so the walk stays and the stretch is what it costs.
-  const sprinting = cycle.advance({ travelledMeters: 1.5 * 0.1, deltaSeconds: 0.1 });
-  assert.equal(sprinting.clipId, LANE_WALK_CLIPS.forward);
-  assert.ok(sprinting.playbackRate > 1.3 && sprinting.playbackRate < 1.5, `sprint runs at ${sprinting.playbackRate}`);
+  // Sprint crosses into the run clip, and the stretch it costs is reported rather than hidden:
+  // Running_A is drawn for 3.27 m/s, so at 1.5 it plays at less than half speed.
+  const sprinting = cycle.advance({ travelledMeters: SPRINT_SPEED_MPS * 0.1, deltaSeconds: 0.1 });
+  assert.equal(sprinting.clipId, LANE_WALK_CLIPS.run);
+  assert.ok(sprinting.playbackRate > 0.4 && sprinting.playbackRate < 0.5, `sprint runs at ${sprinting.playbackRate}`);
 
   const standing = cycle.settle();
   assert.equal(standing.clipId, null, 'standing names no clip, which is the caller cue to idle');
