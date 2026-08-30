@@ -57,13 +57,16 @@ export const MEASURED_LOCOMOTION_CLIPS = Object.freeze({
   // Recorded, unused. KayKit ships a running strafe and no walking one, so the sidestep this lab
   // actually performs - 0.75 m/s while locked - has no clip at any speed: these would play at a
   // quarter rate. This is the strafe debt, written down with the number that makes it a debt.
+  // R20X.1 re-measured these along their own axis - the first pass fitted them down z like the
+  // forward clips, which is the wrong axis for a sidestep, and carried a guessed airborne fraction.
+  // They are more airborne than the forward run, not less: 80% of the cycle, 8% contact per foot.
   Running_Strafe_Left: Object.freeze({
-    durationSeconds: 0.8, authoredSpeedMps: 3.016, strideMeters: 2.413,
-    axis: 'lateral', airborneFraction: 0.63, footFitSpreadMps: 0.1,
+    durationSeconds: 0.8, authoredSpeedMps: 3.040, strideMeters: 2.432,
+    axis: 'lateral', airborneFraction: 0.80, footFitSpreadMps: 0.013, crossAxisFootSwingMeters: 0.302,
   }),
   Running_Strafe_Right: Object.freeze({
-    durationSeconds: 0.8, authoredSpeedMps: -2.966, strideMeters: -2.373,
-    axis: 'lateral', airborneFraction: 0.63, footFitSpreadMps: 0.1,
+    durationSeconds: 0.8, authoredSpeedMps: -3.015, strideMeters: -2.412,
+    axis: 'lateral', airborneFraction: 0.80, footFitSpreadMps: 0.006, crossAxisFootSwingMeters: 0.302,
   }),
 });
 
