@@ -89,6 +89,9 @@ export function createShieldParryDebugApi({
     // to decide whether committing coverage is worth anything, and until now a probe could not see
     // what the gate saw.
     get defenderFacingErrorRadians() { return runtimes.laneController?.defenderFacingErrorRadians ?? null; },
+    // R20V.2: the owned-facing seam (R20N.1), for probes that need to hold a fighter pointed
+    // somewhere the keys would not hold them - null hands facing back to the geometry.
+    setDefenderFacing: (radians) => runtimes.laneController?.setDefenderFacing?.(radians) ?? null,
     get latestGuardResidual() { return getExchangeState().latestGuardResidual; },
     get latestGuardStanceReach() { return getExchangeState().latestGuardStanceReach; },
     get latestParryWhiff() { return getExchangeState().latestParryWhiff; },

@@ -64,5 +64,25 @@ export const LOCK_ADVANTAGE_VERDICT = Object.freeze({
   lockedBlocksAtEveryMoveDuration: true,
   unlockedBlocksOnlyWhileStandingStill: true,
   secondsOfMovementBeforeFirstFailure: 0.25,
-  status: 'measured-design-decision-open',
+  status: 'resolved-by-r20v2-a-raised-guard-pins-the-body',
+});
+
+// R20V.2 took the cheap option: a raised guard stops the feet steering the facing. Re-measured the
+// same way afterwards, and what it leaves behind is the measured cone rather than a new rule -
+// which is exactly why it was preferred over aiming the guard from the camera, which would have
+// invalidated every band.
+export const MEASURED_PINNED_GUARD_DEFENCE = Object.freeze({
+  byMoveSeconds: Object.freeze({
+    0.25: Object.freeze({ facingErrorDegrees: 5.9, top: 'blocked', right: 'blocked', left: 'blocked' }),
+    0.5: Object.freeze({ facingErrorDegrees: 11.8, top: 'blocked', right: 'blocked', left: 'blocked' }),
+    1: Object.freeze({ facingErrorDegrees: 22.6, top: 'blocked', right: 'blocked', left: 'body' }),
+    2: Object.freeze({ facingErrorDegrees: 39.8, top: 'blocked', right: 'blocked', left: 'out-of-reach' }),
+  }),
+  // The error now grows at the OPPONENT'S bearing rate rather than the body's turn rate - an order
+  // of magnitude slower - and LEFT fails at 22.6 degrees, which is its own measured -20 edge.
+  errorGrowthDegreesPerSecond: 22,
+  // Worth keeping in mind when reading the table: unlocked lateral movement is a straight line in
+  // the world, not an orbit, so a guarded sidestep also walks AWAY - 2.4m of separation became
+  // 3.12m in two seconds, which is why LEFT stops reaching rather than landing.
+  sidestepIsStraightNotOrbit: true,
 });
