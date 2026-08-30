@@ -53,6 +53,7 @@ export function createShieldParryDebugApi({
     toggleLock: () => runtimes.playerController?.toggleLock?.() ?? null,
     setMoveIntent: (intent) => runtimes.playerController?.setMoveIntent?.(intent) ?? null,
     get lockReport() { return runtimes.playerController?.lockReport ?? null; },
+    get cameraPose() { return runtimes.playerController?.cameraPose ?? null; },
     get frameClock() { return runtimes.frameClock?.report ?? null; },
     get defenderStance() { return runtimes.defenderStance?.report ?? null; },
     forceOldTwoActorB3: actions.forceOldTwoActorB3,

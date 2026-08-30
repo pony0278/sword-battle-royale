@@ -107,8 +107,10 @@ export function createFreeMovementController({ laneController, lockOn = createLo
       const speed = forwardInput >= 0 ? LANE_LOCOMOTION_PROFILE.forwardSpeedMps : LANE_LOCOMOTION_PROFILE.backwardSpeedMps;
       const forwardMeters = forwardInput * speed * deltaSeconds;
       const lateralMeters = lateralInput * LANE_LOCOMOTION_PROFILE.lateralSpeedMps * deltaSeconds;
-      const dx = Math.sin(axis) * forwardMeters + Math.cos(axis) * lateralMeters;
-      const dz = Math.cos(axis) * forwardMeters - Math.sin(axis) * lateralMeters;
+      // forward is (sin, cos); the player's right is (-cos, sin) - see the note in
+      // third-person-camera.js, where the same sign decides where the camera stands.
+      const dx = Math.sin(axis) * forwardMeters - Math.cos(axis) * lateralMeters;
+      const dz = Math.cos(axis) * forwardMeters + Math.sin(axis) * lateralMeters;
       // Free: you face where you are going. Locked: the gap decides, as it always has.
       if (lockOn.report.locked) laneController.setDefenderFacing(null);
       else if (dx !== 0 || dz !== 0) laneController.setDefenderFacing(Math.atan2(dx, dz));
