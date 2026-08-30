@@ -54,8 +54,26 @@ test('R20V.1 the cone bands are recorded as NOT answering this, which is why the
   }
 });
 
-test('R20V.1 the verdict stays a question, not a change', () => {
-  assert.equal(LOCK_ADVANTAGE_VERDICT.status, 'measured-design-decision-open');
+test('R20V.2 the fix is measured the same way, and leaves the cone in charge', async () => {
+  const { MEASURED_PINNED_GUARD_DEFENCE } = await import('../src/combat/lock-advantage.js');
+  const pinned = MEASURED_PINNED_GUARD_DEFENCE.byMoveSeconds;
+  const loose = MEASURED_UNLOCKED_DEFENCE_DECAY.byMoveSeconds;
+  // An order of magnitude slower, at every duration both tables share.
+  for (const seconds of [0.25, 0.5, 1]) {
+    assert.ok(pinned[seconds].facingErrorDegrees < loose[seconds].facingErrorDegrees / 4,
+      `${seconds}s: ${pinned[seconds].facingErrorDegrees} against ${loose[seconds].facingErrorDegrees}`);
+  }
+  // TOP and RIGHT stop failing entirely; LEFT is the one direction the cone still gives up.
+  for (const seconds of Object.keys(pinned)) {
+    assert.equal(pinned[seconds].top, 'blocked');
+    assert.equal(pinned[seconds].right, 'blocked');
+  }
+  assert.equal(pinned[1].left, 'body');
+  assert.ok(pinned[1].facingErrorDegrees > Math.abs(MEASURED_GUARD_RELIABLE_CONE_DEGREES.left.fromDegrees));
+});
+
+test('R20V.1 the verdict records how it was resolved', () => {
+  assert.equal(LOCK_ADVANTAGE_VERDICT.status, 'resolved-by-r20v2-a-raised-guard-pins-the-body');
   assert.equal(LOCK_ADVANTAGE_VERDICT.lockedBlocksAtEveryMoveDuration, true);
   assert.equal(LOCK_ADVANTAGE_VERDICT.unlockedBlocksOnlyWhileStandingStill, true);
 });

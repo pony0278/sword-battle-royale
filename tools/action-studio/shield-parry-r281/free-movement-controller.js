@@ -45,6 +45,7 @@ export function createFreeMovementController({
   // thing your movement steers.
   let freeYawRadians = Math.PI;
   let sprintRequested = false;
+  let guardWasActive = false;
   let sprintReport = planSprint({});
   const lookSensitivity = Number(profile?.free?.mouseSensitivityRadiansPerPixel) || 0.0032;
 
@@ -100,6 +101,18 @@ export function createFreeMovementController({
     // Per frame, before movement: a lock breaks on distance or on the target disappearing, never on
     // where anybody is looking.
     update() {
+      // R20V.2: the guard-raise edge pins the body where it is pointed, explicitly. Leaving it
+      // alone is not the same thing - a fighter who has not moved since the lock dropped still has
+      // NO owned facing, so their body would quietly keep tracking the opponent and they would get
+      // the lock's aim for free. Whether your shield auto-aims must not depend on whether you
+      // happened to walk somewhere first.
+      const guardActive = readGuardActive() === true;
+      if (guardActive && !guardWasActive && !lockOn.report.locked) {
+        const ground = laneController.report;
+        laneController.setDefenderFacing(laneController.defenderBaseFacingRadians
+          ?? ground.defenderFacingRadians ?? ground.defenderBearingRadians ?? 0);
+      }
+      guardWasActive = guardActive;
       return lockOn.update({
         self: selfPosition(), viewForwardRadians: forwardRadians(), candidates: candidates(),
       });
@@ -152,8 +165,14 @@ export function createFreeMovementController({
       const dx = Math.sin(axis) * forwardMeters - Math.cos(axis) * lateralMeters;
       const dz = Math.cos(axis) * forwardMeters + Math.sin(axis) * lateralMeters;
       // Free: you face where you are going. Locked: the gap decides, as it always has.
+      //
+      // R20V.2 (option D): unless the guard is up. A raised shield pins the body - you are braced,
+      // not running - so the feet stop steering the facing and a defender can strafe, back off or
+      // circle without turning their own shield away from the fight. Aim first, then guard. It
+      // needs nothing re-measured because facing simply stops changing, and it is the same shape
+      // as the rule sprint already has: a raised guard refuses to run, and now it refuses to turn.
       if (lockOn.report.locked) laneController.setDefenderFacing(null);
-      else if (dx !== 0 || dz !== 0) laneController.setDefenderFacing(Math.atan2(dx, dz));
+      else if ((dx !== 0 || dz !== 0) && readGuardActive() !== true) laneController.setDefenderFacing(Math.atan2(dx, dz));
       return laneController.moveDefenderWorld(dx, dz);
     },
 

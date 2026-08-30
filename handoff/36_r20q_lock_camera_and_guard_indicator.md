@@ -190,10 +190,19 @@ and TOP and LEFT already land on the body. By 0.5s all three land.
 Standing still unlocked blocks perfectly, so the honest sentence is **"you cannot move and defend at
 the same time when unlocked"**, not "unlocked cannot defend".
 
-The stated intent was to *encourage* locking; what is measured is closer to *requiring* it. Left as
-a decision with three ways out, in `lock-advantage.js`: accept it (unlocked is for travelling), aim
-the guard at the camera rather than the body while unlocked (defend where you look, which is how the
-lock cone is already derived), or stop a pure sidestep from turning the body.
+The stated intent was to *encourage* locking; what was measured was closer to *requiring* it.
+**Resolved in R20V.2**: a raised guard pins the body. You are braced, not running, so the feet stop
+steering the facing — aim first, then guard, and you can strafe or back off with the shield still
+pointed at the fight. Re-measured the same way: the error now grows at the opponent's bearing rate
+(~22°/s from 2.4m) instead of the body's 180°/s, TOP and RIGHT hold at every duration sampled, and
+LEFT fails at 22.6° — its own measured cone edge of −20°. Nothing had to be re-measured, which is
+why this was preferred over aiming the guard from the camera (that would have invalidated every
+band) and over exempting sidesteps (a rule that is inconsistent by construction).
+
+One trap the investigation caught before it shipped: simply *not steering* is not the same as
+pinning. A fighter who has not moved since the lock dropped has no owned facing at all, so their
+body would have kept tracking the opponent — unlocked play would have quietly inherited the aimed
+defence that locking is supposed to buy. The pin is written explicitly on the guard-raise edge.
 
 Also recorded there: R19X.1's reliable cone bands do **not** transfer to this question. They were
 measured by injecting rotation at a fixed stance; these cells rotate and displace together, because
