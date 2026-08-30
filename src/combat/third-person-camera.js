@@ -133,9 +133,13 @@ function poseFromAxis(playerPosition, axisRadians, pose) {
   const player = { x: finite(playerPosition?.x), z: finite(playerPosition?.z) };
   const forwardX = Math.sin(axisRadians);
   const forwardZ = Math.cos(axisRadians);
-  // Right-hand perpendicular, so a positive panX is the player's right.
-  const rightX = forwardZ;
-  const rightZ = -forwardX;
+  // The player's right, and the sign is the one thing here worth checking rather than reasoning
+  // about. Screen right for a camera looking along f is (-f.z, f.x): the default Three.js camera at
+  // +z looking at the origin has f = (0,0,-1) and screen right +x, which that formula gives and the
+  // opposite one does not. R20T.3 found this wrong at four sites at once - two movement paths and
+  // this pose - which is what a shared wrong belief looks like rather than four typos.
+  const rightX = -forwardZ;
+  const rightZ = forwardX;
   const lookAt = {
     x: player.x + forwardX * finite(pose.panZ) + rightX * finite(pose.panX),
     y: finite(pose.lookHeightMeters),

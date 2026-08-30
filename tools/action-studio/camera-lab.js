@@ -261,8 +261,9 @@ async function main() {
     const speed = forwardInput >= 0 ? LANE_LOCOMOTION_PROFILE.forwardSpeedMps : LANE_LOCOMOTION_PROFILE.backwardSpeedMps;
     const forwardMeters = forwardInput * speed * deltaSeconds;
     const lateralMeters = lateralInput * LANE_LOCOMOTION_PROFILE.lateralSpeedMps * deltaSeconds;
-    const dx = Math.sin(axis) * forwardMeters + Math.cos(axis) * lateralMeters;
-    const dz = Math.cos(axis) * forwardMeters - Math.sin(axis) * lateralMeters;
+    // R20T.3: the player's right is (-cos, sin); the opposite sign walked left on a D press.
+    const dx = Math.sin(axis) * forwardMeters - Math.cos(axis) * lateralMeters;
+    const dz = Math.cos(axis) * forwardMeters + Math.sin(axis) * lateralMeters;
     return ground.moveDefenderWorld(dx, dz);
   }
 

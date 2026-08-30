@@ -39,9 +39,12 @@ test('R20S.3 WASD moves the fighter, the arrows keep the lane scalars', async ()
 
   const lane = await readFile(
     new URL('../tools/action-studio/shield-parry-r281/lane-controller.js', import.meta.url), 'utf8');
-  // Body-relative sign: positive intent is the defender's own right, which while square on the
-  // lane (facing -z) is world -x - hence the negation into the ledger's +x-is-their-left frame.
-  assert.match(lane, /ground\.moveDefenderLateral\(-lateralStep\.meters\)/);
+  // R20T.3: positive intent is the defender's own right, and that is world +x, not -x. The old
+  // note reasoned backwards - facing -z is how the default camera faces and its screen right is
+  // +x - so both this path and WASD walked the wrong way. Measured through the real keys with the
+  // game camera behind the player before the sign was touched.
+  assert.match(lane, /ground\.moveDefenderLateral\(lateralStep\.meters\)/);
+  assert.match(lane, /dodgeStep\.direction === 'right'\) ground\.moveDefenderLateral\(dodgeStep\.displacementMeters\)/);
   assert.match(lane, /defenderLateralIntent = 0/, 'a lane reset clears the held sidestep');
 });
 
@@ -58,4 +61,22 @@ test('R19W.1 the touch pad is virtual arrow keys sharing the keyboard held-sets'
   assert.match(ui, /LANE_KEYS\[code\] !== undefined \? heldLaneKeys : heldLateralKeys/);
   assert.match(ui, /button\.addEventListener\('pointerdown', press\)/);
   assert.match(ui, /button\.addEventListener\('pointercancel', release\)/);
+});
+
+test('R20T.3 every "player right" in the codebase is the same vector', () => {
+  // The bug this locks out: four sites computed the perpendicular to a fighter's facing, two
+  // movement paths and the camera pose, and all four picked the same wrong one. They were written
+  // months apart, which is why a shared note matters more than four correct lines.
+  //
+  // Ground truth, checkable without opinion: screen right for a camera looking along f is
+  // (-f.z, f.x). The default Three.js camera at +z looking at the origin has f = (0,0,-1) and its
+  // screen right is +x, which this gives and the opposite does not.
+  const right = (axisRadians) => ({ x: -Math.cos(axisRadians), z: Math.sin(axisRadians) });
+  const check = (axisRadians, expected, label) => {
+    const actual = right(axisRadians);
+    assert.ok(Math.abs(actual.x - expected.x) < 1e-9 && Math.abs(actual.z - expected.z) < 1e-9, label);
+  };
+  check(0, { x: -1, z: 0 }, 'facing +z, right is -x');
+  check(Math.PI, { x: 1, z: 0 }, 'facing -z (the way the default camera faces), right is +x');
+  check(Math.PI / 2, { x: 0, z: 1 }, 'facing +x, right is +z');
 });

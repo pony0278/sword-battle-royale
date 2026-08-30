@@ -53,5 +53,6 @@ export function createShieldParryPlayerController({ camera, laneController, free
     },
     snapCamera() { cameraController.snap(); },
     get cameraFit() { return cameraController.fit; },
+    get cameraPose() { return cameraController.pose; },
   });
 }

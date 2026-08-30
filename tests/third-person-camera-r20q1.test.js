@@ -87,8 +87,10 @@ test('R20Q.1 the locked camera stands behind the player, on the line to the targ
   assert.ok(pose.position.y > pose.lookAt.y, 'and above the look point, since it looks down by angleDegrees');
   // panZ slides the look point toward the target - that is what gets both fighters into frame.
   near(pose.lookAt.z, key.panZ, 1e-9, 'panZ toward the target');
-  // panX is the player's right, and with the axis along +z that is +x.
-  near(pose.lookAt.x, key.panX, 1e-9, 'panX to the right');
+  // panX is the player's right. With the axis along +z the camera looks along +z too, and screen
+  // right for that is -x - the same formula the framing check has always used, and the one
+  // poseFromAxis was missing before R20T.3.
+  near(pose.lookAt.x, -key.panX, 1e-9, 'panX to the player right');
   near(pose.lookAt.y, key.lookHeightMeters, 1e-9, 'look height');
   // The pose obeys its own numbers: distance along the ground, height by the pitch.
   const ground = Math.hypot(pose.position.x - pose.lookAt.x, pose.position.z - pose.lookAt.z);
