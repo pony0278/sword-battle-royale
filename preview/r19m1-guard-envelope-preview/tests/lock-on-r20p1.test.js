@@ -4,9 +4,12 @@ import {
   LOCK_ON_ACQUIRE_RANGE_METERS,
   LOCK_ON_BREAK_RANGE_METERS,
   LOCK_ON_ACQUIRE_HALF_ANGLE_RADIANS,
+  LOCK_ON_MINIMUM_HALF_ANGLE_RADIANS,
+  lockOnAcquireHalfAngleRadians,
   createLockOnRuntime,
   selectLockOnCandidate,
 } from '../src/combat/lock-on.js';
+import { horizontalHalfFovRadians, THIRD_PERSON_CAMERA_PROFILE } from '../src/combat/third-person-camera.js';
 import { MEASURED_SWING_FORWARD_REACH_METERS, SWING_RELEVANCE_MARGIN_METERS } from '../src/combat/swing-threat-relevance.js';
 
 const at = (id, x, z) => ({ id, position: { x, z } });
@@ -25,14 +28,14 @@ test('R20P.1 the acquire range clears the furthest measured threat, and breaking
 test('R20P.1 distance filters, the view centre chooses', () => {
   // A distant figure dead centre must not outrank the one actually in swinging distance.
   const far = at('far', 0, 5);
-  const near = at('near', 1.2, 1.2);
+  const near = at('near', 0.8, 1.5);   // 1.7m out, ~28 degrees off centre: inside the derived cone
   const selection = selectLockOnCandidate({ self, viewForwardRadians: 0, candidates: [far, near] });
   assert.equal(selection.accepted, true);
   assert.equal(selection.targetId, 'near', 'the far one is outside the threat circle and never competes');
 
   // Among those close enough, the camera decides. Both are inside the frontal cone and in range;
   // the one nearer the centre is the FURTHER of the two, so this can only be the angle choosing.
-  const offCentre = at('off', Math.sin(0.7) * 1.5, Math.cos(0.7) * 1.5);   // ~40 degrees, 1.5m
+  const offCentre = at('off', Math.sin(0.5) * 1.5, Math.cos(0.5) * 1.5);   // ~29 degrees, 1.5m
   const onCentre = at('on', Math.sin(0.12) * 2.5, Math.cos(0.12) * 2.5);   // ~7 degrees, 2.5m
   const byCentre = selectLockOnCandidate({ self, viewForwardRadians: 0, candidates: [offCentre, onCentre] });
   assert.equal(byCentre.targetId, 'on');
@@ -106,4 +109,52 @@ test('R20P.1 degenerate geometry does not drop a lock or refuse a request', () =
   assert.equal(selectLockOnCandidate({
     self, viewForwardRadians: 0, candidates: [{ position: { x: 0, z: 1 } }],
   }).accepted, false);
+});
+
+test('R20Q.1 the frontal cone is derived from what is rendered, not from a constant', () => {
+  // Same camera, two viewports: the cone must move with the aspect, because the amount of world on
+  // screen does. A constant would be a promise the renderer does not keep.
+  const wide = lockOnAcquireHalfAngleRadians({ fovDegrees: 50, aspectRatio: 16 / 9 });
+  const narrow = lockOnAcquireHalfAngleRadians({ fovDegrees: 50, aspectRatio: 4 / 3 });
+  assert.ok(wide > narrow, `${wide} should exceed ${narrow}`);
+  // And it stays inside the frame: aiming at the very edge of the screen is not aiming.
+  assert.ok(wide < horizontalHalfFovRadians(50, 16 / 9));
+  assert.ok(narrow < horizontalHalfFovRadians(50, 4 / 3));
+  // A wider lens sees more, so it may lock wider.
+  assert.ok(lockOnAcquireHalfAngleRadians({ fovDegrees: 70, aspectRatio: 16 / 9 }) > wide);
+  // The default is the desktop view of the shared profile, not a number typed in here.
+  assert.equal(
+    LOCK_ON_ACQUIRE_HALF_ANGLE_RADIANS,
+    lockOnAcquireHalfAngleRadians({
+      fovDegrees: THIRD_PERSON_CAMERA_PROFILE.locked.distanceKeys[0].fovDegrees,
+      aspectRatio: 16 / 9,
+    }),
+  );
+});
+
+test('R20Q.1 a portrait phone hits the floor rather than becoming unlockable', () => {
+  // Portrait renders about +-11 degrees horizontally; nine tenths of that is a cone you could not
+  // aim with. The floor is the deliberate exception, and it is the only case where the cone is
+  // allowed to reach past the screen edge.
+  const portrait = { fovDegrees: 50, aspectRatio: 9 / 19.5 };
+  assert.equal(lockOnAcquireHalfAngleRadians(portrait), LOCK_ON_MINIMUM_HALF_ANGLE_RADIANS);
+  assert.ok(LOCK_ON_MINIMUM_HALF_ANGLE_RADIANS > horizontalHalfFovRadians(portrait.fovDegrees, portrait.aspectRatio));
+  // Garbage describes no viewport, so it gets the desktop default rather than a NaN cone.
+  assert.equal(lockOnAcquireHalfAngleRadians({ fovDegrees: 'wide', aspectRatio: null }), LOCK_ON_ACQUIRE_HALF_ANGLE_RADIANS);
+});
+
+test('R20Q.1 selection reads this frame viewport, and an explicit cone still wins', () => {
+  // 30 degrees off centre: inside the desktop cone, outside the 4:3 one.
+  const candidates = [at('t', Math.sin(0.52) * 2, Math.cos(0.52) * 2)];
+  const world = { self, viewForwardRadians: 0, candidates };
+  assert.equal(selectLockOnCandidate(world).accepted, true);
+  assert.equal(selectLockOnCandidate({ ...world, view: { fovDegrees: 50, aspectRatio: 4 / 3 } }).accepted, false);
+  // A caller who states the cone outright is obeyed - that is how the camera lab sweeps it.
+  assert.equal(selectLockOnCandidate({
+    ...world, view: { fovDegrees: 50, aspectRatio: 4 / 3 }, profile: { acquireHalfAngleRadians: 1 },
+  }).accepted, true);
+  // The runtime passes the viewport through rather than swallowing it.
+  const lock = createLockOnRuntime();
+  assert.equal(lock.requestToggle({ ...world, view: { fovDegrees: 50, aspectRatio: 4 / 3 } }).locked, false);
+  assert.equal(lock.requestToggle(world).locked, true);
 });
