@@ -56,8 +56,8 @@ test('R20Q.1 what the page prints is what the module reads back', () => {
 test('R20Q.1 the page identifies its build and states the sweep it verifies', () => {
   // The tag is bumped whenever the page is published, so the legend line and the module query
   // identify the build a tester is actually looking at rather than whatever the browser cached.
-  assert.match(labHtml, /camera-lab\.js\?v=camera-lab-r20q1e"/);
-  assert.match(labHtml, /v=camera-lab-r20q1e \u00b7/);
+  assert.match(labHtml, /camera-lab\.js\?v=camera-lab-r20q1f"/);
+  assert.match(labHtml, /v=camera-lab-r20q1f \u00b7/);
   assert.match(labHtml, /third-person-camera\.js/);
   // The out-of-frame check runs the lock band, which is the contact floor to the break range.
   assert.match(labJs, /SWEEP_MIN_METERS = 1\.1/);
@@ -128,4 +128,24 @@ test('R20Q.1 the measurement says what a slider cannot: what the camera does on 
   assert.match(measure, /LANE_LOCOMOTION_PROFILE\.lateralSpeedMps/);
   assert.match(measure, /screenGap/);
   assert.match(labJs, /swing > 18/, 'the warning threshold is the opponent\'s own on-screen rate at 2.4m');
+});
+
+test('R20Q.1f the page can stand in a narrow window, and always shows what that cost', () => {
+  // The danger of an automatic fit is that every sweep turns green and nobody learns their profile
+  // does not fit a 4:3 frame. So the page refits only on a window or preference change, and prints
+  // the intent beside every reduction.
+  assert.match(labJs, /fitLockedProfileToAspect,/);
+  assert.match(labJs, /function refit\(\) \{ fitted = null; activeProfile\(\); \}/);
+  assert.match(labJs, /simulatedAspect: 'live'/);
+  const sweep = labJs.slice(labJs.indexOf('function sweepFraming'), labJs.indexOf('// --- controls'));
+  assert.match(sweep, /VERIFIED_ASPECT_RATIOS\.map/, 'every verified window reports what it would be handed');
+  assert.match(sweep, /fit\.intendedAzimuthDegrees\[1\]/);
+  assert.match(sweep, /fit\.appliedAzimuthDegrees\[1\]/);
+  // The fit is never inside the frame loop.
+  const frame = labJs.slice(labJs.indexOf('function frame(timestamp)'), labJs.indexOf("// A probe's way in."));
+  assert.doesNotMatch(frame, /fitLockedProfileToAspect\(/, 'the fit must never run per frame');
+  assert.ok(frame.includes('activeProfile()') === false || frame.includes('desiredPose(report)'), 'the frame loop reads the fitted profile through the solver, not by refitting');
+  assert.match(labHtml, /data-prefer="crop"/);
+  assert.match(labHtml, /data-prefer="shoulder"/);
+  assert.match(labHtml, /data-aspect="1\.3333"/);
 });

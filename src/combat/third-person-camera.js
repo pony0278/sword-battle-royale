@@ -299,6 +299,146 @@ function normalize(v) {
   return { x: v.x / length, y: v.y / length, z: v.z / length };
 }
 
+// Fitting a framing to the window it is being played in.
+//
+// The measurement that makes this safe: how much the over-the-shoulder offset has to give up is a
+// function of the ASPECT ALONE. The same pose needs the azimuth capped at 12 degrees in a 4:3 frame
+// and 24 in a 16:9 one, and that cap is identical at 1.1m and at 5.0m - flat across the whole band.
+// So the fit changes when somebody resizes their window and at no other time; it is not a new
+// source of camera motion, which was the one thing that could have disqualified it.
+//
+// It is a scale on the profile, applied ONCE and GLOBALLY. Fitting each key on its own would make
+// the azimuth a function of separation again, which is the self-rotation this project already
+// removed - walking would swing the camera. One factor for the whole profile keeps that at zero.
+//
+// What it gives up is the tuner's call, not the solver's, because the two halves of a half-body
+// framing compete for the same horizontal room and easing either one saves it:
+//   prefer: 'crop'      ease the shoulder, keep the crop. The look stays half-body; the two
+//                       fighters sit closer together on screen.
+//   prefer: 'shoulder'  ease the look point, keep the shoulder. The pair stays spread out; your
+//                       own legs come back into frame.
+//   prefer: 'balanced'  both, together.
+// A narrow enough window (a portrait phone renders about +-11 degrees) cannot be satisfied by the
+// primary lever alone, so the secondary one follows - there the framing degrades to plain and
+// behind, which is the honest answer for a frame that cannot hold anything else.
+export const SAFE_FRAME_DEFAULTS = Object.freeze({
+  minPlayerMarginNdc: 0.12,
+  prefer: 'crop',
+});
+
+function scaleLockedKeys(keys, azimuthScale, panZScale) {
+  return keys.map((key) => ({ ...key, azimuthDegrees: finite(key.azimuthDegrees) * azimuthScale, panZ: finite(key.panZ) * panZScale }));
+}
+
+// Keys, midpoints between them, and the ends of the lock band: the margin is flat in separation for
+// a fixed pose, but a pose halfway between two keys is not either of them, so the seams get looked at.
+function fitSampleSeparations(keys) {
+  const separations = new Set();
+  for (let index = 0; index < keys.length; index += 1) {
+    separations.add(keys[index].separationMeters);
+    if (index + 1 < keys.length) separations.add((keys[index].separationMeters + keys[index + 1].separationMeters) / 2);
+  }
+  separations.add(LOCK_BAND_METERS.min);
+  separations.add(LOCK_BAND_METERS.max);
+  return [...separations].sort((a, b) => a - b);
+}
+
+export const LOCK_BAND_METERS = Object.freeze({ min: 1.1, max: 5 });
+
+function worstPlayerMargin(keys, aspectRatio, separations, bearingCount = 12) {
+  const profile = { locked: { distanceKeys: keys } };
+  let worst = Infinity;
+  for (const separation of separations) {
+    for (let index = 0; index < bearingCount; index += 1) {
+      const bearing = (index / bearingCount) * Math.PI * 2;
+      const player = { x: 0, z: 0 };
+      const target = { x: Math.sin(bearing) * separation, z: Math.cos(bearing) * separation };
+      const framing = evaluateLockedFraming({
+        pose: solveLockedCameraPose({ player, target, profile }), aspectRatio, player, target,
+      });
+      if (framing && framing.playerMarginNdc < worst) worst = framing.playerMarginNdc;
+    }
+  }
+  return worst;
+}
+
+// The largest amount of the tuned offset that survives: a coarse scan for the bracket, then a few
+// bisections inside it. Scanned rather than assumed monotonic, because "less offset is always more
+// margin" is a thing this could check and therefore should not take on faith.
+function largestSurvivingScale(apply, aspectRatio, separations, target) {
+  let bracketHigh = null;
+  let bracketLow = 0;
+  const steps = 20;
+  for (let step = steps; step >= 0; step -= 1) {
+    const scale = step / steps;
+    if (worstPlayerMargin(apply(scale), aspectRatio, separations) >= target) { bracketHigh = scale; break; }
+    bracketLow = scale;
+  }
+  if (bracketHigh == null) return null;
+  if (bracketHigh >= 1) return 1;
+  let low = bracketHigh;
+  let high = Math.min(1, bracketLow);
+  for (let iteration = 0; iteration < 6; iteration += 1) {
+    const middle = (low + high) / 2;
+    if (worstPlayerMargin(apply(middle), aspectRatio, separations) >= target) low = middle;
+    else high = middle;
+  }
+  return low;
+}
+
+export function fitLockedProfileToAspect(profile, aspectRatio, options = {}) {
+  const settings = { ...SAFE_FRAME_DEFAULTS, ...options };
+  const keys = [...(profile?.locked?.distanceKeys || [])].sort((a, b) => a.separationMeters - b.separationMeters);
+  if (keys.length === 0) return null;
+  const target = finite(settings.minPlayerMarginNdc, SAFE_FRAME_DEFAULTS.minPlayerMarginNdc);
+  const separations = fitSampleSeparations(keys);
+  const prefer = ['crop', 'shoulder', 'balanced'].includes(settings.prefer) ? settings.prefer : 'crop';
+
+  let azimuthScale = 1;
+  let panZScale = 1;
+  if (prefer === 'balanced') {
+    const scale = largestSurvivingScale((t) => scaleLockedKeys(keys, t, t), aspectRatio, separations, target);
+    azimuthScale = scale == null ? 0 : scale;
+    panZScale = azimuthScale;
+  } else {
+    // The primary lever first, all the way to nothing if it has to go there; the secondary only
+    // when the primary has run out, which is what a portrait frame does.
+    const primaryIsAzimuth = prefer === 'crop';
+    const primary = largestSurvivingScale(
+      (t) => scaleLockedKeys(keys, primaryIsAzimuth ? t : 1, primaryIsAzimuth ? 1 : t),
+      aspectRatio, separations, target,
+    );
+    if (primary == null) {
+      if (primaryIsAzimuth) azimuthScale = 0; else panZScale = 0;
+      const secondary = largestSurvivingScale(
+        (t) => scaleLockedKeys(keys, primaryIsAzimuth ? 0 : t, primaryIsAzimuth ? t : 0),
+        aspectRatio, separations, target,
+      );
+      if (primaryIsAzimuth) panZScale = secondary == null ? 0 : secondary;
+      else azimuthScale = secondary == null ? 0 : secondary;
+    } else if (primaryIsAzimuth) azimuthScale = primary;
+    else panZScale = primary;
+  }
+
+  const fittedKeys = scaleLockedKeys(keys, azimuthScale, panZScale);
+  const marginNdc = worstPlayerMargin(fittedKeys, aspectRatio, separations);
+  return Object.freeze({
+    stage: THIRD_PERSON_CAMERA_STAGE,
+    profile: { ...profile, locked: { ...(profile.locked || {}), distanceKeys: fittedKeys } },
+    aspectRatio: finite(aspectRatio, 16 / 9),
+    prefer,
+    azimuthScale,
+    panZScale,
+    // What the tuner wrote, and what this window actually got - reported so a fit can never quietly
+    // stand in for a profile that does not work.
+    intendedAzimuthDegrees: keys.map((key) => finite(key.azimuthDegrees)),
+    appliedAzimuthDegrees: fittedKeys.map((key) => finite(key.azimuthDegrees)),
+    marginNdc,
+    satisfied: marginNdc >= target,
+    eased: azimuthScale < 1 || panZScale < 1,
+  });
+}
+
 // Lag as an exponential approach: alpha = 1 - exp(-dt / tau). Frame-rate independent by
 // construction, which matters here for the same reason it mattered to the frame clock - a camera
 // that smooths by a fixed fraction per frame is a different camera on every machine.

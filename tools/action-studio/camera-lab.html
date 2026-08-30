@@ -37,7 +37,7 @@
     <canvas id="canvas"></canvas>
     <div class="hud" id="hud">載入中…</div>
     <div class="legend">
-      R20Q.1 相機實驗室 · v=camera-lab-r20q1e · 共用 src/combat/third-person-camera.js 的解算與 profile,這裡只調數字,不是第二台相機<br>
+      R20Q.1 相機實驗室 · v=camera-lab-r20q1f · 共用 src/combat/third-person-camera.js 的解算與 profile,這裡只調數字,不是第二台相機<br>
       WASD 移動防守方 · 拖曳畫面轉動鏡頭(自由模式) · L 切換鎖定/自由 · 空白鍵播放攻擊
     </div>
   </main>
@@ -104,6 +104,27 @@
       <button data-preset="halfBodyBehind">半身+正後方</button>
     </div>
 
+    <h2>視窗適配(安全框)</h2>
+    <p class="note">
+      同一組數字在不同視窗要付不同的水平代價。開啟後,解算器會把過肩角度(或 panZ)收到剛好讓你的護欄留在畫面內 ——
+      收多少<b>只跟畫面比例有關,跟兩人距離無關</b>(量過:4:3 是 12°,16:9 是 24°,整條 1.1–5.0m 帶都一樣),
+      所以它只在改變視窗時算一次,不會變成走路時的鏡頭自轉。
+    </p>
+    <div class="row">
+      <button id="safeFrame">開啟適配</button>
+      <button data-prefer="crop">窄視窗保半身</button>
+      <button data-prefer="shoulder">窄視窗保過肩</button>
+      <button data-prefer="balanced">各收一半</button>
+    </div>
+    <p class="note">模擬視窗比例(不會真的改變畫布,只改解算用的比例):</p>
+    <div class="row">
+      <button data-aspect="live">實際畫布</button>
+      <button data-aspect="1.3333">4:3</button>
+      <button data-aspect="1.7778">16:9</button>
+      <button data-aspect="2.3333">21:9</button>
+      <button data-aspect="0.4615">直向手機</button>
+    </div>
+
     <h2>出框檢查</h2>
     <p class="note">不是參數,是驗收:把 1.1–5.0m 掃過一遍,看兩個人的身體是否都還在畫面裡。任何一次改動都會重掃。</p>
     <div class="row"><button id="sweepNow">重新掃描</button></div>
@@ -117,6 +138,6 @@
     </div>
     <pre id="output"></pre>
   </aside>
-  <script type="module" src="./camera-lab.js?v=camera-lab-r20q1e"></script>
+  <script type="module" src="./camera-lab.js?v=camera-lab-r20q1f"></script>
 </body>
 </html>
