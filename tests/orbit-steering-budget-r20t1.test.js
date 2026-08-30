@@ -65,5 +65,20 @@ test('R20T.1 records LEFT as unable to reach an unguarded body inside 1.4m', () 
     if (Number(stance) >= reliableFromMeters) assert.equal(hits, trialsPerStance, `LEFT lands at ${stance}m`);
   }
   assert.deepEqual(MEASURED_LEFT_CLOSE_RANGE_BODY_REACH.unaffectedDirections, ['top', 'right']);
-  assert.equal(MEASURED_LEFT_CLOSE_RANGE_BODY_REACH.status, 'open-finding-root-cause-not-yet-established');
+  assert.equal(MEASURED_LEFT_CLOSE_RANGE_BODY_REACH.status, 'root-cause-established-design-decision-open');
+});
+
+test('R20T.1 the root cause is being inside the arc, and the numbers have to stay consistent', () => {
+  const reach = MEASURED_LEFT_CLOSE_RANGE_BODY_REACH;
+  // The sweep passes at a radius; a body closer than that radius is behind the blade, not in
+  // front of it. Every number here is one of the three legs of that statement.
+  assert.ok(reach.bladeSweepRadiusMeters > reach.requiredSeparationAtContactMeters,
+    'the blade passes further out than the separation it needs, which is what "inside the arc" means');
+  assert.ok(reach.requiredSeparationAtContactMeters > MINIMUM_ENGAGEMENT_SEPARATION_METERS,
+    'and the ledger clamps the pair closer than the sweep needs - which is why the stance decides it');
+  // The overshoot is what the closest-approach reading measured, and the miss is the perpendicular
+  // distance that follows from it. The miss must be the smaller of the two, or the geometry is
+  // being described wrongly.
+  assert.ok(reach.missDistanceMeters < reach.overshootBeyondBodyMeters);
+  assert.equal(reach.rootCause, 'the-defender-is-inside-the-sweep-arc-clamped-below-the-radius-it-passes-at');
 });
