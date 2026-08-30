@@ -150,6 +150,29 @@ Not done, and worth considering together: at hugging range the mixup narrows fro
 to two, which favours the defender — and the defender is usually the one who closed. If that reads
 badly in play, the answer is a disengage verb (the dash) rather than changing the geometry.
 
+## Running, and why there is no dash (R20U.1)
+
+Measured: **in this combat set nobody can leave.** Walking backward is −0.25 m/s against a follower
+who walks 1.0; a back dodge is −0.75m per cycle, *worse* than walking, because the dodge cannot walk
+and the cooldown is dead time — driven against the real ledger, continuous back-dodging hits the
+0.9m floor in 4 seconds while walking backward still has 1.15m after five. Dodging forward is
+useless as an approach too: 11.8s to cross the lock band against 2.1s walking.
+
+A dash was the obvious answer and is the wrong one. R20F.1's own investigation had already closed
+every geometric escape inside an exchange (3 m/s of burst, any direction, any timing, 18/18
+blocked), which is why the dodge escapes through time instead — so a burst that adds no i-frames is
+just a worse dodge. What does not exist is not evasion; it is **leaving**.
+
+So sprint, and only sprint: hold Shift, 1.5 m/s, forward only, refused while locked, guarding,
+swinging or dodging. Locked buys time, free buys space — the verb set lands on the mode split
+already built. Running means giving up the lock first, and a chaser pays the same price, so a chase
+is two people who have both put their guard away. Nothing enforces that beyond where the verb
+lives.
+
+The speed is tuned, not measured, and says so: KayKit's Running clips carry no root travel to read.
+What is measured is the bracket — above the 1.0 m/s walk or it buys nothing, below the dodge's
+1.62 m/s authored burst or the dodge stops being the fastest thing a fighter can do.
+
 ## Also open from this arc
 
 - Root-cause LEFT's close-range body whiff (above).

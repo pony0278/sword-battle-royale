@@ -14,9 +14,12 @@ export const PLAYER_CONTROLLER_STAGE = 'R20S.3';
 //
 // Nothing here has combat authority. Movement goes through the ledger's own verbs, so every clamp
 // that holds for a lane step holds for a world one; the camera is presentation, measured inert.
-export function createShieldParryPlayerController({ camera, laneController, freeCamera, inspectionCamera = false }) {
+export function createShieldParryPlayerController({
+  camera, laneController, freeCamera, inspectionCamera = false,
+  readGuardActive = () => true, readAttacking = () => true,
+}) {
   const cameraController = createShieldParryCameraController({ camera, aspectRatio: camera.aspect });
-  const movement = createFreeMovementController({ laneController });
+  const movement = createFreeMovementController({ laneController, readGuardActive, readAttacking });
   let intent = Object.freeze({ forward: 0, lateral: 0 });
 
   return Object.freeze({
@@ -35,6 +38,8 @@ export function createShieldParryPlayerController({ camera, laneController, free
     },
     // One pixel of drag, in free mode. Locked it is refused, which is the point of locking.
     look(deltaPixels) { return movement.look(deltaPixels); },
+    setSprintRequested(requested) { return movement.setSprintRequested(requested); },
+    get sprintReport() { return movement.sprintReport; },
     get lockReport() { return movement.lockReport; },
     get locked() { return movement.locked; },
     frame(deltaSeconds) {
