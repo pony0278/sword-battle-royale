@@ -15,7 +15,9 @@ function harness(separationMeters = 2.4) {
     moveDefenderWorld: (dx, dz) => ground.moveDefenderWorld(dx, dz),
     setDefenderFacing: (radians) => ground.setDefenderFacing(radians),
   };
-  return { ground, laneController, movement: createFreeMovementController({ laneController }) };
+  // No guard up in these: R20V.2 pins the facing while one is, and these are about the feet.
+  const movement = createFreeMovementController({ laneController, readGuardActive: () => false, readAttacking: () => false });
+  return { ground, laneController, movement };
 }
 const hold = (movement, seconds, intent, step = 1 / 60) => {
   for (let elapsed = 0; elapsed < seconds - 1e-9; elapsed += step) { movement.update(); movement.move(step, intent); }

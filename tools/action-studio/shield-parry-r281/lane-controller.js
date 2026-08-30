@@ -279,7 +279,15 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     // excluded because the sweep measured the cone with that turn running on top of exactly
     // this error. On the line the bearing never moves and this reads zero.
     get defenderFacingErrorRadians() {
-      return wrapAngleRadians(defenderBaseFacing.facingRadians - ground.report.defenderFacingRadians);
+      // R20V.1: against the BEARING - where the opponent actually is - not against the report's
+      // facing. Those were the same number when this was written, because facing was always
+      // derived from the gap. Free movement made facing something a fighter can own, and then this
+      // compared the integrator against its own target and reported zero exactly when the error
+      // mattered: a defender turned 90 degrees away read as perfectly square, so the cone gate
+      // committed the whole coverage choreography to a blow it could not reach. Locked, owned
+      // facing is null and the two are identical to the bit, which is what keeps the goldens
+      // honest.
+      return wrapAngleRadians(defenderBaseFacing.facingRadians - ground.report.defenderBearingRadians);
     },
     resetLane() {
       defenderLateralIntent = 0;

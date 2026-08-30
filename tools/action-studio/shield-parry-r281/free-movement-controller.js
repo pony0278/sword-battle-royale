@@ -151,7 +151,16 @@ export function createFreeMovementController({
         : forwardSpeed) * deltaSeconds;
       const dx = Math.sin(axis) * forwardMeters - Math.cos(axis) * lateralMeters;
       const dz = Math.cos(axis) * forwardMeters + Math.sin(axis) * lateralMeters;
-      // Free: you face where you are going. Locked: the gap decides, as it always has.
+      // Free: you face where you are going, guard or no guard. Locked: the gap decides.
+      //
+      // R20V.3: R20V.2 tried pinning the body while the guard was up, so a defender could strafe
+      // with the shield still pointed at the fight. It measured well - the facing error dropped an
+      // order of magnitude and TOP and RIGHT stopped failing - and playtesting rejected it anyway,
+      // which is the right order for a question about feel. Holding a shield and pressing right
+      // should walk right, the way it does with the shield down; requiring "aim first, then guard"
+      // imports locked-mode thinking into the mode whose whole premise is that you face where you
+      // are going. Consistency beat the 22 degrees. The measurements are kept in
+      // lock-advantage.js so nobody has to rediscover either half.
       if (lockOn.report.locked) laneController.setDefenderFacing(null);
       else if (dx !== 0 || dz !== 0) laneController.setDefenderFacing(Math.atan2(dx, dz));
       return laneController.moveDefenderWorld(dx, dz);

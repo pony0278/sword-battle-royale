@@ -64,10 +64,37 @@ test('R19Z.1 the gate is decided at commitment and stands the whole response dow
 });
 
 test('R19Z.1 the facing error is the base facing against the bearing, guard turn excluded', async () => {
-  const lane = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/lane-controller.js', import.meta.url), 'utf8');
-  assert.match(lane,
-    /wrapAngleRadians\(defenderBaseFacing\.facingRadians - ground\.report\.defenderFacingRadians\)/);
+  // The name was always the spec; the assertion used to check the report's FACING, which was the
+  // same number back when facing was only ever derived from the gap. R20V.1 separated them - a
+  // fighter can own their facing now - and then the old comparison reported zero exactly when the
+  // error mattered. Behavioural, because a source match is the check that missed it.
+  const { createShieldParryLaneController } = await import('../tools/action-studio/shield-parry-r281/lane-controller.js');
+  const build = () => createShieldParryLaneController({
+    labScene: {
+      engagementStance: { separationMeters: 2.4 },
+      setLanePositions: () => {}, setDefenderYawOffset: () => {}, defender: null, camera: null,
+    },
+    walkClips: { forward: 'Walking_A', backward: 'Walking_Backwards' },
+    services: { captureRigPose: () => null, applyRigPose: () => {} },
+  });
+  const step = 1 / 60;
+
+  // Derived facing: the body chases the opponent, so the error stays near zero however far the
+  // fight travels. This is the case the golden grid holds, unchanged.
+  const derived = build();
+  derived.setDefenderLateralIntent(1);
+  for (let i = 0; i < 60; i += 1) derived.walk(step, null);
+  assert.ok(Math.abs(derived.defenderFacingErrorRadians) < 0.02,
+    `derived facing stays square, got ${derived.defenderFacingErrorRadians}`);
+
+  // Owned facing: turned away, the error has to say so - the cone gate reads this to decide
+  // whether committing the whole coverage response is worth anything.
+  const owned = build();
+  owned.setDefenderFacing(Math.PI / 2);
+  for (let i = 0; i < 120; i += 1) owned.walk(step, null);
+  const turnedAway = Math.abs(owned.defenderFacingErrorRadians) * 180 / Math.PI;
+  assert.ok(turnedAway > 60, `a fighter facing across the fight must read as turned away, got ${turnedAway.toFixed(1)} degrees`);
+
   const entry = await readFile(
     new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
   assert.match(entry, /defenderFacingErrorRadians: laneController\.defenderFacingErrorRadians/);
