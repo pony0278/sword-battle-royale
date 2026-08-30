@@ -147,19 +147,22 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       const dodgeStep = dodge.advance(deltaSeconds);
       if (dodgeStep.direction === 'back') ground.moveDefender(dodgeStep.displacementMeters);
       else if (dodgeStep.direction === 'forward') ground.moveDefender(-dodgeStep.displacementMeters);
-      else if (dodgeStep.direction === 'right') ground.moveDefenderLateral(-dodgeStep.displacementMeters);
-      else if (dodgeStep.direction === 'left') ground.moveDefenderLateral(dodgeStep.displacementMeters);
+      else if (dodgeStep.direction === 'right') ground.moveDefenderLateral(dodgeStep.displacementMeters);
+      else if (dodgeStep.direction === 'left') ground.moveDefenderLateral(-dodgeStep.displacementMeters);
       const dodging = Boolean(dodgeStep.direction);
       const defenderStep = dodging
         ? Object.freeze({ meters: 0 })
         : defenderFeet.update({ deltaSeconds, separationMeters: ground.separationMeters });
       if (defenderStep.meters !== 0) ground.moveDefender(defenderStep.meters);
-      // R19V.1: the sidestep. Body-relative: positive intent is the defender's own right, which
-      // while square on the lane (facing -z) is world -x, so the sign flips on the way into the
-      // ledger's +x convention. Presentation debt accepted knowingly: KayKit ships no strafe
-      // clip, so a sidestep slides on planted legs in the lab.
+      // R19V.1: the sidestep, body-relative - positive intent is the defender's own right.
+      // R20T.3 corrected the sign: the old note reasoned that a defender facing -z has their right
+      // at world -x, and that is backwards - facing -z is how the default camera faces, and its
+      // right is +x. Measured through the real keys with the game camera behind the player, the
+      // arrow keys walked the wrong way exactly like WASD did.
+      // Presentation debt accepted knowingly: KayKit ships no strafe clip, so a sidestep slides on
+      // planted legs in the lab.
       const lateralStep = planLateralStep({ intent: dodging ? 0 : defenderLateralIntent, deltaSeconds });
-      if (lateralStep.meters !== 0) ground.moveDefenderLateral(-lateralStep.meters);
+      if (lateralStep.meters !== 0) ground.moveDefenderLateral(lateralStep.meters);
       // R19B.1: the attacker's feet stop while a swing is still travelling. The step into the blow
       // owns their movement for those frames, and letting both drive at once would double the
       // distance every measured coverage band was taken against.

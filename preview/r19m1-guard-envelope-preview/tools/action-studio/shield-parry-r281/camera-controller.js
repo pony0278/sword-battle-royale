@@ -28,6 +28,10 @@ export function createShieldParryCameraController({
   const runtime = createThirdPersonCameraRuntime({ profile });
   let fitted = null;
   let lastAspect = null;
+  // The last pose actually written to the camera. Kept because "which way is right" is a question
+  // about the screen, and the screen is this pose - a probe that answers it from world axes is
+  // answering a different question.
+  let lastPose = null;
 
   function refit(nextAspect) {
     const aspect = Number.isFinite(Number(nextAspect)) && Number(nextAspect) > 0 ? Number(nextAspect) : aspectRatio;
@@ -52,6 +56,7 @@ export function createShieldParryCameraController({
         : solveFreeCameraPose({ player, yawRadians, pitchDegrees, profile: active });
       if (!desired) return null;
       const pose = runtime.update(desired, deltaSeconds);
+      lastPose = pose;
       camera.position.set(pose.position.x, pose.position.y, pose.position.z);
       camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z);
       if (Math.abs(camera.fov - pose.fovDegrees) > 1e-4) {
@@ -64,5 +69,6 @@ export function createShieldParryCameraController({
     // A cut rather than a swoop: used when the fight is reset, or the player takes a lock and the
     // axis jumps. Easing in from wherever the camera was left is a move nobody asked for.
     snap() { runtime.reset(); },
+    get pose() { return lastPose; },
   });
 }
