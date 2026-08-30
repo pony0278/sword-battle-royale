@@ -5,6 +5,8 @@ import {
   createThirdPersonCameraRuntime,
   evaluateFraming,
   evaluateLockedFraming,
+  fitLockedProfileToAspect,
+  LOCK_BAND_METERS,
   fighterSilhouettePoints,
   PLAYER_READABLE_FLOOR_METERS,
   horizontalHalfFovRadians,
@@ -246,4 +248,134 @@ test('R20Q.1 the two fighters are framed by what each of them is for', () => {
     player, target, profile: { locked: { distanceKeys: [{ ...key, panZ: 2.3 }] } },
   });
   assert.equal(evaluateLockedFraming({ pose: tooFar, aspectRatio: 16 / 9, player, target }).inFrame, false);
+});
+
+// R20Q.1f - fitting a framing to the window it is played in. The character (fov, angle, look
+// height, panX) is never touched; only how far the camera is swung off the axis and how far the
+// look point is pushed toward the opponent, which are the two things that spend horizontal room.
+
+const HALF_BODY = { fovDegrees: 74, angleDegrees: 19, lookHeightMeters: 0.69, panX: 0.01, azimuthDegrees: 30, distanceMeters: 2.95, panZ: 1.67 };
+const halfBodyProfile = () => ({ locked: { distanceKeys: [1.4, 2.4, 4].map((separationMeters) => ({ separationMeters, ...HALF_BODY })) } });
+const worstPlayerMargin = (profile, aspectRatio) => {
+  let worst = Infinity;
+  for (let separation = LOCK_BAND_METERS.min; separation <= LOCK_BAND_METERS.max + 1e-9; separation += 0.1) {
+    for (let index = 0; index < 12; index += 1) {
+      const bearing = (index / 12) * Math.PI * 2;
+      const player = { x: 0, z: 0 };
+      const target = { x: Math.sin(bearing) * separation, z: Math.cos(bearing) * separation };
+      const framing = evaluateLockedFraming({
+        pose: solveLockedCameraPose({ player, target, profile }), aspectRatio, player, target,
+      });
+      worst = Math.min(worst, framing.playerMarginNdc);
+    }
+  }
+  return worst;
+};
+
+test('R20Q.1f how much the shoulder must give up is a function of the window, not of the distance', () => {
+  // This is the property the whole mechanism rests on. If the required easing moved with the gap,
+  // the fit would be a new source of camera rotation - walking would swing the camera, which is
+  // exactly the fault this project already removed from the profile itself. It does not move.
+  const maxAzimuthAt = (separation, aspectRatio) => {
+    for (let azimuthDegrees = 40; azimuthDegrees >= 0; azimuthDegrees -= 1) {
+      const profile = { locked: { distanceKeys: [{ ...HALF_BODY, separationMeters: separation, azimuthDegrees }] } };
+      const player = { x: 0, z: 0 };
+      const target = { x: 0, z: separation };
+      const framing = evaluateLockedFraming({
+        pose: solveLockedCameraPose({ player, target, profile }), aspectRatio, player, target,
+      });
+      if (framing.playerMarginNdc >= 0.12) return azimuthDegrees;
+    }
+    return null;
+  };
+  for (const aspectRatio of [4 / 3, 16 / 9]) {
+    const atFloor = maxAzimuthAt(LOCK_BAND_METERS.min, aspectRatio);
+    for (const separation of [1.4, 2.4, 3.2, LOCK_BAND_METERS.max]) {
+      assert.equal(maxAzimuthAt(separation, aspectRatio), atFloor,
+        `the cap must not move with separation (${aspectRatio.toFixed(2)}:1 at ${separation}m)`);
+    }
+  }
+  // And it does move with the window, which is the reason to do this at all.
+  assert.ok(maxAzimuthAt(2.4, 16 / 9) > maxAzimuthAt(2.4, 4 / 3));
+});
+
+test('R20Q.1f a window with room changes nothing at all', () => {
+  const fitted = fitLockedProfileToAspect(halfBodyProfile(), 21 / 9);
+  assert.equal(fitted.eased, false);
+  assert.equal(fitted.azimuthScale, 1);
+  assert.equal(fitted.panZScale, 1);
+  assert.deepEqual(fitted.appliedAzimuthDegrees, fitted.intendedAzimuthDegrees);
+});
+
+test('R20Q.1f a narrow window is eased until it actually passes, and says by how much', () => {
+  const intended = halfBodyProfile();
+  assert.ok(worstPlayerMargin(intended, 4 / 3) < 0.12, 'the premise: this framing does not fit a 4:3 window');
+  const fitted = fitLockedProfileToAspect(intended, 4 / 3);
+  assert.equal(fitted.satisfied, true);
+  assert.equal(fitted.eased, true);
+  // Verified independently of the fit's own sampling, across the whole band.
+  assert.ok(worstPlayerMargin(fitted.profile, 4 / 3) >= 0.12);
+  // Reported both ways round, so a fit can never quietly stand in for a profile that does not work.
+  assert.equal(fitted.intendedAzimuthDegrees[1], 30);
+  assert.ok(fitted.appliedAzimuthDegrees[1] < 30);
+});
+
+test('R20Q.1f one factor for the whole profile, or walking swings the camera again', () => {
+  const fitted = fitLockedProfileToAspect(halfBodyProfile(), 4 / 3);
+  const keys = fitted.profile.locked.distanceKeys;
+  // Every key eased by the same amount: the azimuth stays constant across the band, so changing
+  // distance cannot rotate the camera. A per-key fit would reintroduce exactly that.
+  for (const key of keys) assert.equal(key.azimuthDegrees, keys[0].azimuthDegrees);
+  // A profile whose keys differ on purpose keeps their relationship - the scale is a ratio, not a
+  // flattening.
+  const varied = { locked: { distanceKeys: [
+    { ...HALF_BODY, separationMeters: 1.4, azimuthDegrees: 40 },
+    { ...HALF_BODY, separationMeters: 2.4, azimuthDegrees: 20 },
+  ] } };
+  const variedFit = fitLockedProfileToAspect(varied, 4 / 3);
+  const scales = variedFit.profile.locked.distanceKeys.map((key, index) => key.azimuthDegrees / variedFit.intendedAzimuthDegrees[index]);
+  assert.ok(Math.abs(scales[0] - scales[1]) < 1e-9, 'one ratio, applied to every key');
+});
+
+test('R20Q.1f the preference decides which half of the look is spent', () => {
+  const intended = halfBodyProfile();
+  const player = { x: 0, z: 0 };
+  const target = { x: 0, z: 2.4 };
+  const read = (profile) => {
+    const pose = solveLockedCameraPose({ player, target, profile });
+    const at = (position, y) => evaluateFraming({ pose, aspectRatio: 4 / 3, points: [{ x: position.x, y, z: position.z }] });
+    return {
+      screenGap: Math.abs(at(player, 1.6).ndcX - at(target, 1.6).ndcX),
+      framing: evaluateLockedFraming({ pose, aspectRatio: 4 / 3, player, target }),
+    };
+  };
+  const crop = fitLockedProfileToAspect(intended, 4 / 3, { prefer: 'crop' });
+  const shoulder = fitLockedProfileToAspect(intended, 4 / 3, { prefer: 'shoulder' });
+  // Keeping the crop spends the shoulder, and vice versa - neither touches the other's lever while
+  // it still has room to give.
+  assert.ok(crop.azimuthScale < 1 && crop.panZScale === 1);
+  assert.ok(shoulder.panZScale < 1 && shoulder.azimuthScale === 1);
+  // And each keeps what it names: the crop stays a crop, the pair stays spread out.
+  assert.ok(read(crop.profile).framing.playerFullBodyMarginNdc < 0, 'prefer crop keeps the legs cropped');
+  assert.ok(read(shoulder.profile).screenGap > read(crop.profile).screenGap, 'prefer shoulder keeps them apart');
+  for (const fitted of [crop, shoulder]) assert.equal(fitted.satisfied, true);
+});
+
+test('R20Q.1f the character itself is never touched', () => {
+  const fitted = fitLockedProfileToAspect(halfBodyProfile(), 4 / 3);
+  for (const key of fitted.profile.locked.distanceKeys) {
+    for (const field of ['fovDegrees', 'angleDegrees', 'lookHeightMeters', 'panX', 'distanceMeters']) {
+      assert.equal(key[field], HALF_BODY[field], `the fit must not move ${field}`);
+    }
+  }
+});
+
+test('R20Q.1f a portrait phone runs the primary lever out, and the second one follows', () => {
+  // About +-11 degrees of world is rendered there; no amount of shoulder easing alone saves it, so
+  // the framing degrades to plain and behind rather than pretending.
+  const fitted = fitLockedProfileToAspect(halfBodyProfile(), 9 / 19.5);
+  assert.equal(fitted.azimuthScale, 0, 'the shoulder is gone');
+  assert.ok(fitted.panZScale < 1, 'and the look point had to come back too');
+  assert.equal(fitted.satisfied, true);
+  assert.ok(worstPlayerMargin(fitted.profile, 9 / 19.5) >= 0.12);
 });

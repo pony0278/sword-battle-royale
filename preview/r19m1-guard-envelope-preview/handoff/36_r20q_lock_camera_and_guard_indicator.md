@@ -45,6 +45,26 @@ states (TOP / RIGHT / LEFT) matching the three attack directions, showing the gu
 currently holds, plus whatever the parry window needs. It is presentation only and must not become
 a second source of truth about guard state: the guard state machine stays the authority.
 
+## Window fitting (R20Q.1f)
+
+`fitLockedProfileToAspect(profile, aspectRatio, { prefer })` eases the tuned framing until the
+player's guard survives the window it is being played in. It rests on one measurement: how much the
+shoulder has to give up is a function of the **aspect alone** — the cap is 12 degrees at 4:3 and 24
+at 16:9, and identical at 1.1m and 5.0m, flat across the band. So the fit runs on a window change
+and never during play, and is not a new source of camera motion.
+
+One factor, applied globally to every key. Fitting keys individually would make the azimuth a
+function of separation again, which is the self-rotation this project already removed.
+
+What it gives up is the tuner's call, because the two halves of a half-body framing compete for the
+same horizontal room: `prefer: 'crop'` eases the shoulder and keeps the crop, `prefer: 'shoulder'`
+eases the look point and gives the legs back, `'balanced'` splits it. A portrait phone cannot be
+satisfied by the primary lever alone, so the secondary follows and the framing degrades to plain and
+behind — the honest answer for a frame that renders about ±11 degrees.
+
+The lab reports intent beside every reduction (`方位 30°→12°`) and can render into a simulated
+window shape, so a fit can never quietly stand in for a profile that does not work.
+
 ## Also open from this arc
 
 - Wire the tuned profile + lock-on into the combat lab (step 3 of the free-movement plan).

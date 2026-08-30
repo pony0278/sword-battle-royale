@@ -24,6 +24,7 @@ import {
   evaluateFraming,
   evaluateLockedFraming,
   fighterSilhouettePoints,
+  fitLockedProfileToAspect,
   PLAYER_READABLE_FLOOR_METERS,
   sampleCameraKeys,
   solveFreeCameraPose,
@@ -138,6 +139,11 @@ let working = cloneProfile(THIRD_PERSON_CAMERA_PROFILE);
 
 const state = {
   mode: 'locked',
+  // R20Q.1f: which window to solve for, and what to give up when it is too narrow. 'live' is the
+  // lab's own canvas; the rest let you stand in a 4:3 player's shoes without resizing anything.
+  simulatedAspect: 'live',
+  safeFrame: false,
+  prefer: 'crop',
   separationMeters: 2.4,
   editingKey: 1,
   followSeparation: true,
@@ -178,12 +184,26 @@ async function main() {
 
   // --- the two actors, as points the camera has to hold -------------------------------------
 
+  // The profile the camera is actually solved from: the tuned one, or the tuned one fitted to the
+  // window being simulated. Refitted only when the aspect or the preference changes - never per
+  // frame, because the fit is a function of the window and the window does not move during a fight.
+  let fitted = null;
+  function activeProfile() {
+    if (!state.safeFrame) return working;
+    if (!fitted) fitted = fitLockedProfileToAspect(working, solvedAspect(), { prefer: state.prefer });
+    return fitted?.profile || working;
+  }
+  function solvedAspect() {
+    return state.simulatedAspect === 'live' ? scene.camera.aspect : Number(state.simulatedAspect);
+  }
+  function refit() { fitted = null; activeProfile(); }
+
   function desiredPose(report) {
     if (state.mode === 'locked') {
       return solveLockedCameraPose({
         player: report.defenderPosition,
         target: report.attackerPosition,
-        profile: working,
+        profile: activeProfile(),
         fallbackAxisRadians: report.defenderBearingRadians ?? Math.PI,
       });
     }
@@ -287,6 +307,12 @@ async function main() {
     let legCrops = 0;
     let samples = 0;
     const aspects = [...new Set([round(aspectRatio, 3), ...VERIFIED_ASPECT_RATIOS.map((value) => round(value, 3))])];
+    // With adaptation on, every window is judged against ITS OWN fit - that is what a player in
+    // that window would actually be handed. Judging them all against one window's fit would report
+    // a failure nobody would ever see, and hide the one they would.
+    const profileFor = (aspect) => (state.safeFrame
+      ? (fitLockedProfileToAspect(profile, aspect, { prefer: state.prefer })?.profile || profile)
+      : profile);
     for (const aspect of aspects)
     for (let separation = SWEEP_MIN_METERS; separation <= SWEEP_MAX_METERS + 1e-9; separation += 0.1) {
       // Every separation, and at each one every bearing: a lock follows the pair round, so the
@@ -295,7 +321,7 @@ async function main() {
       for (let bearing = 0; bearing < Math.PI * 2 - 1e-9; bearing += Math.PI / 6) {
         const player = { x: 0, z: 0 };
         const target = { x: Math.sin(bearing) * separation, z: Math.cos(bearing) * separation };
-        const pose = solveLockedCameraPose({ player, target, profile });
+        const pose = solveLockedCameraPose({ player, target, profile: profileFor(aspect) });
         // Two readings, because the two fighters are read differently: the opponent head to feet
         // (their windup starts outside the contact height), you from the lowest measured contact
         // floor up (below that you are legs, and where your feet are is the gap, not your knees).
@@ -363,7 +389,8 @@ async function main() {
   }
 
   function sweepFraming() {
-    const measured = measureProfile();
+    refit();
+    const measured = measureProfile(working);
     const swing = Math.max(0, ...measured.walk.map((leg) => leg.azimuthDegreesPerSecond));
     const lines = [`${SWEEP_MIN_METERS}\u2013${SWEEP_MAX_METERS}m \u00d7 12 \u65b9\u4f4d \u00d7 \u756b\u9762 ${measured.aspectRatiosChecked.join(' / ')}:1`];
     lines.push(measured.outOfFrame.length === 0
@@ -373,6 +400,17 @@ async function main() {
     lines.push(`\u5c0d\u624b\u4f54\u756b\u9762\u9ad8\u5ea6 ${measured.screen.map((row) => `${row.separationMeters}m ${(row.opponentScreenHeight * 100).toFixed(0)}%`).join(' \u00b7 ')}`);
     // The one number a slider cannot show you: how fast the camera turns when you only walked.
     lines.push(`\u8d70\u4f4d\u9020\u6210\u7684\u81ea\u8f49 ${swing.toFixed(1)}\u00b0/s${swing > 18 ? ' \u00b7 \u6bd4\u5c0d\u624b\u904e\u756b\u9762\u9084\u5feb' : ''}`);
+    // What each window would actually be handed, so the fit can never hide a profile that does not
+    // work: the intent is printed beside every reduction it had to make.
+    lines.push(VERIFIED_ASPECT_RATIOS.map((aspect) => {
+      const fit = fitLockedProfileToAspect(working, aspect, { prefer: state.prefer });
+      const intent = fit.intendedAzimuthDegrees[1];
+      const applied = fit.appliedAzimuthDegrees[1];
+      const label = `${round(aspect, 2)}:1`;
+      if (!fit.eased) return `${label} \u5b8c\u6574`;
+      const panZNote = fit.panZScale < 1 ? ` panZ\u00d7${fit.panZScale.toFixed(2)}` : '';
+      return `${label} \u65b9\u4f4d ${intent.toFixed(0)}\u00b0\u2192${applied.toFixed(0)}\u00b0${panZNote}`;
+    }).join(' \u00b7 '));
     $('sweep').textContent = lines.join('\n');
     $('sweep').className = measured.outOfFrame.length ? 'bad' : swing > 18 ? 'warn' : 'good';
     return measured;
@@ -420,6 +458,7 @@ async function main() {
 
   function onProfileChanged() {
     $('output').textContent = '';
+    refit();
     sweepFraming();
   }
 
@@ -434,6 +473,9 @@ async function main() {
       button.classList.toggle('active', button.dataset.direction === state.playbackDirection);
     }
     $('loop').classList.toggle('active', state.loop);
+    $('safeFrame').classList.toggle('active', state.safeFrame);
+    for (const button of document.querySelectorAll('[data-prefer]')) button.classList.toggle('active', button.dataset.prefer === state.prefer);
+    for (const button of document.querySelectorAll('[data-aspect]')) button.classList.toggle('active', button.dataset.aspect === state.simulatedAspect);
     $('follow').classList.toggle('active', state.followSeparation);
     $('freePanel').style.display = state.mode === 'free' ? '' : 'none';
     $('lockedPanel').style.display = state.mode === 'locked' ? '' : 'none';
@@ -544,6 +586,13 @@ async function main() {
   });
   $('separation').addEventListener('input', (event) => setSeparation(Number(event.target.value)));
   $('sweepNow').addEventListener('click', sweepFraming);
+  $('safeFrame').addEventListener('click', () => { state.safeFrame = !state.safeFrame; refit(); syncButtons(); sweepFraming(); });
+  for (const button of document.querySelectorAll('[data-prefer]')) {
+    button.addEventListener('click', () => { state.prefer = button.dataset.prefer; refit(); syncButtons(); sweepFraming(); });
+  }
+  for (const button of document.querySelectorAll('[data-aspect]')) {
+    button.addEventListener('click', () => { state.simulatedAspect = button.dataset.aspect; refit(); syncButtons(); sweepFraming(); });
+  }
   $('reset').addEventListener('click', () => {
     working = cloneProfile(THIRD_PERSON_CAMERA_PROFILE);
     cameraRuntime.reset();
@@ -580,21 +629,23 @@ async function main() {
     const smoothed = cameraRuntime.update(desired, deltaSeconds);
     scene.camera.position.set(smoothed.position.x, smoothed.position.y, smoothed.position.z);
     scene.camera.lookAt(smoothed.lookAt.x, smoothed.lookAt.y, smoothed.lookAt.z);
-    if (Math.abs(scene.camera.fov - smoothed.fovDegrees) > 1e-4) {
+    const renderAspect = solvedAspect();
+    if (Math.abs(scene.camera.fov - smoothed.fovDegrees) > 1e-4 || Math.abs(scene.camera.aspect - renderAspect) > 1e-6) {
       scene.camera.fov = smoothed.fovDegrees;
+      scene.camera.aspect = renderAspect;
       scene.camera.updateProjectionMatrix();
     }
     scene.camera.updateMatrixWorld(true);
 
     const framing = evaluateLockedFraming({
       pose: smoothed,
-      aspectRatio: scene.camera.aspect,
+      aspectRatio: renderAspect,
       player: report.defenderPosition,
       target: report.attackerPosition,
     });
-    const sampled = sampleCameraKeys(working.locked.distanceKeys, report.separationMeters);
+    const sampled = sampleCameraKeys(activeProfile().locked.distanceKeys, report.separationMeters);
     const cone = lockOnAcquireHalfAngleRadians({
-      fovDegrees: smoothed.fovDegrees, aspectRatio: scene.camera.aspect,
+      fovDegrees: smoothed.fovDegrees, aspectRatio: renderAspect,
     }) * 180 / Math.PI;
     $('hud').innerHTML = [
       `<b>${LAB_STAGE} · ${THIRD_PERSON_CAMERA_STAGE} · ${state.mode === 'locked' ? '鎖定 LOCKED' : '自由 FREE'}</b>`,
@@ -605,11 +656,35 @@ async function main() {
       framing
         ? `<span class="${framing.marginNdc >= 0.05 ? 'good' : framing.marginNdc >= 0 ? 'warn' : 'bad'}">對手全身 ${(framing.opponentMarginNdc * 100).toFixed(0)}% · 自己護欄 ${(framing.playerMarginNdc * 100).toFixed(0)}%${framing.croppingPlayerLegs ? ' · 切腿(刻意)' : ''}${framing.marginNdc < 0 ? ' · 出框' : ''}</span>`
         : '',
+      state.safeFrame && fitted
+        ? `<span class="${fitted.eased ? 'warn' : 'good'}">\u8996\u7a97 ${round(solvedAspect(), 2)}:1 \u00b7 ${fitted.eased
+          ? `\u65b9\u4f4d ${fitted.intendedAzimuthDegrees[1].toFixed(0)}\u00b0\u2192${fitted.appliedAzimuthDegrees[1].toFixed(0)}\u00b0${fitted.panZScale < 1 ? ` panZ\u00d7${fitted.panZScale.toFixed(2)}` : ''} (\u4fdd${state.prefer === 'crop' ? '\u534a\u8eab' : state.prefer === 'shoulder' ? '\u904e\u80a9' : '\u5747\u8861'})`
+          : '\u5b8c\u6574\u5957\u7528'}</span>`
+        : '',
       attack.action
         ? `揮砍 ${attack.direction} ${attack.elapsedSeconds.toFixed(2)}s / 接觸 ${attack.contactSeconds.toFixed(2)}s · ${attack.phase}`
         : '揮砍 —',
     ].join('<br>');
 
+    // Simulating a window means rendering INTO one: the projection uses the simulated aspect and
+    // the image is letterboxed to that shape. A number in the corner would let you believe a 21:9
+    // framing looks fine while you are staring at a 1.3:1 canvas.
+    const width = Math.max(1, scene.canvas.width);
+    const height = Math.max(1, scene.canvas.height);
+    scene.renderer.setScissorTest(false);
+    scene.renderer.setViewport(0, 0, width, height);
+    scene.renderer.setScissor(0, 0, width, height);
+    scene.renderer.clear();
+    if (state.simulatedAspect !== 'live') {
+      const wanted = Number(state.simulatedAspect);
+      const boxWidth = Math.min(width, height * wanted);
+      const boxHeight = boxWidth / wanted;
+      const x = (width - boxWidth) / 2;
+      const y = (height - boxHeight) / 2;
+      scene.renderer.setViewport(x, y, boxWidth, boxHeight);
+      scene.renderer.setScissor(x, y, boxWidth, boxHeight);
+      scene.renderer.setScissorTest(true);
+    }
     scene.renderer.render(scene.scene, scene.camera);
     requestAnimationFrame(frame);
   }
@@ -639,6 +714,9 @@ async function main() {
     serialize: serializeProfile,
     setSeparation,
     setMode,
+    setSafeFrame(on, prefer) { state.safeFrame = on !== false; if (prefer) state.prefer = prefer; refit(); syncButtons(); return sweepFraming(); },
+    setSimulatedAspect(value) { state.simulatedAspect = value; refit(); syncButtons(); return sweepFraming(); },
+    fit: () => fitLockedProfileToAspect(working, solvedAspect(), { prefer: state.prefer }),
     play,
     sweep: sweepFraming,
     framing: () => evaluateLockedFraming({
