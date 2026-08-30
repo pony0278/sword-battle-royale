@@ -113,6 +113,53 @@ A run has no legs-only reading, so `planWalkOverlay` refuses to lend one to a ra
 than letting it take the torso. Sprinting already requires the guard down, so the two rules never
 actually meet — saying so is what stops the next caller from finding out by accident.
 
+## R20X.1 — the sidestep, and why it is a hip and not a clip (EXPERIMENT, awaiting a verdict)
+
+Investigated first. Across all eight KayKit packs there are exactly two lateral locomotion cycles,
+`Running_Strafe_Left` and `Running_Strafe_Right`, re-measured along their own axis at ±3.04 m/s,
+stride ±2.43m, **80% airborne**, 8% ground contact per foot, with the feet also swinging 0.302m
+along the other axis — a crossing skip, not a slide. Nothing else in the library is lateral:
+`Dodge_Left`/`Dodge_Right` are 0.4s bursts whose first and last frames differ by 64–67° at the arms,
+so they cannot loop; `Sneaking` (0.535 m/s) and `Crouching` (1.341 m/s) loop cleanly and go forward.
+
+At our 0.75 m/s sidestep the strafe clip plays at **0.247×** — a 3.24s cycle holding an 80%-airborne
+pose for over two and a half seconds.
+
+**Raising the sidestep to suit the clip is a combat change, not an animation one.**
+`ORBIT_CROSSOVER_RADIUS_METERS` is `lateralSpeed / 45°/s`, the radius where circling out-turns a
+windup's aim. Today that is 0.955m, *inside* the 0.9m contact floor, which is exactly why R20T.1
+could conclude an orbit is not a dodge. Getting the clip to even 0.5× needs 1.52 m/s, which moves
+the crossover to 1.94m — ordinary fighting range. Circling would become a way to beat the attacker's
+aim. So the sidestep speed stays where it is, and that closes the door on the clip.
+
+What ships instead: the stride turns to face the travel. The leg chain hangs off `upperleg.l` and
+`upperleg.r`, so yawing those two about the world vertical carries knee and foot with them and
+leaves the pelvis — and therefore the spine, the guard and the shield — untouched. That last part is
+the constraint R19E.1 established by screenshot, so `travel-relative-legs.js` names `hips` as the
+bone it must never take. The gait is then fed the *whole* distance travelled rather than its forward
+projection, because once the legs point along travel that is the distance the feet actually cover:
+the foot lock becomes exact for a sidestep instead of merely absent.
+
+Two things the prototype measured that reasoning would not have:
+
+- **A straight sidestep reads as slightly backwards in the body frame.** The facing keeps tracking
+  the bearing while the feet walk a straight line, so the line and the arc part company and leave a
+  small negative forward component. Judged by that sign alone, a sidestep swapped to
+  `Walking_Backwards` within a frame of the key press. A 108° deadband is what separates a sidestep
+  from a backpedal.
+- **The worst hip yaw is 108°, not 90°.** The deadband hands the forward clip to travel up to 108°
+  off the nose, so the band just behind square — walking backwards-and-sideways but not enough of
+  either to earn the backwards clip — is the extreme, not the pure sidestep everyone pictures.
+
+Measured in the lab: sidestep ±90° at the hip on `Walking_B` at 0.71× with the full 0.75 m/s
+reaching the gait, guarded or not; diagonal 0.88 m/s at −37°; backpedal 0° on `Walking_Backwards`;
+straight ahead 0°.
+
+**Nothing measured says whether 90° of hip yaw reads as a side-step or as a broken hip.** That is a
+question for eyes, and this lab's over-the-shoulder camera sits too close to answer it in a
+screenshot. It ships to the preview for a playtest verdict, the same way R20V.2 did — and it touches
+two bones, so backing it out is clean.
+
 ## Still open
 
 - **The sidestep has no clip at any speed.** KayKit ships a running strafe (±3.0 m/s) and no walking
