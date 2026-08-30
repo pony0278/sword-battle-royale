@@ -4,6 +4,7 @@ import {
   THIRD_PERSON_CAMERA_PROFILE,
   createThirdPersonCameraRuntime,
   evaluateFraming,
+  fighterSilhouettePoints,
   horizontalHalfFovRadians,
   sampleCameraKeys,
   solveFreeCameraPose,
@@ -160,7 +161,7 @@ test('R20Q.1 the runtime snaps once, then lags, and lags the same amount at any 
 
 test('R20Q.1 framing is measured against the same projection the renderer performs', () => {
   const pose = solveLockedCameraPose({ player: { x: 0, z: 0 }, target: { x: 0, z: 2.4 } });
-  const both = [{ x: 0, y: 1.7, z: 0 }, { x: 0, y: 1.7, z: 2.4 }, { x: 0, y: 0.05, z: 0 }];
+  const both = [...fighterSilhouettePoints({ x: 0, z: 0 }), ...fighterSilhouettePoints({ x: 0, z: 2.4 })];
   const framed = evaluateFraming({ pose, aspectRatio: 16 / 9, points: both });
   assert.equal(framed.inFrame, true, 'the seed pose must at least hold the two of them at 2.4m');
   assert.ok(framed.marginNdc > 0 && framed.marginNdc <= 1);
@@ -183,18 +184,35 @@ test('R20Q.1 framing is measured against the same projection the renderer perfor
   assert.equal(evaluateFraming({}), null);
 });
 
-test('R20Q.1 the seed profile holds both fighters on screen across the whole lock band', () => {
+test('R20Q.1 a fighter is a cylinder, so the silhouette cannot depend on which way they stand', () => {
+  // The bug this exists to prevent: a half-width measured along world x is the correct lateral
+  // extent for a duel down the z axis and is body DEPTH once the opponent circles to your side.
+  const points = fighterSilhouettePoints({ x: 2, z: -1 });
+  const radii = points.map((point) => Math.hypot(point.x - 2, point.z + 1));
+  for (const radius of radii) assert.ok(Math.abs(radius - 0.45) < 1e-9, `every corner sits on the 0.45m radius, got ${radius}`);
+  // Top and bottom, so a framing check can crop neither the head nor the feet unnoticed.
+  const heights = [...new Set(points.map((point) => point.y))].sort((a, b) => a - b);
+  assert.deepEqual(heights, [0.02, 1.78]);
+  assert.equal(points.length, 8);
+});
+
+test('R20Q.1 the seed profile holds both fighters on screen at every distance AND every bearing', () => {
   // This is the sweep the camera lab runs, as a test: from the 1.1m contact floor to the 5m break,
-  // at 16:9. It is not a claim that the seeds look good - only that they are a starting point a
-  // person can tune from, rather than one where somebody is already off screen.
-  const silhouette = (z) => [
-    { x: 0.45, y: 1.75, z }, { x: -0.45, y: 1.75, z }, { x: 0.45, y: 0.05, z }, { x: -0.45, y: 0.05, z },
-  ];
+  // at 16:9 - and now at every bearing round the circle, because a lock follows the pair round and
+  // a framing that only survives a straight-line duel is not a framing. It is not a claim that the
+  // seeds look good, only that they are a starting point rather than one where somebody is
+  // already cropped.
   for (let separation = 1.1; separation <= 5.001; separation += 0.1) {
-    const pose = solveLockedCameraPose({ player: { x: 0, z: 0 }, target: { x: 0, z: separation } });
-    const framed = evaluateFraming({
-      pose, aspectRatio: 16 / 9, points: [...silhouette(0), ...silhouette(separation)],
-    });
-    assert.equal(framed.inFrame, true, `both fighters must be on screen at ${separation.toFixed(1)}m`);
+    for (let bearing = 0; bearing < Math.PI * 2 - 1e-9; bearing += Math.PI / 6) {
+      const player = { x: 0, z: 0 };
+      const target = { x: Math.sin(bearing) * separation, z: Math.cos(bearing) * separation };
+      const framed = evaluateFraming({
+        pose: solveLockedCameraPose({ player, target }),
+        aspectRatio: 16 / 9,
+        points: [...fighterSilhouettePoints(player), ...fighterSilhouettePoints(target)],
+      });
+      assert.equal(framed.inFrame, true,
+        `both fighters must be on screen at ${separation.toFixed(1)}m, bearing ${(bearing * 180 / Math.PI).toFixed(0)}deg`);
+    }
   }
 });

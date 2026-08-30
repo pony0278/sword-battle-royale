@@ -95,6 +95,17 @@ test('R20Q.1 the presets are complete poses, so loading one cannot half-apply', 
   assert.equal((presets.match(/\.\.\.PRESET_MIDDLE/g) || []).length, 5, 'the tuned character is written once and spread, not retyped');
 });
 
+test('R20Q.1 the sweep checks every bearing, not just a duel down one axis', () => {
+  // A lock follows the pair round, so a framing that only survives them facing off along the lane
+  // is not verified. This is the check that would have caught the wrongly oriented body box.
+  const measure = labJs.slice(labJs.indexOf('function measureProfile'), labJs.indexOf('function sweepFraming'));
+  assert.match(measure, /for \(let bearing = 0; bearing < Math\.PI \* 2/);
+  assert.match(measure, /fighterSilhouettePoints\(player\), \.\.\.fighterSilhouettePoints\(target\)/);
+  // And the shape is the shared one - the page must not carry its own idea of how wide a body is.
+  assert.doesNotMatch(labJs, /SILHOUETTE_HALF_WIDTH_METERS/);
+  assert.match(labJs, /fighterSilhouettePoints,/);
+});
+
 test('R20Q.1 the measurement says what a slider cannot: what the camera does on its own', () => {
   // Keys that disagree with each other turn walking into camera work nobody asked for, and that is
   // invisible while you hold the separation still. The rate is measured against the same sidestep
