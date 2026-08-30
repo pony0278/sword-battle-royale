@@ -26,12 +26,13 @@ export const LOCK_ON_BREAK_RANGE_METERS = 5;
 // directions at once: wider than a 4:3 window renders (+-24.7) and far wider than a portrait phone
 // (+-11.0), so it promised locks on people who were not on screen.
 export const LOCK_ON_VIEW_CONE_FRACTION = 0.9;
-// Except at the narrow end, where the derivation turns against the player: on a portrait phone the
-// frame is so tight that the person you are obviously fighting sits just off the edge whenever they
-// step aside, and refusing the lock there would make the game unplayable in the exact orientation a
-// phone is held. The floor buys that back. It is a seed - the number the mobile UI work is going to
-// argue with - and it is the one place a lock can be taken on somebody off-screen.
-export const LOCK_ON_MINIMUM_HALF_ANGLE_RADIANS = (25 * Math.PI) / 180;
+// R20R.1: there used to be a floor here, and it was the only exception clause in these rules - a
+// portrait phone renders about +-14.6 degrees, too narrow to aim with, so the cone was allowed to
+// reach past the screen and a player could lock somebody they could not see. Declaring landscape
+// the supported orientation deleted the case rather than the symptom: every viewport this game runs
+// in renders more than the cone asks for, so "in front of me" now means "on my screen" with no
+// exception at all. A window narrower than the contract is the contract's problem - it stops input
+// and says so - not something for this rule to bend around.
 // The desktop default, so callers who have no viewport to describe still get a real number.
 const DEFAULT_VIEW = Object.freeze({
   fovDegrees: THIRD_PERSON_CAMERA_PROFILE.locked.distanceKeys[0].fovDegrees,
@@ -46,8 +47,7 @@ export function lockOnAcquireHalfAngleRadians(view = {}) {
   // cone to nothing - null and 0 are what a half-built layout reports, not a one-pixel-wide screen.
   const statedAspect = Number(view?.aspectRatio);
   const aspectRatio = Number.isFinite(statedAspect) && statedAspect > 0 ? statedAspect : DEFAULT_VIEW.aspectRatio;
-  const onScreen = horizontalHalfFovRadians(fovDegrees, aspectRatio);
-  return Math.max(LOCK_ON_MINIMUM_HALF_ANGLE_RADIANS, onScreen * LOCK_ON_VIEW_CONE_FRACTION);
+  return horizontalHalfFovRadians(fovDegrees, aspectRatio) * LOCK_ON_VIEW_CONE_FRACTION;
 }
 
 export const LOCK_ON_ACQUIRE_HALF_ANGLE_RADIANS = lockOnAcquireHalfAngleRadians(DEFAULT_VIEW);

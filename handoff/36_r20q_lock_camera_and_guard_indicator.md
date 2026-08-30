@@ -65,11 +65,38 @@ behind — the honest answer for a frame that renders about ±11 degrees.
 The lab reports intent beside every reduction (`方位 30°→12°`) and can render into a simulated
 window shape, so a fit can never quietly stand in for a profile that does not work.
 
+## Orientation contract (R20R.1)
+
+**Landscape only, minimum aspect 1.2:1.** `src/combat/supported-viewport.js` states it, with the
+measurements behind the number. A viewport under the floor stops INPUT and asks to be rotated (a
+phone) or widened (a browser window); it never stops the simulation, because a screen a player can
+turn sideways to freeze a fight with is a cheat.
+
+The decision was not made on taste. Portrait is the only aspect where the other rules have to lie:
+
+- The lock cone is derived from what is rendered, and in landscape it always lands inside the frame
+  (16:9 renders ±45.2° against a ±40.6° cone; 4:3 ±37.0 against ±33.3). Portrait renders ±14.6°,
+  narrower than any usable cone, which is why a 25° floor existed — the only exception clause in the
+  lock rules, and it let a player lock somebody they could not see. **That floor is now deleted**:
+  the cone is `0.9 × horizontal half-FOV`, with no exception, at every supported viewport.
+- The camera's safe-frame fit absorbs the whole cost in the shoulder alone down to 0.74:1, so every
+  landscape device including an iPad at 4:3 keeps its framing. Portrait runs that lever out and has
+  to spend the look point too, losing the over-the-shoulder framing, the half-body crop and the pair
+  reading side by side — all three at once, on the smaller screen.
+
+1.2 is the floor because FOV 50 needs 1.13:1 for the cone to be fully screen-derived; 1.2 keeps a
+margin and sits between the widest portrait (9:16 = 0.5625) and the narrowest landscape device
+worth supporting (4:3 = 1.333). The camera's secondary lever stays in the solver as a net for
+windows outside the contract, and a test asserts it is never needed inside it.
+
+**Unverified and still to check:** whether CrazyGames requires a mobile title to handle portrait. If
+it does, the rotate gate is the handling — the contract does not change.
+
 ## Also open from this arc
 
 - Wire the tuned profile + lock-on into the combat lab (step 3 of the free-movement plan).
 - Derive the steering budget: 45°/s windup tracking against a target strafing at 0.75 m/s
   (17.9°/s angular at 2.4m, 39.1°/s at 1.1m).
 - Locked vs unlocked win-rate balance check.
-- Mobile portrait: the lock cone floors at 25° there, which is wider than the ~11° the phone
-  actually renders — the one place a lock may be taken slightly off screen.
+- Mobile UI proper: touch controls for the landscape layout, and the rotate-to-landscape gate
+  (`describeViewport`) wired into whatever hosts the game.

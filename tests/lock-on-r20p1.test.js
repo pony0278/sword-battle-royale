@@ -4,12 +4,12 @@ import {
   LOCK_ON_ACQUIRE_RANGE_METERS,
   LOCK_ON_BREAK_RANGE_METERS,
   LOCK_ON_ACQUIRE_HALF_ANGLE_RADIANS,
-  LOCK_ON_MINIMUM_HALF_ANGLE_RADIANS,
   lockOnAcquireHalfAngleRadians,
   createLockOnRuntime,
   selectLockOnCandidate,
 } from '../src/combat/lock-on.js';
 import { horizontalHalfFovRadians, THIRD_PERSON_CAMERA_PROFILE } from '../src/combat/third-person-camera.js';
+import { MINIMUM_SUPPORTED_ASPECT_RATIO, describeViewport } from '../src/combat/supported-viewport.js';
 import { MEASURED_SWING_FORWARD_REACH_METERS, SWING_RELEVANCE_MARGIN_METERS } from '../src/combat/swing-threat-relevance.js';
 
 const at = (id, x, z) => ({ id, position: { x, z } });
@@ -132,13 +132,24 @@ test('R20Q.1 the frontal cone is derived from what is rendered, not from a const
   );
 });
 
-test('R20Q.1 a portrait phone hits the floor rather than becoming unlockable', () => {
-  // Portrait renders about +-11 degrees horizontally; nine tenths of that is a cone you could not
-  // aim with. The floor is the deliberate exception, and it is the only case where the cone is
-  // allowed to reach past the screen edge.
-  const portrait = { fovDegrees: 50, aspectRatio: 9 / 19.5 };
-  assert.equal(lockOnAcquireHalfAngleRadians(portrait), LOCK_ON_MINIMUM_HALF_ANGLE_RADIANS);
-  assert.ok(LOCK_ON_MINIMUM_HALF_ANGLE_RADIANS > horizontalHalfFovRadians(portrait.fovDegrees, portrait.aspectRatio));
+test('R20R.1 the cone never reaches past the screen, in any viewport the game supports', () => {
+  // This is the invariant the orientation contract bought. It used to have an exception: a portrait
+  // phone renders about +-14.6 degrees, too narrow to aim with, so the cone was floored at 25 and a
+  // player could lock somebody off screen. Landscape-only deleted the case, so the rule holds with
+  // no exception - which is worth more than the edge case it used to protect.
+  for (let aspectRatio = MINIMUM_SUPPORTED_ASPECT_RATIO; aspectRatio <= 2.4; aspectRatio += 0.05) {
+    for (const fovDegrees of [50, 59, 74]) {
+      const cone = lockOnAcquireHalfAngleRadians({ fovDegrees, aspectRatio });
+      const screen = horizontalHalfFovRadians(fovDegrees, aspectRatio);
+      assert.ok(cone < screen, `cone must stay inside the frame at ${aspectRatio.toFixed(2)}:1, fov ${fovDegrees}`);
+      assert.ok(cone > 0);
+    }
+  }
+  // A window narrower than the contract is not this rule's problem: the cone stays honest and gets
+  // small, and the contract is what stops play.
+  const portrait = { fovDegrees: 59, aspectRatio: 9 / 19.5 };
+  assert.ok(lockOnAcquireHalfAngleRadians(portrait) < horizontalHalfFovRadians(portrait.fovDegrees, portrait.aspectRatio) + 1e-9);
+  assert.equal(describeViewport(portrait.aspectRatio).supported, false);
   // Garbage describes no viewport, so it gets the desktop default rather than a NaN cone.
   assert.equal(lockOnAcquireHalfAngleRadians({ fovDegrees: 'wide', aspectRatio: null }), LOCK_ON_ACQUIRE_HALF_ANGLE_RADIANS);
 });

@@ -17,6 +17,7 @@ import { createLongswordDirectionalAttackRuntime } from '../../src/combat/longsw
 import { createEngagementGround } from '../../src/combat/engagement-ground.js';
 import { LANE_LOCOMOTION_PROFILE } from '../../src/combat/lane-locomotion.js';
 import { lockOnAcquireHalfAngleRadians } from '../../src/combat/lock-on.js';
+import { MINIMUM_SUPPORTED_ASPECT_RATIO, describeViewport } from '../../src/combat/supported-viewport.js';
 import {
   THIRD_PERSON_CAMERA_PROFILE,
   THIRD_PERSON_CAMERA_STAGE,
@@ -41,7 +42,11 @@ const SWEEP_MAX_METERS = 5;
 // framing verified in one window: the vertical field does not change with the aspect but the
 // horizontal one does, so an over-the-shoulder offset that reads fine at 16:9 can push you out the
 // SIDE of a 4:3 one. The lab's own canvas is added at run time, because it is neither of these.
-const VERIFIED_ASPECT_RATIOS = Object.freeze([4 / 3, 16 / 9, 19.5 / 9]);
+//
+// R20R.1: landscape only, so this list is the narrowest supported window, the two common phone and
+// desktop shapes, and the widest. Portrait is not here because it is not played - a viewport under
+// the contract stops input and asks to be rotated.
+const VERIFIED_ASPECT_RATIOS = Object.freeze([MINIMUM_SUPPORTED_ASPECT_RATIO, 4 / 3, 16 / 9, 19.5 / 9]);
 // The body, not the blade: whether a LEFT sweep reads at the bottom of the frame is a thing to
 // watch during playback, because a blade leaving frame for three frames is sometimes fine and a
 // body leaving frame never is. The shape itself comes from the shared module, so the page and the
@@ -656,6 +661,9 @@ async function main() {
       framing
         ? `<span class="${framing.marginNdc >= 0.05 ? 'good' : framing.marginNdc >= 0 ? 'warn' : 'bad'}">對手全身 ${(framing.opponentMarginNdc * 100).toFixed(0)}% · 自己護欄 ${(framing.playerMarginNdc * 100).toFixed(0)}%${framing.croppingPlayerLegs ? ' · 切腿(刻意)' : ''}${framing.marginNdc < 0 ? ' · 出框' : ''}</span>`
         : '',
+      describeViewport(renderAspect).supported
+        ? ''
+        : `<span class="bad">\u6b64\u6bd4\u4f8b\u4e0d\u5728\u652f\u63f4\u7bc4\u570d(\u6700\u4f4e ${MINIMUM_SUPPORTED_ASPECT_RATIO}:1) \u00b7 \u904a\u6232\u6703\u8981\u6c42\u73a9\u5bb6${describeViewport(renderAspect).remedy === 'rotate-to-landscape' ? '\u8f49\u6a6b\u5411' : '\u62c9\u5bec\u8996\u7a97'}\u4e26\u505c\u63a5\u8f38\u5165</span>`,
       state.safeFrame && fitted
         ? `<span class="${fitted.eased ? 'warn' : 'good'}">\u8996\u7a97 ${round(solvedAspect(), 2)}:1 \u00b7 ${fitted.eased
           ? `\u65b9\u4f4d ${fitted.intendedAzimuthDegrees[1].toFixed(0)}\u00b0\u2192${fitted.appliedAzimuthDegrees[1].toFixed(0)}\u00b0${fitted.panZScale < 1 ? ` panZ\u00d7${fitted.panZScale.toFixed(2)}` : ''} (\u4fdd${state.prefer === 'crop' ? '\u534a\u8eab' : state.prefer === 'shoulder' ? '\u904e\u80a9' : '\u5747\u8861'})`

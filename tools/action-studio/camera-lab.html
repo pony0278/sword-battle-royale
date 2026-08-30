@@ -37,7 +37,7 @@
     <canvas id="canvas"></canvas>
     <div class="hud" id="hud">載入中…</div>
     <div class="legend">
-      R20Q.1 相機實驗室 · v=camera-lab-r20q1f · 共用 src/combat/third-person-camera.js 的解算與 profile,這裡只調數字,不是第二台相機<br>
+      R20Q.1 相機實驗室 · v=camera-lab-r20r1 · 共用 src/combat/third-person-camera.js 的解算與 profile,這裡只調數字,不是第二台相機<br>
       WASD 移動防守方 · 拖曳畫面轉動鏡頭(自由模式) · L 切換鎖定/自由 · 空白鍵播放攻擊
     </div>
   </main>
@@ -116,13 +116,18 @@
       <button data-prefer="shoulder">窄視窗保過肩</button>
       <button data-prefer="balanced">各收一半</button>
     </div>
-    <p class="note">模擬視窗比例(不會真的改變畫布,只改解算用的比例):</p>
+    <p class="note">
+      模擬視窗比例 —— 會用該比例的投影並把畫面裁成那個形狀來渲染,不是只改個數字。
+      <b>R20R.1:遊戲只支援橫向,最低 1.2:1</b>;低於此值遊戲會要求玩家轉橫向並停掉輸入(世界照跑,不然轉個手機就能凍結戰鬥)。
+      直向那顆留著是為了看清楚我們放棄了什麼。
+    </p>
     <div class="row">
       <button data-aspect="live">實際畫布</button>
       <button data-aspect="1.3333">4:3</button>
       <button data-aspect="1.7778">16:9</button>
       <button data-aspect="2.3333">21:9</button>
-      <button data-aspect="0.4615">直向手機</button>
+      <button data-aspect="1.2">1.2:1(最低支援)</button>
+      <button data-aspect="0.5625">直向(不支援,示範)</button>
     </div>
 
     <h2>出框檢查</h2>
@@ -138,6 +143,6 @@
     </div>
     <pre id="output"></pre>
   </aside>
-  <script type="module" src="./camera-lab.js?v=camera-lab-r20q1f"></script>
+  <script type="module" src="./camera-lab.js?v=camera-lab-r20r1"></script>
 </body>
 </html>
