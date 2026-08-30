@@ -164,7 +164,7 @@ export function createShieldParryLabUi(elements) {
       parryPromptHeld, firstContact, latestFinePlan, latestGuardCoverage, latestReachableInterceptTarget,
       anchorCoverage,
       latestGripConstraintReport, step3AContactTransfer, defenderReleaseGate,
-      step3AOwnsLiveContact, directOldB3Diagnostic, debugMode, lockReport, swingInnerReach,
+      step3AOwnsLiveContact, directOldB3Diagnostic, debugMode, lockReport, swingInnerReach, sprintReport,
     } = model;
     const outcome = latestCombatResult?.resolution?.outcome || '—';
     const recoil = combatSnapshot.attackerRecoil?.sample;
@@ -203,12 +203,19 @@ export function createShieldParryLabUi(elements) {
     // R20S.3: the lock, on the line the parry gate already owns - one glance answers both "am I
     // locked" and "is my timing being read", which are the two things a player is holding in their
     // head at once.
+    // R20U.1: running, on the same line as the lock, because "let go of the lock to run" is the
+    // one rule about it a player has to hold in their head.
+    const sprintStatus = sprintReport?.sprinting === true
+      ? ` · 全速奔跑 ${sprintReport.speedMps} m/s`
+      : sprintReport && sprintReport.reason !== 'not-requested' && sprintReport.reason !== 'sprint-is-forward-only'
+        ? ` · 跑不起來:${sprintReport.reason === 'locked-on-let-go-of-the-lock-to-run' ? '鎖定中(Tab 解除才能跑)' : sprintReport.reason === 'guard-is-up' ? '舉著盾' : sprintReport.reason === 'mid-swing' ? '揮砍中' : '閃避中'}`
+        : '';
     const lockStatus = lockReport
       ? lockReport.locked
         ? ` · LOCK ON ${lockReport.distanceMeters == null ? '' : `${lockReport.distanceMeters.toFixed(2)}m `}(Tab 解除)`
         : ` · FREE · Tab 鎖定${lockReport.reason === 'nobody-inside-the-frontal-view' ? '(對手不在正面視野)' : lockReport.reason === 'nobody-within-lock-range' ? '(超出 3.5m 鎖定距離)' : ''}`
       : '';
-    hudCoupling.textContent = `Parry gate: ${inputStatus}${lockStatus}`;
+    hudCoupling.textContent = `Parry gate: ${inputStatus}${lockStatus}${sprintStatus}`;
     const interceptRequired = latestFinePlan?.requiredDistance;
     const interceptApplied = latestFinePlan?.appliedDistance;
     const originalPrediction = latestReachableInterceptTarget?.predictedRequiredDistanceMeters;
@@ -314,6 +321,11 @@ const MOVE_FORWARD_KEYS = Object.freeze({ KeyW: 1, KeyS: -1 });
 const MOVE_LATERAL_KEYS = Object.freeze({ KeyD: 1, KeyA: -1 });
 // R20S.3: locking is a decision, so it gets a key of its own rather than happening to you.
 const LOCK_KEY = 'Tab';
+// R20U.1: running. Shift is the movement convention and this is a movement verb; it keeps its
+// older job as the arrows' attacker modifier, because the two act on different key sets - Shift
+// with the arrows drives the attacker, Shift with WASD runs. Held rather than toggled: a sprint
+// you have to remember to turn off is a sprint you die in.
+const SPRINT_KEYS = Object.freeze(['ShiftLeft', 'ShiftRight']);
 
 function laneIntentFrom(held) {
   let intent = 0;
@@ -372,6 +384,12 @@ export function bindShieldParryLabUiEvents({
   handlers,
 }) {
   bindFreeLook(canvas, handlers);
+  let sprintHeld = false;
+  function publishSprint(held) {
+    if (held === sprintHeld) return;
+    sprintHeld = held;
+    handlers.onSprint?.(sprintHeld);
+  }
   let parryKeyDownObserved = false;
   const heldLaneKeys = new Set();
   let attackerModifierHeld = false;
@@ -442,6 +460,7 @@ export function bindShieldParryLabUiEvents({
       if (!event.repeat) { heldLateralKeys.add(event.code); publishLaneIntent(); }
       return;
     }
+    if (SPRINT_KEYS.includes(event.code)) { publishSprint(true); return; }
     if (MOVE_FORWARD_KEYS[event.code] !== undefined || MOVE_LATERAL_KEYS[event.code] !== undefined) {
       event.preventDefault();
       if (!event.repeat) { heldMoveKeys.add(event.code); publishMoveIntent(); }
@@ -489,6 +508,7 @@ export function bindShieldParryLabUiEvents({
       publishLaneIntent();
       return;
     }
+    if (SPRINT_KEYS.includes(event.code)) { publishSprint(false); return; }
     if (MOVE_FORWARD_KEYS[event.code] !== undefined || MOVE_LATERAL_KEYS[event.code] !== undefined) {
       event.preventDefault();
       heldMoveKeys.delete(event.code);
@@ -509,6 +529,7 @@ export function bindShieldParryLabUiEvents({
     heldLaneKeys.clear();
     heldMoveKeys.clear();
     publishMoveIntent();
+    publishSprint(false); // a key held into a lost window never reports its keyup
     attackerModifierHeld = false;
     handlers.onGuardKey?.(false); // a guard held into a lost window never reports its keyup
     publishLaneIntent();

@@ -123,7 +123,8 @@ const parryGate = createCommittedParryContactGate();
 const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
   labScene, walkClips: ATTACKER_WALK_CLIPS, services: { captureRigPose, applyRigPose } });
 const playerController = createShieldParryPlayerController({ // R20S.3: feet, lock-on and the camera
-  camera, laneController, freeCamera, inspectionCamera: INSPECTION_CAMERA });
+  camera, laneController, freeCamera, inspectionCamera: INSPECTION_CAMERA, // R20U.1: running is refused by these two
+  readGuardActive: () => defenderStance.report.guardActive === true, readAttacking: () => attackRuntime.active === true });
 const exchangeState = createShieldParryExchangeState();
 // R20G.1 (B6c): defence is a choice - in block mode the guard (and the whole measured defence
 // behind it) exists only while the key is held; the machine follows this input, never auto-raises.
@@ -362,6 +363,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     debugStanceProfile: () => debugStanceProfile,
     parryReviewActive: (snapshot) => isParryPreContactReviewActive(snapshot),
     lockReport: () => playerController.lockReport, // R20S.3
+    sprintReport: () => playerController.sprintReport, // R20U.1
   },
 });
 
@@ -585,6 +587,7 @@ bindShieldParryLabUiEvents({
     onDodge: (direction) => requestDodge(direction), // R20F.1 through the stance gate
     onMoveIntent: (moveIntent) => playerController.setMoveIntent(moveIntent), // R20S.3 WASD, world frame
     onLockToggle: () => playerController.toggleLock(), // R20S.3 Tab
+    onSprint: (held) => playerController.setSprintRequested(held), // R20U.1 Shift
     onLook: (deltaPixels) => (INSPECTION_CAMERA ? null : playerController.look(deltaPixels)), // R20S.3 free look
     onShowSurface: (checked) => buckler.setParrySurfaceVisible(checked),
     onResize: resize,
