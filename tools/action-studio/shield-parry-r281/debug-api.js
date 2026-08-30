@@ -72,6 +72,7 @@ export function createShieldParryDebugApi({
     get latestFineTracking() { return getExchangeState().latestFineTracking; },
     get latestGuardCoverage() { return getExchangeState().latestGuardCoverage; },
     get latestSwingRelevance() { return getExchangeState().latestSwingRelevance; },
+    get latestSwingInnerReach() { return getExchangeState().latestSwingInnerReach; }, // R20T.2
     get latestCloseRangePosture() { return getExchangeState().latestCloseRangePosture; },
     get latestConeGate() { return getExchangeState().latestConeGate; },
     get latestDodge() { return getExchangeState().latestDodge; },

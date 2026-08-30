@@ -3,6 +3,7 @@ import { createBoundedShieldArmAdditiveRuntime } from '../../../src/combat/predi
 import { createTopPrepReadabilityHoldRuntime } from '../../../src/combat/parry-top-prep-readability-hold.js';
 import { createGuardCoverageDirector } from '../../../src/combat/guard-coverage-director.js';
 import { assessSwingThreatRelevance } from '../../../src/combat/swing-threat-relevance.js';
+import { assessSwingInnerReach } from '../../../src/combat/swing-inner-reach.js';
 import { planCloseRangeGuardPosture } from '../../../src/combat/close-range-guard-hold.js';
 import { planGuardFacingTurn } from '../../../src/combat/guard-facing-turn.js';
 import { planGuardConeGate } from '../../../src/combat/guard-cone-gate.js';
@@ -70,6 +71,8 @@ export function createShieldParryPreContactController({
   function zeroBracePlan() { return planArticulatedImpactBracing({ mode: 'off' }); }
 
   let closeRangePosture = null;
+
+  let innerReach = null; // R20T.2, cached the same way and for the same reason
   let coneGate = null;
   function updateBlockPreContact(snapshot, currentBlade, deltaSeconds, context) {
     const { previousBlade, defenderSword, separationMeters, defenderFacingErrorRadians, dodgeReport, stanceReport } = context;
@@ -86,6 +89,21 @@ export function createShieldParryPreContactController({
     // return speed instead of performing coverage for a blow landing metres short.
     const relevance = assessSwingThreatRelevance({ direction: snapshot.direction, separationMeters });
     exchangeState.latestSwingRelevance = relevance;
+    // R20T.2: and the mirror question - a swing can also be thrown from too CLOSE. LEFT's sweep
+    // passes at a radius, so a defender inside it is behind the blade. Reported only: the geometry
+    // already decides the outcome, this just stops it being a mystery.
+    //
+    // Decided once per exchange from the separation at commitment, like the posture below and for
+    // a sharper version of the same reason: the assessment spends the attacker's advance itself,
+    // so feeding it a live separation mid-swing subtracts that advance a second time and calls a
+    // swing "inside the arc" that is about to land perfectly.
+    if (innerReach?.sequence !== snapshot.sequence) {
+      innerReach = Object.freeze({
+        sequence: snapshot.sequence,
+        report: assessSwingInnerReach({ direction: snapshot.direction, separationMeters }),
+      });
+    }
+    exchangeState.latestSwingInnerReach = innerReach.report;
     // R19O.1: and a swing arriving inside the working floor meets a shield that stays in front.
     // Decided once per exchange from the separation at commitment - a per-frame flip between
     // chase and hold would shake the arm at exactly the range that already looks worst.

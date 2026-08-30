@@ -133,11 +133,22 @@ Guard up, the same cell blocks: the shield is out in front and intercepts a blad
 body. So the hole is only against a defender who is *not defending* — and at hugging range it
 removes one of the three directions from the mixup.
 
-**Design decision still open** (see `orbit-steering-budget.js` for all the numbers):
-- keep it as a mechanic — being inside a sweep is a real thing about swords — and make it legible,
-  so an attacker is not left wondering why their swing passed through nothing;
-- or give LEFT a close-range variant with a tighter arc (animation or procedural);
-- or raise the minimum separation to ~1.05m, which touches every measured band and is the riskiest.
+**Decided: it stays a mechanic, and it is now visible** (R20T.2). `swing-inner-reach.js` is the
+mirror of `swing-threat-relevance.js` — that one says when a swing is thrown from too far to matter,
+this one says when it is thrown from too close to arrive. LEFT's inner bound is 1.05m of separation
+at contact; TOP and RIGHT have none in the playable range (null means measured-and-there-is-none,
+and the report distinguishes that from an unknown direction). The lab says "太近:這一刀從身體後方
+掃過" on the contact line, which is where a player already looks to find out whether a blade met
+anything. The module carries no contact authority and a test asserts it cannot acquire any.
+
+The model states its own tolerance (2cm): it spends the whole authored advance to reach the contact
+separation, which runs about a centimetre pessimistic against the browser, so a margin inside that
+band is reported as an edge rather than as a verdict — 1.5m lands 3/3 and a warning must never
+contradict a measured hit.
+
+Not done, and worth considering together: at hugging range the mixup narrows from three directions
+to two, which favours the defender — and the defender is usually the one who closed. If that reads
+badly in play, the answer is a disengage verb (the dash) rather than changing the geometry.
 
 ## Also open from this arc
 
