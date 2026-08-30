@@ -43,6 +43,12 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   // two steps of that sandwich.
   const defenderGait = createLaneWalkCycle();
   let pendingDefenderLegPose = null;
+  // R20W.1: ground the player took this frame through the world-frame verbs, waiting to be spent
+  // on the gait. Free movement writes straight to the ledger, so before this the defender's legs
+  // were fed a lane step that is always zero for the player - measured in the lab as 1.04 m/s of
+  // travel against a gait reporting 0.00 m/s, which is a body gliding with its legs held still.
+  // Accumulated here and consumed once in walk(), so the gait keeps exactly one writer per frame.
+  let pendingWorldTravel = { x: 0, z: 0 };
   const ground = createEngagementGround({
     startSeparationMeters: labScene.engagementStance.separationMeters,
   });
@@ -65,11 +71,11 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   }
 
   function walkSampleFor(gait) {
-    if (!gait?.moving || !walkClips) return null;
-    const forward = gait.direction > 0;
-    const clipId = forward ? walkClips.forward : walkClips.backward;
-    const duration = forward ? walkDurations.forward : walkDurations.backward;
-    return Object.freeze({ clipId, timeSeconds: walkClipTimeSeconds(gait.phase, duration) });
+    // R20W.1: the gait names its own clip now, because the phase it holds was advanced against
+    // that clip's measured stride. Choosing the clip out here a second time could disagree.
+    if (!gait?.moving || !gait.clipId || !walkClips) return null;
+    const duration = gait.direction > 0 ? walkDurations.forward : walkDurations.backward;
+    return Object.freeze({ clipId: gait.clipId, timeSeconds: walkClipTimeSeconds(gait.phase, duration) });
   }
 
   function apply() {
@@ -106,7 +112,20 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     // R20S.3: the world-frame verbs, for free movement. Pass-throughs rather than new mechanism -
     // the ledger already clamps a world move exactly as it clamps a lane step, and routing them
     // here keeps the ledger's ownership intact (nothing outside this file holds `ground`).
-    moveDefenderWorld(deltaX, deltaZ) { return ground.moveDefenderWorld(deltaX, deltaZ); },
+    moveDefenderWorld(deltaX, deltaZ) {
+      // R20W.1: measured rather than requested. The ledger can refuse part of a move - walking into
+      // the opponent stops at the contact floor - and feet that count the request keep striding
+      // against a wall. Read the position either side and bank what actually happened, which is the
+      // same rule the lane step follows.
+      const before = ground.report.defenderPosition;
+      const result = ground.moveDefenderWorld(deltaX, deltaZ);
+      const after = ground.report.defenderPosition;
+      pendingWorldTravel = {
+        x: pendingWorldTravel.x + (after.x - before.x),
+        z: pendingWorldTravel.z + (after.z - before.z),
+      };
+      return result;
+    },
     // null hands facing back to the gap, which is what a lock does. Anything else is owned facing,
     // and the base-facing integrator gives it the same inertia every other turn in this lab has.
     setDefenderFacing(radians) { return ground.setDefenderFacing(radians); },
@@ -178,7 +197,15 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       // Closing the gap is walking forward, so the sign flips: the ledger speaks in separation.
       if (attackerStep) attackerGait.advance({ travelledMeters: -attackerStep.meters, deltaSeconds });
       else attackerGait.settle();
-      defenderGait.advance({ travelledMeters: -defenderStep.meters, deltaSeconds });
+      // R20W.1: both ways the defender can move, spent on one gait. The lane step speaks in
+      // separation, so closing the gap is forward and the sign flips; the world travel is turned
+      // into the body's own forward axis, which is what the legs are attached to. A pure sidestep
+      // therefore contributes nothing and the legs stay planted - the strafe debt KayKit's missing
+      // walking strafe leaves us with, unchanged by this and now visible in the gait's own numbers.
+      const facing = defenderBaseFacing.facingRadians;
+      const worldForwardMeters = pendingWorldTravel.x * Math.sin(facing) + pendingWorldTravel.z * Math.cos(facing);
+      pendingWorldTravel = { x: 0, z: 0 };
+      defenderGait.advance({ travelledMeters: -defenderStep.meters + worldForwardMeters, deltaSeconds });
       // Stamped every frame rather than only on movement: a facing can still be turning while
       // both pairs of feet are planted, and the stamp is absolute and idempotent.
       apply();

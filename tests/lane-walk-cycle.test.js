@@ -3,22 +3,35 @@ import assert from 'node:assert/strict';
 
 import {
   KAYKIT_LEG_CHAIN_METERS,
+  LANE_WALK_CLIPS,
   LANE_WALK_CYCLE_PROFILE,
   LANE_WALK_CYCLE_STAGE,
-  WALK_STEP_PER_LEG_LENGTH,
   createLaneWalkCycle,
   walkClipTimeSeconds,
   wrapCyclePhase,
 } from '../src/combat/lane-walk-cycle.js';
 import { LANE_LOCOMOTION_PROFILE } from '../src/combat/lane-locomotion.js';
+import { MEASURED_LOCOMOTION_CLIPS } from '../src/combat/locomotion-clip-measurements.js';
 
-test('R19C.1 takes its stride from the rig rather than from the clip', () => {
-  assert.equal(LANE_WALK_CYCLE_STAGE, 'R19C.1');
-  // kaykit-rig-definition.js: upperleg -> lowerleg 0.227m plus lowerleg -> foot 0.149m.
-  assert.ok(Math.abs(KAYKIT_LEG_CHAIN_METERS - (0.227 + 0.149)) < 1e-9);
-  assert.ok(Math.abs(LANE_WALK_CYCLE_PROFILE.stepMeters - KAYKIT_LEG_CHAIN_METERS * WALK_STEP_PER_LEG_LENGTH) < 1e-9);
-  assert.ok(Math.abs(LANE_WALK_CYCLE_PROFILE.cycleMeters - LANE_WALK_CYCLE_PROFILE.stepMeters * 2) < 1e-9);
-  assert.ok(WALK_STEP_PER_LEG_LENGTH < 1, 'a walking step is shorter than the leg taking it');
+test('R20W.1 takes its stride from the clip rather than from the skeleton', () => {
+  assert.equal(LANE_WALK_CYCLE_STAGE, 'R20W.1');
+  // R19C.1 derived the stride from the leg - 0.8 of a leg length per step - because the clips carry
+  // no root translation. The leg is still what it was; the stride is not what it implied.
+  assert.ok(Math.abs(KAYKIT_LEG_CHAIN_METERS - 0.3765) < 1e-9);
+  assert.equal(LANE_WALK_CYCLE_PROFILE.forwardCycleMeters, MEASURED_LOCOMOTION_CLIPS[LANE_WALK_CLIPS.forward].strideMeters);
+  assert.equal(LANE_WALK_CYCLE_PROFILE.backwardCycleMeters, MEASURED_LOCOMOTION_CLIPS[LANE_WALK_CLIPS.backward].strideMeters);
+  assert.ok(LANE_WALK_CYCLE_PROFILE.forwardCycleMeters > KAYKIT_LEG_CHAIN_METERS * 0.8 * 2,
+    'the assumed 0.6016m cycle was shorter than any walk in the pack');
+});
+
+test('R20W.1 the walk clip is the one authored for the speed we walk at', () => {
+  // The clip that shipped, Walking_A, is authored for 0.643 m/s while both fighters walk at 1.0.
+  // Walking_B was in the same pack all along at 1.053, which is the same walk to within 5%.
+  const chosen = MEASURED_LOCOMOTION_CLIPS[LANE_WALK_CLIPS.forward];
+  const rejected = MEASURED_LOCOMOTION_CLIPS.Walking_A;
+  const stretch = (clip) => LANE_LOCOMOTION_PROFILE.forwardSpeedMps / Math.abs(clip.authoredSpeedMps);
+  assert.ok(Math.abs(stretch(chosen) - 1) < 0.06, `chosen clip runs at ${stretch(chosen).toFixed(2)}x`);
+  assert.ok(stretch(rejected) > 1.5, `the old clip ran at ${stretch(rejected).toFixed(2)}x`);
 });
 
 test('R19C.1 a foot on the ground stays there: phase tracks distance, not time', () => {
@@ -33,30 +46,58 @@ test('R19C.1 a foot on the ground stays there: phase tracks distance, not time',
 
 test('R19C.1 a full cycle of ground is exactly one cycle of the clip', () => {
   const cycle = createLaneWalkCycle();
-  cycle.advance({ travelledMeters: LANE_WALK_CYCLE_PROFILE.cycleMeters, deltaSeconds: 1 });
+  cycle.advance({ travelledMeters: LANE_WALK_CYCLE_PROFILE.forwardCycleMeters, deltaSeconds: 1 });
   assert.ok(Math.abs(cycle.phase) < 1e-9, 'a whole cycle lands back where it started');
-  cycle.advance({ travelledMeters: LANE_WALK_CYCLE_PROFILE.cycleMeters / 2, deltaSeconds: 1 });
+  cycle.advance({ travelledMeters: LANE_WALK_CYCLE_PROFILE.forwardCycleMeters / 2, deltaSeconds: 1 });
   assert.ok(Math.abs(cycle.phase - 0.5) < 1e-9);
 });
 
-test('R19C.1 the measured walk speeds give a plausible gait rather than a sprint', () => {
-  // Cross-check against the speeds locomotion actually uses: a 0.6m cycle at 1.0 m/s is a stride
-  // every 0.6s, which is a brisk walk. If either number drifts into nonsense this catches it.
-  const forwardCycleSeconds = LANE_WALK_CYCLE_PROFILE.cycleMeters / LANE_LOCOMOTION_PROFILE.forwardSpeedMps;
-  const backwardCycleSeconds = LANE_WALK_CYCLE_PROFILE.cycleMeters / LANE_LOCOMOTION_PROFILE.backwardSpeedMps;
-  assert.ok(forwardCycleSeconds > 0.4 && forwardCycleSeconds < 1.2, `${forwardCycleSeconds.toFixed(2)}s per stride`);
-  assert.ok(backwardCycleSeconds > forwardCycleSeconds, 'backing off is the slower gait');
+test('R20W.1 the gait names the clip it advanced against, and how hard it is being driven', () => {
+  const cycle = createLaneWalkCycle();
+  const walking = cycle.advance({ travelledMeters: LANE_LOCOMOTION_PROFILE.forwardSpeedMps * 0.1, deltaSeconds: 0.1 });
+  assert.equal(walking.clipId, LANE_WALK_CLIPS.forward);
+  assert.ok(Math.abs(walking.playbackRate - 1) < 0.06, `walking should run near as drawn, got ${walking.playbackRate}`);
+
+  // Sprint is the same clip driven harder - measured, not chosen: at 1.5 m/s the only run clip in
+  // the pack would play at 0.46x, so the walk stays and the stretch is what it costs.
+  const sprinting = cycle.advance({ travelledMeters: 1.5 * 0.1, deltaSeconds: 0.1 });
+  assert.equal(sprinting.clipId, LANE_WALK_CLIPS.forward);
+  assert.ok(sprinting.playbackRate > 1.3 && sprinting.playbackRate < 1.5, `sprint runs at ${sprinting.playbackRate}`);
+
+  const standing = cycle.settle();
+  assert.equal(standing.clipId, null, 'standing names no clip, which is the caller cue to idle');
+  assert.equal(standing.playbackRate, null);
 });
 
-test('R19C.1 walking backwards runs the cycle in reverse without sampling off the clip', () => {
+test('R20W.1 walking backwards plays its own clip forwards rather than in reverse', () => {
+  // The sign says which clip, not which direction to play it - and until the stride carried a sign
+  // the arithmetic said otherwise: negative travel against a positive stride wound the backwards
+  // clip backwards, which is a moonwalk with the feet sliding at twice the body's speed.
   const cycle = createLaneWalkCycle();
-  const back = cycle.advance({ travelledMeters: -0.1, deltaSeconds: 1 / 30 });
+  const first = cycle.advance({ travelledMeters: -0.1, deltaSeconds: 1 / 10 });
+  const firstPhase = cycle.phase;
+  assert.equal(first.direction, -1);
+  assert.equal(first.clipId, LANE_WALK_CLIPS.backward);
+  assert.ok(first.cycleMeters < 0, 'the backwards clip carries the body backwards, and says so');
+  cycle.advance({ travelledMeters: -0.1, deltaSeconds: 1 / 10 });
+  assert.ok(cycle.phase > firstPhase, 'clip time moves forwards while the body moves backwards');
   assert.ok(cycle.phase >= 0 && cycle.phase < 1, `phase ${cycle.phase} left the clip`);
-  assert.equal(back.direction, -1);
-  assert.equal(back.moving, true);
+
   for (const [input, expected] of [[0, 0], [0.25, 0.25], [1, 0], [1.25, 0.25], [-0.25, 0.75], [-1.25, 0.75]]) {
     assert.ok(Math.abs(wrapCyclePhase(input) - expected) < 1e-9, `wrap(${input})`);
   }
+});
+
+test('R19C.1 the measured walk speeds give a plausible gait rather than a sprint', () => {
+  const forwardCycleSeconds = LANE_WALK_CYCLE_PROFILE.forwardCycleMeters / LANE_LOCOMOTION_PROFILE.forwardSpeedMps;
+  const backwardCycleSeconds = Math.abs(LANE_WALK_CYCLE_PROFILE.backwardCycleMeters) / LANE_LOCOMOTION_PROFILE.backwardSpeedMps;
+  assert.ok(forwardCycleSeconds > 0.6 && forwardCycleSeconds < 1.5, `${forwardCycleSeconds.toFixed(2)}s per stride`);
+  assert.ok(backwardCycleSeconds > 0.6 && backwardCycleSeconds < 1.5, `${backwardCycleSeconds.toFixed(2)}s per stride backing off`);
+});
+
+test('R20W.1 a clip nobody measured has no stride to guess at', () => {
+  assert.throws(() => createLaneWalkCycle({ clips: { forward: 'Some_Unmeasured_Clip', backward: 'Walking_Backwards' } }),
+    /measured strides/);
 });
 
 test('R19C.1 standing still holds the gait instead of creeping or rewinding it', () => {
@@ -65,13 +106,11 @@ test('R19C.1 standing still holds the gait instead of creeping or rewinding it',
   const mid = cycle.phase;
   assert.ok(mid > 0);
 
-  // A drift far slower than a walk is standing, not walking.
   const crawling = cycle.advance({ travelledMeters: 0.0001, deltaSeconds: 0.3 });
   assert.equal(crawling.moving, false);
   assert.equal(crawling.direction, 0);
   assert.equal(cycle.phase, mid, 'below the threshold the legs settle rather than inch along');
 
-  // And stopping keeps the foot you were on, so tapping a key does not stutter the gait.
   const settled = cycle.settle();
   assert.equal(settled.moving, false);
   assert.equal(cycle.phase, mid);
@@ -83,7 +122,6 @@ test('R19C.1 standing still holds the gait instead of creeping or rewinding it',
 test('R19C.1 clip time is phase against whatever clip is playing', () => {
   assert.ok(Math.abs(walkClipTimeSeconds(0.5, 1.07) - 0.535) < 1e-9);
   assert.equal(walkClipTimeSeconds(0, 1.07), 0);
-  // Forwards and backwards clips differ in length, and the same phase means the same point in each.
   assert.ok(Math.abs(walkClipTimeSeconds(0.25, 2) - 0.5) < 1e-9);
   assert.equal(walkClipTimeSeconds(0.5, 0), 0);
   assert.equal(walkClipTimeSeconds(Number.NaN, 1.07), 0);
