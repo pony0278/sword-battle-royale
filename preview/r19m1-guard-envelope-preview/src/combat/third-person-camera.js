@@ -1,3 +1,5 @@
+import { CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS } from './close-range-guard-hold.js';
+
 export const THIRD_PERSON_CAMERA_STAGE = 'R20Q.1';
 
 // R20Q.1 - where the camera stands, as a pose solved from numbers rather than a camera written
@@ -191,6 +193,26 @@ export const FIGHTER_SILHOUETTE = Object.freeze({
   footMeters: 0.02,
 });
 
+// The two fighters are not read the same way, so they must not be framed the same way.
+//
+// You read an ATTACK off the opponent's whole body - the windup lives outside the contact height,
+// and LEFT's low sweep starts near the floor - so the opponent is framed head to feet.
+//
+// You read YOUR OWN state off your guard, and every exchange this project has measured is decided
+// between the lowest contact floor and the top of your head: TOP lands at 1.138m, LEFT at 1.15m,
+// RIGHT between 1.24m and 1.44m. Below that line your own character is legs, and where your feet
+// are is a question you answer from the GAP between the two of you, which is on screen regardless.
+// So cropping your own knees costs nothing readable, and buys the frame back for the thing you
+// actually have to time against. The floor is the guard-hold's own measured number rather than a
+// number chosen here, so if the contact geometry ever moves, this moves with it.
+export const PLAYER_READABLE_FLOOR_METERS = Math.min(...Object.values(CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS));
+
+export const PLAYER_READABLE_SILHOUETTE = Object.freeze({
+  radiusMeters: FIGHTER_SILHOUETTE.radiusMeters,
+  headMeters: FIGHTER_SILHOUETTE.headMeters,
+  footMeters: PLAYER_READABLE_FLOOR_METERS,
+});
+
 export function fighterSilhouettePoints(position, silhouette = FIGHTER_SILHOUETTE) {
   const half = finite(silhouette.radiusMeters, FIGHTER_SILHOUETTE.radiusMeters) / Math.SQRT2;
   const x = finite(position?.x);
@@ -239,6 +261,33 @@ export function evaluateFraming(input = {}) {
   }
   if (!worst) return null;
   return Object.freeze({ ...worst, behindCamera: false, aspectRatio, inFrame: worst.marginNdc >= 0 });
+}
+
+// The locked pair, judged by what each of them is for. Two margins rather than one, because a
+// framing that crops the player's legs on purpose is a decision, and a framing that crops the
+// opponent's feet is a bug - and a single number cannot tell those apart.
+export function evaluateLockedFraming(input = {}) {
+  const pose = input.pose;
+  const aspectRatio = input.aspectRatio;
+  const opponent = evaluateFraming({
+    pose, aspectRatio, points: fighterSilhouettePoints(input.target, input.opponentSilhouette),
+  });
+  const player = evaluateFraming({
+    pose, aspectRatio, points: fighterSilhouettePoints(input.player, input.playerSilhouette || PLAYER_READABLE_SILHOUETTE),
+  });
+  if (!opponent || !player) return null;
+  // How much of your own body actually made it in, reported rather than judged: it is the number
+  // a person tuning a half-body shot wants to see, and no value of it is wrong on its own.
+  const playerFull = evaluateFraming({ pose, aspectRatio, points: fighterSilhouettePoints(input.player) });
+  return Object.freeze({
+    opponentMarginNdc: opponent.marginNdc,
+    playerMarginNdc: player.marginNdc,
+    playerFullBodyMarginNdc: playerFull ? playerFull.marginNdc : null,
+    marginNdc: Math.min(opponent.marginNdc, player.marginNdc),
+    inFrame: opponent.marginNdc >= 0 && player.marginNdc >= 0,
+    croppingPlayerLegs: Boolean(playerFull && playerFull.marginNdc < 0 && player.marginNdc >= 0),
+    aspectRatio: opponent.aspectRatio,
+  });
 }
 
 function dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }

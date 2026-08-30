@@ -83,7 +83,7 @@ test('R20Q.1 the page can be driven from the console, which is how sets get comp
 
 test('R20Q.1 the presets are complete poses, so loading one cannot half-apply', () => {
   const presets = labJs.slice(labJs.indexOf('const PRESETS = Object.freeze({'), labJs.indexOf('const FIELD_SPECS'));
-  for (const name of ['seed:', 'yours:', 'propagated:', 'softened:']) {
+  for (const name of ['seed:', 'yours:', 'propagated:', 'softened:', 'halfBody:', 'opponentFirst:']) {
     assert.ok(presets.includes(name), `missing preset ${name}`);
   }
   // Three keys each, at the separations the profile keys on, and every one of them spread from a
@@ -92,7 +92,7 @@ test('R20Q.1 the presets are complete poses, so loading one cannot half-apply', 
     assert.ok(presets.includes(`separationMeters: ${separation},`), `presets skip the ${separation}m key`);
   }
   assert.match(labJs, /PRESET_MIDDLE = \{ fovDegrees: 59[^}]*azimuthDegrees: 40/);
-  assert.equal((presets.match(/\.\.\.PRESET_MIDDLE/g) || []).length, 5, 'the tuned character is written once and spread, not retyped');
+  assert.ok((presets.match(/\.\.\.PRESET_MIDDLE/g) || []).length >= 5, 'the tuned character is written once and spread, not retyped');
 });
 
 test('R20Q.1 the sweep checks every bearing, not just a duel down one axis', () => {
@@ -100,10 +100,21 @@ test('R20Q.1 the sweep checks every bearing, not just a duel down one axis', () 
   // is not verified. This is the check that would have caught the wrongly oriented body box.
   const measure = labJs.slice(labJs.indexOf('function measureProfile'), labJs.indexOf('function sweepFraming'));
   assert.match(measure, /for \(let bearing = 0; bearing < Math\.PI \* 2/);
-  assert.match(measure, /fighterSilhouettePoints\(player\), \.\.\.fighterSilhouettePoints\(target\)/);
-  // And the shape is the shared one - the page must not carry its own idea of how wide a body is.
+  // And both the shape and the asymmetry are the shared module's - the page must not carry its own
+  // idea of how wide a body is, nor its own guess at how much of yourself has to stay visible.
+  assert.match(measure, /evaluateLockedFraming\(\{ pose, aspectRatio: aspect, player, target \}\)/);
+  // And every window shape the game has to survive, because the horizontal field is the half that
+  // moves with the aspect: an over-the-shoulder offset fine at 16:9 can push you out the side of a
+  // 4:3 one, which is exactly how the first opponent-first candidate failed.
+  assert.match(labJs, /VERIFIED_ASPECT_RATIOS = Object\.freeze\(\[4 \/ 3, 16 \/ 9, 19\.5 \/ 9\]\)/);
+  assert.match(measure, /for \(const aspect of aspects\)/);
   assert.doesNotMatch(labJs, /SILHOUETTE_HALF_WIDTH_METERS/);
-  assert.match(labJs, /fighterSilhouettePoints,/);
+  assert.match(labJs, /PLAYER_READABLE_FLOOR_METERS,/);
+  // A deliberate crop is reported, never counted as a failure.
+  assert.match(measure, /if \(framing\.croppingPlayerLegs\) legCrops \+= 1;/);
+  assert.match(labJs, /worstOpponentMarginNdc/);
+  assert.match(labJs, /worstPlayerMarginNdc/);
+  assert.match(labJs, /opponentScreenHeight/);
 });
 
 test('R20Q.1 the measurement says what a slider cannot: what the camera does on its own', () => {

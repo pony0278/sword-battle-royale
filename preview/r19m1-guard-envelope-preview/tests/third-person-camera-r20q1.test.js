@@ -4,12 +4,15 @@ import {
   THIRD_PERSON_CAMERA_PROFILE,
   createThirdPersonCameraRuntime,
   evaluateFraming,
+  evaluateLockedFraming,
   fighterSilhouettePoints,
+  PLAYER_READABLE_FLOOR_METERS,
   horizontalHalfFovRadians,
   sampleCameraKeys,
   solveFreeCameraPose,
   solveLockedCameraPose,
 } from '../src/combat/third-person-camera.js';
+import { CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS } from '../src/combat/close-range-guard-hold.js';
 
 // R20Q.1 - the shared camera. These lock the geometry and the shape of the profile, NOT the
 // numbers in it: the numbers are seeds for camera-lab.html to replace, and a test that pinned them
@@ -215,4 +218,32 @@ test('R20Q.1 the seed profile holds both fighters on screen at every distance AN
         `both fighters must be on screen at ${separation.toFixed(1)}m, bearing ${(bearing * 180 / Math.PI).toFixed(0)}deg`);
     }
   }
+});
+
+test('R20Q.1 the two fighters are framed by what each of them is for', () => {
+  // You read an attack off the opponent's whole body; you read your own state off your guard, and
+  // every exchange measured in this project is decided at or above the lowest contact floor. So a
+  // framing that crops your own legs is a decision and one that crops the opponent's feet is a bug,
+  // and one margin cannot tell those apart.
+  assert.equal(PLAYER_READABLE_FLOOR_METERS, Math.min(...Object.values(CLOSE_RANGE_GUARD_HOLD_CONTACT_FLOOR_METERS)),
+    'the floor is the guard-hold measurement, not a number chosen for the camera');
+
+  const player = { x: 0, z: 0 };
+  const target = { x: 0, z: 2.4 };
+  // A pose looking well past the player: their knees go, their guard stays.
+  const key = { separationMeters: 2.4, fovDegrees: 59, angleDegrees: 12, distanceMeters: 3.4, lookHeightMeters: 0.69, azimuthDegrees: 40, panX: 0.05, panZ: 1.8 };
+  const pose = solveLockedCameraPose({ player, target, profile: { locked: { distanceKeys: [key] } } });
+  const framed = evaluateLockedFraming({ pose, aspectRatio: 16 / 9, player, target });
+  assert.equal(framed.croppingPlayerLegs, true, 'this pose is the deliberate crop');
+  assert.ok(framed.playerMarginNdc > 0, 'and the guard survives it');
+  assert.ok(framed.playerFullBodyMarginNdc < 0, 'while the full body does not');
+  assert.equal(framed.inFrame, true, 'a deliberate crop is not a failure');
+  // The overall margin is the worse of the two, so a caller who reads one number still cannot miss
+  // the opponent leaving frame.
+  assert.equal(framed.marginNdc, Math.min(framed.opponentMarginNdc, framed.playerMarginNdc));
+  // Pushed far enough, the guard goes too - and then it IS a failure.
+  const tooFar = solveLockedCameraPose({
+    player, target, profile: { locked: { distanceKeys: [{ ...key, panZ: 2.3 }] } },
+  });
+  assert.equal(evaluateLockedFraming({ pose: tooFar, aspectRatio: 16 / 9, player, target }).inFrame, false);
 });
