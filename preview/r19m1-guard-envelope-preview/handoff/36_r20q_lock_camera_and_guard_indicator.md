@@ -163,8 +163,11 @@ every geometric escape inside an exchange (3 m/s of burst, any direction, any ti
 blocked), which is why the dodge escapes through time instead — so a burst that adds no i-frames is
 just a worse dodge. What does not exist is not evasion; it is **leaving**.
 
-So sprint, and only sprint: hold Shift, 1.5 m/s, forward only, refused while locked, guarding,
-swinging or dodging. Locked buys time, free buys space — the verb set lands on the mode split
+So sprint, and only sprint: hold Shift, 1.5 m/s, **any direction**, refused while locked, guarding,
+swinging or dodging. Any direction because free mode has no backpedal — the body turns through 180°
+at its own 180°/s and runs that way — so a forward-only rule was reading the key rather than the
+motion. Locked keeps the three walk speeds, because there the gap owns the facing and backing off
+really is backing off. Locked buys time, free buys space — the verb set lands on the mode split
 already built. Running means giving up the lock first, and a chaser pays the same price, so a chase
 is two people who have both put their guard away. Nothing enforces that beyond where the verb
 lives.
