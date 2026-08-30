@@ -53,6 +53,9 @@ const VERIFIED_ASPECT_RATIOS = Object.freeze([4 / 3, 16 / 9, 19.5 / 9]);
 const PRESET_MIDDLE = { fovDegrees: 59, angleDegrees: 12, lookHeightMeters: 0.69, azimuthDegrees: 40, panX: 0.05 };
 const PRESET_SOFT_ENDS = { fovDegrees: 57, angleDegrees: 13, lookHeightMeters: 0.8, azimuthDegrees: 30, panX: 0.1 };
 const SEED_END = { fovDegrees: 50, azimuthDegrees: 0 };
+// The half-body character: a wide lens, low and close. Distance, panZ and azimuth are what the
+// two presets below argue about; these four are the look itself.
+const PRESET_HALF_BODY = { fovDegrees: 74, angleDegrees: 19, lookHeightMeters: 0.69, panX: 0.01 };
 const PRESETS = Object.freeze({
   // What the module ships today.
   seed: () => cloneProfile(THIRD_PERSON_CAMERA_PROFILE).locked.distanceKeys,
@@ -78,6 +81,22 @@ const PRESETS = Object.freeze({
     { separationMeters: 2.4, fovDegrees: 74, angleDegrees: 19, lookHeightMeters: 0.69, azimuthDegrees: 30, panX: 0.01, distanceMeters: 2.95, panZ: 1.67 },
     { separationMeters: 4, ...PRESET_MIDDLE, distanceMeters: 5.4, panZ: 2.2 },
   ],
+  // The half-body look, made to survive a narrow window. The submitted version works at 16:9 and
+  // only there: azimuth 30 spends horizontal room, panZ spends it again, and a 4:3 frame does not
+  // have that much - your own guard leaves the SIDE of the screen at 2.3-2.6m, which is where a
+  // fight lives. Measured, over-the-shoulder and a leg crop compete for the same budget: at azimuth
+  // 30 or 40 there is no distance/panZ pair that crops legs and keeps the guard at 4:3. This eases
+  // the shoulder to 20 and keeps everything else - crop depth -16% against the original's -20%,
+  // and the guard's margin goes from 15% to 26%.
+  halfBodyShoulder: () => [1.4, 2.4, 4].map((separationMeters) => ({
+    separationMeters, ...PRESET_HALF_BODY, azimuthDegrees: 20, distanceMeters: 2.85, panZ: 1.45,
+  })),
+  // The deep crop, bought by giving up the shoulder entirely. Half the body gone (-71%) and the
+  // guard at 27%, but at azimuth 0 the two fighters sit on the same vertical line - screen gap
+  // 0.01 against 0.57 - so the fight reads in depth again, which is what the shoulder was for.
+  halfBodyBehind: () => [1.4, 2.4, 4].map((separationMeters) => ({
+    separationMeters, ...PRESET_HALF_BODY, azimuthDegrees: 0, distanceMeters: 3.05, panZ: 2,
+  })),
   // The same intent, spent on the opponent instead: one lens for the whole band, the camera in
   // close, and the look point pushed most of the way to them. The opponent goes from 30% of the
   // frame's height to 40-52% while your own guard keeps a 15% margin.
