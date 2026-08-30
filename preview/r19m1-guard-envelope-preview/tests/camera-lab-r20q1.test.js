@@ -56,8 +56,8 @@ test('R20Q.1 what the page prints is what the module reads back', () => {
 test('R20Q.1 the page identifies its build and states the sweep it verifies', () => {
   // The tag is bumped whenever the page is published, so the legend line and the module query
   // identify the build a tester is actually looking at rather than whatever the browser cached.
-  assert.match(labHtml, /camera-lab\.js\?v=camera-lab-r20q1f"/);
-  assert.match(labHtml, /v=camera-lab-r20q1f \u00b7/);
+  assert.match(labHtml, /camera-lab\.js\?v=camera-lab-r20r1"/);
+  assert.match(labHtml, /v=camera-lab-r20r1 \u00b7/);
   assert.match(labHtml, /third-person-camera\.js/);
   // The out-of-frame check runs the lock band, which is the contact floor to the break range.
   assert.match(labJs, /SWEEP_MIN_METERS = 1\.1/);
@@ -108,7 +108,9 @@ test('R20Q.1 the sweep checks every bearing, not just a duel down one axis', () 
   // And every window shape the game has to survive, because the horizontal field is the half that
   // moves with the aspect: an over-the-shoulder offset fine at 16:9 can push you out the side of a
   // 4:3 one, which is exactly how the first opponent-first candidate failed.
-  assert.match(labJs, /VERIFIED_ASPECT_RATIOS = Object\.freeze\(\[4 \/ 3, 16 \/ 9, 19\.5 \/ 9\]\)/);
+  // R20R.1: the verified list is landscape only, and starts at the contract's own floor.
+  assert.match(labJs, /VERIFIED_ASPECT_RATIOS = Object\.freeze\(\[MINIMUM_SUPPORTED_ASPECT_RATIO, 4 \/ 3, 16 \/ 9, 19\.5 \/ 9\]\)/);
+  assert.match(labJs, /describeViewport\(renderAspect\)\.supported/, 'the page says when a simulated window is outside the contract');
   assert.match(measure, /for \(const aspect of aspects\)/);
   assert.doesNotMatch(labJs, /SILHOUETTE_HALF_WIDTH_METERS/);
   assert.match(labJs, /PLAYER_READABLE_FLOOR_METERS,/);
