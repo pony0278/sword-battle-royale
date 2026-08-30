@@ -22,6 +22,7 @@ import {
   THIRD_PERSON_CAMERA_STAGE,
   createThirdPersonCameraRuntime,
   evaluateFraming,
+  fighterSilhouettePoints,
   sampleCameraKeys,
   solveFreeCameraPose,
   solveLockedCameraPose,
@@ -33,13 +34,10 @@ const LAB_STAGE = 'R20Q.1';
 // only finished when it survives this whole sweep, which is what the out-of-frame check is for.
 const SWEEP_MIN_METERS = 1.1;
 const SWEEP_MAX_METERS = 5;
-// The body box, not the blade. Half a metre of shoulder either side and a head at 1.78m is what
-// must stay on screen; whether a LEFT sweep reads at the bottom of the frame is a thing to watch
-// during playback, because a blade leaving frame for three frames is sometimes fine and a body
-// leaving frame never is.
-const SILHOUETTE_HALF_WIDTH_METERS = 0.45;
-const SILHOUETTE_HEAD_METERS = 1.78;
-const SILHOUETTE_FOOT_METERS = 0.02;
+// The body, not the blade: whether a LEFT sweep reads at the bottom of the frame is a thing to
+// watch during playback, because a blade leaving frame for three frames is sometimes fine and a
+// body leaving frame never is. The shape itself comes from the shared module, so the page and the
+// tests are checking the same thing.
 
 // Named starting points, so a comparison is one line in the console rather than twenty-one
 // sliders. "yours" is what came back from the first tuning pass; the two after it are that same
@@ -138,15 +136,7 @@ async function main() {
 
   // --- the two actors, as points the camera has to hold -------------------------------------
   function silhouettePoints(report) {
-    const points = [];
-    for (const position of [report.attackerPosition, report.defenderPosition]) {
-      for (const side of [1, -1]) {
-        for (const height of [SILHOUETTE_HEAD_METERS, SILHOUETTE_FOOT_METERS]) {
-          points.push({ x: position.x + side * SILHOUETTE_HALF_WIDTH_METERS, y: height, z: position.z });
-        }
-      }
-    }
-    return points;
+    return [...fighterSilhouettePoints(report.attackerPosition), ...fighterSilhouettePoints(report.defenderPosition)];
   }
 
   function desiredPose(report) {
@@ -256,13 +246,21 @@ async function main() {
     const outOfFrame = [];
     let worst = null;
     for (let separation = SWEEP_MIN_METERS; separation <= SWEEP_MAX_METERS + 1e-9; separation += 0.1) {
-      const probe = createEngagementGround({ startSeparationMeters: round(separation, 2) }).report;
-      const pose = solveLockedCameraPose({
-        player: probe.defenderPosition, target: probe.attackerPosition, profile,
-      });
-      const framing = evaluateFraming({ pose, aspectRatio, points: silhouettePoints(probe) });
-      if (!worst || framing.marginNdc < worst.marginNdc) worst = { ...framing, separationMeters: separation };
-      if (framing.marginNdc < 0) outOfFrame.push({ separationMeters: round(separation, 1), marginNdc: round(framing.marginNdc) });
+      // Every separation, and at each one every bearing: a lock follows the pair round, so the
+      // framing has to hold with the opponent to your side as much as in front of you. Walking the
+      // pair down one axis is what let a wrongly oriented body box go unnoticed.
+      for (let bearing = 0; bearing < Math.PI * 2 - 1e-9; bearing += Math.PI / 6) {
+        const player = { x: 0, z: 0 };
+        const target = { x: Math.sin(bearing) * separation, z: Math.cos(bearing) * separation };
+        const pose = solveLockedCameraPose({ player, target, profile });
+        const framing = evaluateFraming({
+          pose, aspectRatio, points: [...fighterSilhouettePoints(player), ...fighterSilhouettePoints(target)],
+        });
+        if (!worst || framing.marginNdc < worst.marginNdc) worst = { ...framing, separationMeters: separation };
+        if (framing.marginNdc < 0 && outOfFrame.at(-1)?.separationMeters !== round(separation, 1)) {
+          outOfFrame.push({ separationMeters: round(separation, 1), marginNdc: round(framing.marginNdc) });
+        }
+      }
     }
     // Walking at the measured sidestep speed, between each pair of keys.
     const keys = [...profile.locked.distanceKeys].sort((a, b) => a.separationMeters - b.separationMeters);

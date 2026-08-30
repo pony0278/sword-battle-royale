@@ -37,9 +37,9 @@ export const THIRD_PERSON_CAMERA_PROFILE = Object.freeze({
       // full silhouettes inside a 16:9 frame with a tenth of a half-frame to spare, found by
       // sweeping evaluateFraming below with the look point 40% of the way to the opponent. The
       // angle, height, fov and panX ARE taste, and are the first things worth arguing with.
-      Object.freeze({ separationMeters: 1.4, fovDegrees: 50, angleDegrees: 16, distanceMeters: 3.4, lookHeightMeters: 1.25, azimuthDegrees: 0, panX: 0.35, panZ: 0.55 }),
-      Object.freeze({ separationMeters: 2.4, fovDegrees: 50, angleDegrees: 18, distanceMeters: 4.15, lookHeightMeters: 1.3, azimuthDegrees: 0, panX: 0.35, panZ: 0.95 }),
-      Object.freeze({ separationMeters: 4, fovDegrees: 50, angleDegrees: 20, distanceMeters: 5.35, lookHeightMeters: 1.35, azimuthDegrees: 0, panX: 0.3, panZ: 1.6 }),
+      Object.freeze({ separationMeters: 1.4, fovDegrees: 50, angleDegrees: 16, distanceMeters: 3.9, lookHeightMeters: 1.25, azimuthDegrees: 0, panX: 0.35, panZ: 0.55 }),
+      Object.freeze({ separationMeters: 2.4, fovDegrees: 50, angleDegrees: 18, distanceMeters: 4.65, lookHeightMeters: 1.3, azimuthDegrees: 0, panX: 0.35, panZ: 0.95 }),
+      Object.freeze({ separationMeters: 4, fovDegrees: 50, angleDegrees: 20, distanceMeters: 5.9, lookHeightMeters: 1.35, azimuthDegrees: 0, panX: 0.3, panZ: 1.6 }),
     ]),
   }),
   free: Object.freeze({
@@ -172,6 +172,38 @@ export function solveFreeCameraPose(input = {}) {
     mode: 'free',
     pitchDegrees,
   });
+}
+
+// What has to stay on screen. A fighter is a cylinder, not a plank: 0.45m of shoulder in every
+// horizontal direction, from the floor to the top of the head. The square inscribed here has its
+// corners exactly on that radius, so the widest point is 0.45 whichever way the pair happens to be
+// standing - which is the whole point, and the reason this is a function rather than four numbers
+// typed at each call site.
+//
+// It earned that status by being wrong. The first version measured 0.45m along world x only. That
+// is the correct lateral half-width while the two of them face each other down the z axis - which
+// is every straight-line sweep - and it silently becomes body DEPTH the moment the opponent
+// circles to your side. A profile that framed a duel perfectly cropped somebody the instant they
+// strafed, and nothing caught it, because nothing ever tested a sideways fight.
+export const FIGHTER_SILHOUETTE = Object.freeze({
+  radiusMeters: 0.45,
+  headMeters: 1.78,
+  footMeters: 0.02,
+});
+
+export function fighterSilhouettePoints(position, silhouette = FIGHTER_SILHOUETTE) {
+  const half = finite(silhouette.radiusMeters, FIGHTER_SILHOUETTE.radiusMeters) / Math.SQRT2;
+  const x = finite(position?.x);
+  const z = finite(position?.z);
+  const points = [];
+  for (const sideX of [1, -1]) {
+    for (const sideZ of [1, -1]) {
+      for (const y of [finite(silhouette.headMeters, FIGHTER_SILHOUETTE.headMeters), finite(silhouette.footMeters, FIGHTER_SILHOUETTE.footMeters)]) {
+        points.push({ x: x + sideX * half, y, z: z + sideZ * half });
+      }
+    }
+  }
+  return points;
 }
 
 // Is it on screen? The camera lab's out-of-frame warning is this function swept across the whole
