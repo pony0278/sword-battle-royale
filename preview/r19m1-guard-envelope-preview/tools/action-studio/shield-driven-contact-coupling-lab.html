@@ -75,7 +75,7 @@
       <div id="hudRecoil">OLD B3 recoil: —</div>
       <div id="hudDiagnostic">STEP 3A diagnostic: —</div>
     </div>
-    <div class="legend">B6c2:BLOCK 模式預設不設防,按住 F 才舉盾(放開即收;但已成立的 parry 或進行中的接觸會打完才收 — R20H.2),不舉盾會挨打;在對方出手後的正確窗口內「剛舉起」的盾自動升級為 parry(R20H.1 Sekiro 式,輕點即可:RIGHT 約115–170ms、LEFT 約220–320ms、TOP 約270–370ms,太早=普通格擋、太晚=遲舉盾自負);交鋒中才舉的盾會直接就位而非慢慢移過去(R20J.1),但仍需在接觸前約 70ms 以上舉起才來得及;LEFT 的打擊期已重新配速(R20M.1:原本單一影格內轉 132°、峰值 3972°/s,現為 1332°/s,接觸從 0.26s 移到 0.38s,起手期不變)· 格擋判定的盾面比視覺盤面寬 2cm(R20L.1:盾攔不住比手臂快 30 倍的劍,格擋本來就是「擋在路上」,擦到即算,但遲舉盾的懲罰不變) · ↑↓ 防守者進退 · ←→ 防守者側移(R19V.1,繞著對手轉)· Space 閃避(R20F.1,配方向鍵選向,無鍵=後閃;i-frame 窗 0.1–0.3s,持盾中不可閃,冷卻 1s)· 觸控:右下方向鈕+🛡持盾+✦閃避· Shift+↑↓ 攻擊者進退(揮擊中攻擊者由步伐接管)· WASD 移動(鎖定時 A/D 繞著對手側移)· Tab 鎖定/解除 · Cyan = shield target · yellow = sword contact · red = original attack axis · green/orange = current sword axis PASS/FAIL · purple = wrist→hilt line</div>
+    <div class="legend">B6c2:BLOCK 模式預設不設防,按住 F 才舉盾(放開即收;但已成立的 parry 或進行中的接觸會打完才收 — R20H.2),不舉盾會挨打;在對方出手後的正確窗口內「剛舉起」的盾自動升級為 parry(R20H.1 Sekiro 式,輕點即可:RIGHT 約115–170ms、LEFT 約220–320ms、TOP 約270–370ms,太早=普通格擋、太晚=遲舉盾自負);交鋒中才舉的盾會直接就位而非慢慢移過去(R20J.1),但仍需在接觸前約 70ms 以上舉起才來得及;LEFT 的打擊期已重新配速(R20M.1:原本單一影格內轉 132°、峰值 3972°/s,現為 1332°/s,接觸從 0.26s 移到 0.38s,起手期不變)· 格擋判定的盾面比視覺盤面寬 2cm(R20L.1:盾攔不住比手臂快 30 倍的劍,格擋本來就是「擋在路上」,擦到即算,但遲舉盾的懲罰不變) · ↑↓ 防守者進退 · ←→ 防守者側移(R19V.1,繞著對手轉)· Space 閃避(R20F.1,配方向鍵選向,無鍵=後閃;i-frame 窗 0.1–0.3s,持盾中不可閃,冷卻 1s)· 觸控:右下方向鈕+🛡持盾+✦閃避· Shift+↑↓ 攻擊者進退(揮擊中攻擊者由步伐接管)· WASD 移動(鎖定時 A/D 繞著對手側移)· Tab 鎖定/解除 · R20T.2:LEFT 是低位橫掃,刀刃在離攻擊者約 1.10m 處通過,所以貼到 1.05m 以內時它會從身體後方掃過去(TOP/RIGHT 沒有這個內緣;舉盾仍然擋得下,因為盾在身體前面)——太近時 HUD 的接觸那行會直接說「太近」 · Cyan = shield target · yellow = sword contact · red = original attack axis · green/orange = current sword axis PASS/FAIL · purple = wrist→hilt line</div>
   </main>
   <aside>
     <h1>Step 3A · Live Shield → Sword → Wrist-Grip</h1>
@@ -152,6 +152,6 @@
       this.classList.toggle('expanded');
     });
   </script>
-  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-free-movement-r20s3"></script>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-inside-the-arc-r20t2"></script>
 </body>
 </html>

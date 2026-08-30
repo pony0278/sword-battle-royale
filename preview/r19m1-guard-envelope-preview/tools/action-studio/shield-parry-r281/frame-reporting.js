@@ -46,6 +46,7 @@ export function createShieldParryFrameReporting({
       snapshot,
       ready: read.ready(),
       lockReport: read.lockReport?.() ?? null, // R20S.3
+      swingInnerReach: exchangeState.latestSwingInnerReach, // R20T.2
       selectedMode: read.selectedMode(),
       step3AContactTransfer: exchangeState.step3AContactTransfer,
       latestGripConstraintReport: exchangeState.latestGripConstraintReport,
@@ -70,6 +71,7 @@ export function createShieldParryFrameReporting({
       latestParryConfirmation: exchangeState.latestParryConfirmation,
       latestParryInput: exchangeState.latestParryInput,
       lockReport: read.lockReport?.() ?? null, // R20S.3
+      swingInnerReach: exchangeState.latestSwingInnerReach, // R20T.2
       selectedMode: read.selectedMode(),
       requestedOutcome: read.selectedMode(),
       parryReviewActive: read.parryReviewActive(snapshot),
@@ -111,6 +113,7 @@ export function createShieldParryFrameReporting({
       ready: read.ready(),
       selectedDirection: read.selectedDirection(),
       lockReport: read.lockReport?.() ?? null, // R20S.3
+      swingInnerReach: exchangeState.latestSwingInnerReach, // R20T.2
       selectedMode: read.selectedMode(),
       parryProfile: parryGate.profile,
       defenderReleaseGate: contactHandoffController.defenderDeflectReleaseGate(),
