@@ -64,13 +64,20 @@ export const LOCK_ADVANTAGE_VERDICT = Object.freeze({
   lockedBlocksAtEveryMoveDuration: true,
   unlockedBlocksOnlyWhileStandingStill: true,
   secondsOfMovementBeforeFirstFailure: 0.25,
-  status: 'resolved-by-r20v2-a-raised-guard-pins-the-body',
+  // R20V.2 built the pin, R20V.3 took it out after playtesting. So the measured penalty below is
+  // what SHIPS: unlocked and moving, the guard is worth very little, and locking is how you fight.
+  status: 'measured-accepted-unlocked-is-for-travelling',
 });
 
-// R20V.2 took the cheap option: a raised guard stops the feet steering the facing. Re-measured the
-// same way afterwards, and what it leaves behind is the measured cone rather than a new rule -
-// which is exactly why it was preferred over aiming the guard from the camera, which would have
-// invalidated every band.
+// R20V.2 built the cheap option - a raised guard stops the feet steering the facing - and R20V.3
+// removed it after playtesting. The numbers are kept because they are the expensive half and they
+// were right: pinning DID work, mechanically. It was rejected on feel, and by more than one player:
+// holding a shield and pressing right should walk right, the way it does with the shield down, and
+// requiring "aim first, then guard" imports locked-mode thinking into the mode whose whole premise
+// is that you face where you are going. Consistency beat the 22 degrees.
+//
+// Anyone proposing it again should know both halves: it costs nothing to measure, it needs nothing
+// re-measured, and it was still the wrong call.
 export const MEASURED_PINNED_GUARD_DEFENCE = Object.freeze({
   byMoveSeconds: Object.freeze({
     0.25: Object.freeze({ facingErrorDegrees: 5.9, top: 'blocked', right: 'blocked', left: 'blocked' }),

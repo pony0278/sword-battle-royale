@@ -54,7 +54,7 @@ test('R20V.1 the cone bands are recorded as NOT answering this, which is why the
   }
 });
 
-test('R20V.2 the fix is measured the same way, and leaves the cone in charge', async () => {
+test('R20V.2 the pin worked mechanically, and was still rejected - both halves stay recorded', async () => {
   const { MEASURED_PINNED_GUARD_DEFENCE } = await import('../src/combat/lock-advantage.js');
   const pinned = MEASURED_PINNED_GUARD_DEFENCE.byMoveSeconds;
   const loose = MEASURED_UNLOCKED_DEFENCE_DECAY.byMoveSeconds;
@@ -70,10 +70,12 @@ test('R20V.2 the fix is measured the same way, and leaves the cone in charge', a
   }
   assert.equal(pinned[1].left, 'body');
   assert.ok(pinned[1].facingErrorDegrees > Math.abs(MEASURED_GUARD_RELIABLE_CONE_DEGREES.left.fromDegrees));
+  // And the shipped verdict is the other one, so the record cannot be read as "this is live".
+  assert.equal(LOCK_ADVANTAGE_VERDICT.status, 'measured-accepted-unlocked-is-for-travelling');
 });
 
 test('R20V.1 the verdict records how it was resolved', () => {
-  assert.equal(LOCK_ADVANTAGE_VERDICT.status, 'resolved-by-r20v2-a-raised-guard-pins-the-body');
+  assert.equal(LOCK_ADVANTAGE_VERDICT.status, 'measured-accepted-unlocked-is-for-travelling');
   assert.equal(LOCK_ADVANTAGE_VERDICT.lockedBlocksAtEveryMoveDuration, true);
   assert.equal(LOCK_ADVANTAGE_VERDICT.unlockedBlocksOnlyWhileStandingStill, true);
 });
