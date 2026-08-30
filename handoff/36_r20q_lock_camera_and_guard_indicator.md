@@ -176,6 +176,30 @@ The speed is tuned, not measured, and says so: KayKit's Running clips carry no r
 What is measured is the bracket — above the 1.0 m/s walk or it buys nothing, below the dodge's
 1.62 m/s authored burst or the dodge stops being the fastest thing a fighter can do.
 
+## What locking is worth (R20V.1) — measured, decision open
+
+There is no win rate to measure: no second agent, no victory condition. Translated into the
+asymmetry that would produce one — does the guard still catch the blade? The defender moves for T
+seconds, stops, and is attacked, guard held, 2.4m, n=2, pinned clock.
+
+**Locked**: facing is derived from the gap, so it follows the opponent for free. 0° of error and
+every attack blocked at every T. **Unlocked**: facing is owned and follows movement, so moving turns
+you away — 75.3° after a quarter second (the body turn's own 180°/s against a sidestep's 90° ask),
+and TOP and LEFT already land on the body. By 0.5s all three land.
+
+Standing still unlocked blocks perfectly, so the honest sentence is **"you cannot move and defend at
+the same time when unlocked"**, not "unlocked cannot defend".
+
+The stated intent was to *encourage* locking; what is measured is closer to *requiring* it. Left as
+a decision with three ways out, in `lock-advantage.js`: accept it (unlocked is for travelling), aim
+the guard at the camera rather than the body while unlocked (defend where you look, which is how the
+lock cone is already derived), or stop a pure sidestep from turning the body.
+
+Also recorded there: R19X.1's reliable cone bands do **not** transfer to this question. They were
+measured by injecting rotation at a fixed stance; these cells rotate and displace together, because
+in free mode that is one input — every error above sits inside all three bands and the blocks failed
+anyway.
+
 ## Also open from this arc
 
 - Root-cause LEFT's close-range body whiff (above).
