@@ -41,6 +41,39 @@ const SILHOUETTE_HALF_WIDTH_METERS = 0.45;
 const SILHOUETTE_HEAD_METERS = 1.78;
 const SILHOUETTE_FOOT_METERS = 0.02;
 
+// Named starting points, so a comparison is one line in the console rather than twenty-one
+// sliders. "yours" is what came back from the first tuning pass; the two after it are that same
+// character made consistent across the three keys, which is the only thing measurement had to say
+// about it - the character itself is not mine to have an opinion about.
+const PRESET_MIDDLE = { fovDegrees: 59, angleDegrees: 12, lookHeightMeters: 0.69, azimuthDegrees: 40, panX: 0.05 };
+const PRESET_SOFT_ENDS = { fovDegrees: 57, angleDegrees: 13, lookHeightMeters: 0.8, azimuthDegrees: 30, panX: 0.1 };
+const SEED_END = { fovDegrees: 50, azimuthDegrees: 0 };
+const PRESETS = Object.freeze({
+  // What the module ships today.
+  seed: () => cloneProfile(THIRD_PERSON_CAMERA_PROFILE).locked.distanceKeys,
+  // The first tuning pass: one key given a character, two left as seeds. Walking through 2.4m
+  // swings the camera 30 deg/s on its own, which is faster than the opponent crosses the screen.
+  yours: () => [
+    { separationMeters: 1.4, ...SEED_END, angleDegrees: 16, distanceMeters: 3.4, lookHeightMeters: 1.25, panX: 0.35, panZ: 0.55 },
+    { separationMeters: 2.4, ...PRESET_MIDDLE, distanceMeters: 4.35, panZ: 1.32 },
+    { separationMeters: 4, ...SEED_END, angleDegrees: 20, distanceMeters: 5.35, lookHeightMeters: 1.35, panX: 0.3, panZ: 1.6 },
+  ],
+  // The same character on all three keys; only how far back and how much frame the opponent gets
+  // answer to the gap. No self-rotation from walking at all.
+  propagated: () => [
+    { separationMeters: 1.4, ...PRESET_MIDDLE, distanceMeters: 3.85, panZ: 0.77 },
+    { separationMeters: 2.4, ...PRESET_MIDDLE, distanceMeters: 4.35, panZ: 1.32 },
+    { separationMeters: 4, ...PRESET_MIDDLE, distanceMeters: 5.4, panZ: 2.2 },
+  ],
+  // The middle keeps more character than the ends, but the ends lean toward it rather than
+  // snapping back to square-on: the swing survives at about a quarter of its speed.
+  softened: () => [
+    { separationMeters: 1.4, ...PRESET_SOFT_ENDS, distanceMeters: 3.75, panZ: 0.77 },
+    { separationMeters: 2.4, ...PRESET_MIDDLE, distanceMeters: 4.35, panZ: 1.32 },
+    { separationMeters: 4, ...PRESET_SOFT_ENDS, distanceMeters: 5.8, panZ: 2.2 },
+  ],
+});
+
 const FIELD_SPECS = Object.freeze({
   fovDegrees: { label: 'FOV 視野', min: 20, max: 90, step: 1, unit: '°' },
   angleDegrees: { label: 'Angle 俯角', min: -10, max: 60, step: 0.5, unit: '°' },
@@ -214,24 +247,68 @@ async function main() {
   }
 
   // --- the sweep, which is the verification rather than a parameter ---------------------------
-  function sweepFraming() {
-    const aspectRatio = scene.camera.aspect;
-    const rows = [];
+  //
+  // Three readings of a profile, none of them a matter of taste: whether anybody leaves the frame
+  // anywhere in the lock band; how much the camera moves on its own when a fighter merely walks;
+  // and where on the screen the two of them actually sit. The second one is the reason this exists
+  // at all - keys that disagree with each other turn walking into camera work nobody asked for.
+  function measureProfile(profile = working, aspectRatio = scene.camera.aspect) {
+    const outOfFrame = [];
     let worst = null;
     for (let separation = SWEEP_MIN_METERS; separation <= SWEEP_MAX_METERS + 1e-9; separation += 0.1) {
       const probe = createEngagementGround({ startSeparationMeters: round(separation, 2) }).report;
       const pose = solveLockedCameraPose({
-        player: probe.defenderPosition, target: probe.attackerPosition, profile: working,
+        player: probe.defenderPosition, target: probe.attackerPosition, profile,
       });
       const framing = evaluateFraming({ pose, aspectRatio, points: silhouettePoints(probe) });
       if (!worst || framing.marginNdc < worst.marginNdc) worst = { ...framing, separationMeters: separation };
-      if (framing.marginNdc < 0) rows.push(`${separation.toFixed(1)}m  出框 ${(framing.marginNdc * 100).toFixed(0)}%`);
+      if (framing.marginNdc < 0) outOfFrame.push({ separationMeters: round(separation, 1), marginNdc: round(framing.marginNdc) });
     }
-    const verdict = rows.length === 0
-      ? `全程在框內 · 最窄餘裕 ${(worst.marginNdc * 100).toFixed(0)}% @ ${worst.separationMeters.toFixed(1)}m`
-      : `${rows.length} 個距離出框:\n${rows.join('\n')}`;
-    $('sweep').textContent = `${SWEEP_MIN_METERS}–${SWEEP_MAX_METERS}m @ ${aspectRatio.toFixed(2)}:1\n${verdict}`;
-    $('sweep').className = rows.length === 0 ? 'good' : 'bad';
+    // Walking at the measured sidestep speed, between each pair of keys.
+    const keys = [...profile.locked.distanceKeys].sort((a, b) => a.separationMeters - b.separationMeters);
+    const walk = [];
+    for (let index = 0; index < keys.length - 1; index += 1) {
+      const span = keys[index + 1].separationMeters - keys[index].separationMeters;
+      const rate = (field) => round(Math.abs(keys[index + 1][field] - keys[index][field]) / span * LANE_LOCOMOTION_PROFILE.lateralSpeedMps, 2);
+      walk.push({
+        from: keys[index].separationMeters,
+        to: keys[index + 1].separationMeters,
+        azimuthDegreesPerSecond: rate('azimuthDegrees'),
+        fovDegreesPerSecond: rate('fovDegrees'),
+        lookHeightMetersPerSecond: rate('lookHeightMeters'),
+        dollyMetersPerSecond: rate('distanceMeters'),
+      });
+    }
+    // And what the frame looks like at each key: heads on screen, in NDC.
+    const screen = keys.map((key) => {
+      const separation = key.separationMeters;
+      const probe = createEngagementGround({ startSeparationMeters: separation }).report;
+      const pose = solveLockedCameraPose({ player: probe.defenderPosition, target: probe.attackerPosition, profile });
+      const head = (position) => evaluateFraming({ pose, aspectRatio, points: [{ x: position.x, y: 1.6, z: position.z }] });
+      const me = head(probe.defenderPosition);
+      const them = head(probe.attackerPosition);
+      return {
+        separationMeters: separation,
+        player: { x: round(me.ndcX, 2), y: round(me.ndcY, 2) },
+        opponent: { x: round(them.ndcX, 2), y: round(them.ndcY, 2) },
+        screenGap: round(Math.abs(me.ndcX - them.ndcX), 2),
+      };
+    });
+    return { aspectRatio: round(aspectRatio, 2), worstMarginNdc: round(worst.marginNdc), worstSeparationMeters: round(worst.separationMeters, 1), outOfFrame, walk, screen };
+  }
+
+  function sweepFraming() {
+    const measured = measureProfile();
+    const swing = Math.max(0, ...measured.walk.map((leg) => leg.azimuthDegreesPerSecond));
+    const lines = [`${SWEEP_MIN_METERS}\u2013${SWEEP_MAX_METERS}m @ ${measured.aspectRatio}:1`];
+    lines.push(measured.outOfFrame.length === 0
+      ? `\u5168\u7a0b\u5728\u6846\u5167 \u00b7 \u6700\u7a84\u9918\u88d5 ${(measured.worstMarginNdc * 100).toFixed(0)}% @ ${measured.worstSeparationMeters}m`
+      : `${measured.outOfFrame.length} \u500b\u8ddd\u96e2\u51fa\u6846: ${measured.outOfFrame.map((row) => `${row.separationMeters}m ${(row.marginNdc * 100).toFixed(0)}%`).join(', ')}`);
+    // The one number a slider cannot show you: how fast the camera turns when you only walked.
+    lines.push(`\u8d70\u4f4d\u9020\u6210\u7684\u81ea\u8f49 ${swing.toFixed(1)}\u00b0/s${swing > 18 ? ' \u00b7 \u6bd4\u5c0d\u624b\u904e\u756b\u9762\u9084\u5feb' : ''}`);
+    $('sweep').textContent = lines.join('\n');
+    $('sweep').className = measured.outOfFrame.length ? 'bad' : swing > 18 ? 'warn' : 'good';
+    return measured;
   }
 
   // --- controls ------------------------------------------------------------------------------
@@ -255,6 +332,7 @@ async function main() {
 
   const refreshers = [];
   function buildControls() {
+    refreshers.length = 0;
     const locked = $('lockedControls');
     locked.innerHTML = '';
     const key = () => working.locked.distanceKeys[state.editingKey];
@@ -323,6 +401,43 @@ async function main() {
     }
   }
 
+  // Typing numbers straight in. The sliders are for hunting, this is for comparing: a preset name,
+  // a key array, a whole profile, or the text the output box prints - all of them land in the same
+  // working profile the page is already rendering from.
+  function loadProfile(next) {
+    let parsed = next;
+    if (typeof parsed === 'string') {
+      const preset = PRESETS[parsed.trim()];
+      parsed = preset ? preset() : new Function(`return ({${parsed}})`)();
+    }
+    if (typeof parsed === 'function') parsed = parsed();
+    if (!parsed) throw new Error('load() needs a preset name, a key array, a profile, or the text from the output box');
+    const incoming = Array.isArray(parsed) ? { locked: { distanceKeys: parsed } } : parsed;
+    const seed = cloneProfile(THIRD_PERSON_CAMERA_PROFILE);
+    if (incoming.locked?.distanceKeys) {
+      // Fill from the seed key nearest in separation, so a partial key is a tweak rather than a
+      // pose full of holes.
+      working.locked.distanceKeys = incoming.locked.distanceKeys.map((key) => {
+        const base = sampleCameraKeys(seed.locked.distanceKeys, key.separationMeters);
+        return { ...base, ...key };
+      }).sort((a, b) => a.separationMeters - b.separationMeters);
+    }
+    if (incoming.free) working.free = { ...working.free, ...incoming.free };
+    if (incoming.dynamics) working.dynamics = { ...working.dynamics, ...incoming.dynamics };
+    state.editingKey = Math.min(state.editingKey, working.locked.distanceKeys.length - 1);
+    buildControls();
+    syncButtons();
+    return sweepFraming();
+  }
+
+  function setKey(index, patch) {
+    const key = working.locked.distanceKeys[index];
+    if (!key) throw new Error(`no key ${index}`);
+    Object.assign(key, patch);
+    for (const refresh of refreshers) refresh();
+    return sweepFraming();
+  }
+
   function serializeProfile() {
     const pose = (values, fields) => `{ ${fields.map((field) => `${field}: ${round(values[field], 4)}`).join(', ')} }`;
     const keys = working.locked.distanceKeys
@@ -368,6 +483,9 @@ async function main() {
     buildControls();
     onProfileChanged();
   });
+  for (const button of document.querySelectorAll('[data-preset]')) {
+    button.addEventListener('click', () => { loadProfile(button.dataset.preset); $('output').textContent = ''; });
+  }
   $('emit').addEventListener('click', () => { $('output').textContent = serializeProfile(); });
   $('copy').addEventListener('click', async () => {
     const text = $('output').textContent || serializeProfile();
@@ -432,6 +550,21 @@ async function main() {
   window.cameraLab = Object.freeze({
     stage: LAB_STAGE,
     state,
+    presets: PRESETS,
+    load: loadProfile,
+    setKey,
+    measure: (profile) => measureProfile(profile),
+    help() {
+      const lines = [
+        'cameraLab.load(\'propagated\')        preset: seed / yours / propagated / softened',
+        'cameraLab.load([{ separationMeters: 2.4, azimuthDegrees: 30 }, ...])   keys, partial is fine',
+        'cameraLab.load(`locked: {...}, free: {...}`)   the text the output box prints',
+        'cameraLab.setKey(1, { lookHeightMeters: 0.9 })  one field, one key',
+        'cameraLab.measure()                   out-of-frame sweep, walk-induced camera motion, where the pair sits',
+        'cameraLab.setSeparation(2.4) / setMode(\'free\') / play(\'LEFT\') / serialize()',
+      ];
+      return lines.join('\n');
+    },
     profile: () => cloneProfile(working),
     serialize: serializeProfile,
     setSeparation,
