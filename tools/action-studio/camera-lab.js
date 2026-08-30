@@ -22,7 +22,9 @@ import {
   THIRD_PERSON_CAMERA_STAGE,
   createThirdPersonCameraRuntime,
   evaluateFraming,
+  evaluateLockedFraming,
   fighterSilhouettePoints,
+  PLAYER_READABLE_FLOOR_METERS,
   sampleCameraKeys,
   solveFreeCameraPose,
   solveLockedCameraPose,
@@ -34,6 +36,11 @@ const LAB_STAGE = 'R20Q.1';
 // only finished when it survives this whole sweep, which is what the out-of-frame check is for.
 const SWEEP_MIN_METERS = 1.1;
 const SWEEP_MAX_METERS = 5;
+// Every window the game has to survive, checked together. A framing tuned in one window is a
+// framing verified in one window: the vertical field does not change with the aspect but the
+// horizontal one does, so an over-the-shoulder offset that reads fine at 16:9 can push you out the
+// SIDE of a 4:3 one. The lab's own canvas is added at run time, because it is neither of these.
+const VERIFIED_ASPECT_RATIOS = Object.freeze([4 / 3, 16 / 9, 19.5 / 9]);
 // The body, not the blade: whether a LEFT sweep reads at the bottom of the frame is a thing to
 // watch during playback, because a blade leaving frame for three frames is sometimes fine and a
 // body leaving frame never is. The shape itself comes from the shared module, so the page and the
@@ -62,6 +69,22 @@ const PRESETS = Object.freeze({
     { separationMeters: 1.4, ...PRESET_MIDDLE, distanceMeters: 3.85, panZ: 0.77 },
     { separationMeters: 2.4, ...PRESET_MIDDLE, distanceMeters: 4.35, panZ: 1.32 },
     { separationMeters: 4, ...PRESET_MIDDLE, distanceMeters: 5.4, panZ: 2.2 },
+  ],
+  // The half-body idea: crop your own legs to see the opponent better. The first attempt spent its
+  // budget in the wrong place - a wide lens (74deg) cancelled the camera coming 1.4m closer, so the
+  // opponent grew 3 points while the frame gained a 15 deg/s zoom pulse centred on 2.4m.
+  halfBody: () => [
+    { separationMeters: 1.4, ...PRESET_MIDDLE, distanceMeters: 3.85, panZ: 0.77 },
+    { separationMeters: 2.4, fovDegrees: 74, angleDegrees: 19, lookHeightMeters: 0.69, azimuthDegrees: 30, panX: 0.01, distanceMeters: 2.95, panZ: 1.67 },
+    { separationMeters: 4, ...PRESET_MIDDLE, distanceMeters: 5.4, panZ: 2.2 },
+  ],
+  // The same intent, spent on the opponent instead: one lens for the whole band, the camera in
+  // close, and the look point pushed most of the way to them. The opponent goes from 30% of the
+  // frame's height to 40-52% while your own guard keeps a 15% margin.
+  opponentFirst: () => [
+    { separationMeters: 1.4, ...PRESET_MIDDLE, distanceMeters: 3.25, panZ: 1.25 },
+    { separationMeters: 2.4, ...PRESET_MIDDLE, distanceMeters: 3.25, panZ: 1.25 },
+    { separationMeters: 4, ...PRESET_MIDDLE, distanceMeters: 3.25, panZ: 1.25 },
   ],
   // The middle keeps more character than the ends, but the ends lean toward it rather than
   // snapping back to square-on: the swing survives at about a quarter of its speed.
@@ -135,9 +158,6 @@ async function main() {
   rebuildGround();
 
   // --- the two actors, as points the camera has to hold -------------------------------------
-  function silhouettePoints(report) {
-    return [...fighterSilhouettePoints(report.attackerPosition), ...fighterSilhouettePoints(report.defenderPosition)];
-  }
 
   function desiredPose(report) {
     if (state.mode === 'locked') {
@@ -245,6 +265,10 @@ async function main() {
   function measureProfile(profile = working, aspectRatio = scene.camera.aspect) {
     const outOfFrame = [];
     let worst = null;
+    let legCrops = 0;
+    let samples = 0;
+    const aspects = [...new Set([round(aspectRatio, 3), ...VERIFIED_ASPECT_RATIOS.map((value) => round(value, 3))])];
+    for (const aspect of aspects)
     for (let separation = SWEEP_MIN_METERS; separation <= SWEEP_MAX_METERS + 1e-9; separation += 0.1) {
       // Every separation, and at each one every bearing: a lock follows the pair round, so the
       // framing has to hold with the opponent to your side as much as in front of you. Walking the
@@ -253,12 +277,20 @@ async function main() {
         const player = { x: 0, z: 0 };
         const target = { x: Math.sin(bearing) * separation, z: Math.cos(bearing) * separation };
         const pose = solveLockedCameraPose({ player, target, profile });
-        const framing = evaluateFraming({
-          pose, aspectRatio, points: [...fighterSilhouettePoints(player), ...fighterSilhouettePoints(target)],
-        });
-        if (!worst || framing.marginNdc < worst.marginNdc) worst = { ...framing, separationMeters: separation };
+        // Two readings, because the two fighters are read differently: the opponent head to feet
+        // (their windup starts outside the contact height), you from the lowest measured contact
+        // floor up (below that you are legs, and where your feet are is the gap, not your knees).
+        const framing = evaluateLockedFraming({ pose, aspectRatio: aspect, player, target });
+        if (!worst || framing.marginNdc < worst.marginNdc) worst = { ...framing, separationMeters: separation, aspectRatio: aspect };
+        if (framing.croppingPlayerLegs) legCrops += 1;
+        samples += 1;
         if (framing.marginNdc < 0 && outOfFrame.at(-1)?.separationMeters !== round(separation, 1)) {
-          outOfFrame.push({ separationMeters: round(separation, 1), marginNdc: round(framing.marginNdc) });
+          outOfFrame.push({
+            separationMeters: round(separation, 1),
+            marginNdc: round(framing.marginNdc),
+            aspectRatio: aspect,
+            who: framing.opponentMarginNdc < framing.playerMarginNdc ? 'opponent' : 'player',
+          });
         }
       }
     }
@@ -285,23 +317,41 @@ async function main() {
       const head = (position) => evaluateFraming({ pose, aspectRatio, points: [{ x: position.x, y: 1.6, z: position.z }] });
       const me = head(probe.defenderPosition);
       const them = head(probe.attackerPosition);
+      // How big the thing you have to read actually is, as a fraction of the frame's height. This
+      // is what a closer camera is FOR, and it is the number a wider lens quietly gives back.
+      const at = (height) => evaluateFraming({ pose, aspectRatio, points: [{ x: probe.attackerPosition.x, y: height, z: probe.attackerPosition.z }] });
+      const opponentHeight = (at(1.78).ndcY - at(0.02).ndcY) / 2;
       return {
         separationMeters: separation,
         player: { x: round(me.ndcX, 2), y: round(me.ndcY, 2) },
         opponent: { x: round(them.ndcX, 2), y: round(them.ndcY, 2) },
         screenGap: round(Math.abs(me.ndcX - them.ndcX), 2),
+        opponentScreenHeight: round(opponentHeight, 2),
       };
     });
-    return { aspectRatio: round(aspectRatio, 2), worstMarginNdc: round(worst.marginNdc), worstSeparationMeters: round(worst.separationMeters, 1), outOfFrame, walk, screen };
+    return {
+      aspectRatio: round(aspectRatio, 2),
+      aspectRatiosChecked: aspects,
+      worstAspectRatio: worst.aspectRatio,
+      worstMarginNdc: round(worst.marginNdc),
+      worstOpponentMarginNdc: round(worst.opponentMarginNdc),
+      worstPlayerMarginNdc: round(worst.playerMarginNdc),
+      worstSeparationMeters: round(worst.separationMeters, 1),
+      playerReadableFloorMeters: PLAYER_READABLE_FLOOR_METERS,
+      legCropFraction: samples ? round(legCrops / samples, 2) : 0,
+      outOfFrame, walk, screen,
+    };
   }
 
   function sweepFraming() {
     const measured = measureProfile();
     const swing = Math.max(0, ...measured.walk.map((leg) => leg.azimuthDegreesPerSecond));
-    const lines = [`${SWEEP_MIN_METERS}\u2013${SWEEP_MAX_METERS}m @ ${measured.aspectRatio}:1`];
+    const lines = [`${SWEEP_MIN_METERS}\u2013${SWEEP_MAX_METERS}m \u00d7 12 \u65b9\u4f4d \u00d7 \u756b\u9762 ${measured.aspectRatiosChecked.join(' / ')}:1`];
     lines.push(measured.outOfFrame.length === 0
-      ? `\u5168\u7a0b\u5728\u6846\u5167 \u00b7 \u6700\u7a84\u9918\u88d5 ${(measured.worstMarginNdc * 100).toFixed(0)}% @ ${measured.worstSeparationMeters}m`
-      : `${measured.outOfFrame.length} \u500b\u8ddd\u96e2\u51fa\u6846: ${measured.outOfFrame.map((row) => `${row.separationMeters}m ${(row.marginNdc * 100).toFixed(0)}%`).join(', ')}`);
+      ? `\u5168\u7a0b\u5728\u6846\u5167 \u00b7 \u6700\u7a84\u9918\u88d5 ${(measured.worstMarginNdc * 100).toFixed(0)}% @ ${measured.worstSeparationMeters}m / ${measured.worstAspectRatio}:1`
+      : `${measured.outOfFrame.length} \u500b\u8ddd\u96e2\u51fa\u6846: ${measured.outOfFrame.map((row) => `${row.separationMeters}m ${(row.marginNdc * 100).toFixed(0)}% (${row.who === 'opponent' ? '\u5c0d\u624b' : '\u81ea\u5df1'}@${row.aspectRatio}:1)`).join(', ')}`);
+    lines.push(`\u5c0d\u624b\u5168\u8eab ${(measured.worstOpponentMarginNdc * 100).toFixed(0)}% \u00b7 \u81ea\u5df1 ${measured.playerReadableFloorMeters}m \u4ee5\u4e0a ${(measured.worstPlayerMarginNdc * 100).toFixed(0)}% \u00b7 \u5207\u817f ${(measured.legCropFraction * 100).toFixed(0)}%`);
+    lines.push(`\u5c0d\u624b\u4f54\u756b\u9762\u9ad8\u5ea6 ${measured.screen.map((row) => `${row.separationMeters}m ${(row.opponentScreenHeight * 100).toFixed(0)}%`).join(' \u00b7 ')}`);
     // The one number a slider cannot show you: how fast the camera turns when you only walked.
     lines.push(`\u8d70\u4f4d\u9020\u6210\u7684\u81ea\u8f49 ${swing.toFixed(1)}\u00b0/s${swing > 18 ? ' \u00b7 \u6bd4\u5c0d\u624b\u904e\u756b\u9762\u9084\u5feb' : ''}`);
     $('sweep').textContent = lines.join('\n');
@@ -517,8 +567,11 @@ async function main() {
     }
     scene.camera.updateMatrixWorld(true);
 
-    const framing = evaluateFraming({
-      pose: smoothed, aspectRatio: scene.camera.aspect, points: silhouettePoints(report),
+    const framing = evaluateLockedFraming({
+      pose: smoothed,
+      aspectRatio: scene.camera.aspect,
+      player: report.defenderPosition,
+      target: report.attackerPosition,
     });
     const sampled = sampleCameraKeys(working.locked.distanceKeys, report.separationMeters);
     const cone = lockOnAcquireHalfAngleRadians({
@@ -531,7 +584,7 @@ async function main() {
         ? `取樣 距離${sampled.distanceMeters.toFixed(2)} 俯角${sampled.angleDegrees.toFixed(1)}° 高度${sampled.lookHeightMeters.toFixed(2)} panX${sampled.panX.toFixed(2)} panZ${sampled.panZ.toFixed(2)}`
         : `偏航 ${(state.yawRadians * 180 / Math.PI).toFixed(0)}° · 俯角 ${state.pitchDegrees.toFixed(1)}°`,
       framing
-        ? `<span class="${framing.marginNdc >= 0.05 ? 'good' : framing.marginNdc >= 0 ? 'warn' : 'bad'}">框內餘裕 ${(framing.marginNdc * 100).toFixed(0)}%${framing.marginNdc < 0 ? ' · 有人出框' : ''}</span>`
+        ? `<span class="${framing.marginNdc >= 0.05 ? 'good' : framing.marginNdc >= 0 ? 'warn' : 'bad'}">對手全身 ${(framing.opponentMarginNdc * 100).toFixed(0)}% · 自己護欄 ${(framing.playerMarginNdc * 100).toFixed(0)}%${framing.croppingPlayerLegs ? ' · 切腿(刻意)' : ''}${framing.marginNdc < 0 ? ' · 出框' : ''}</span>`
         : '',
       attack.action
         ? `揮砍 ${attack.direction} ${attack.elapsedSeconds.toFixed(2)}s / 接觸 ${attack.contactSeconds.toFixed(2)}s · ${attack.phase}`
@@ -569,8 +622,11 @@ async function main() {
     setMode,
     play,
     sweep: sweepFraming,
-    framing: () => evaluateFraming({
-      pose: desiredPose(ground.report), aspectRatio: scene.camera.aspect, points: silhouettePoints(ground.report),
+    framing: () => evaluateLockedFraming({
+      pose: desiredPose(ground.report),
+      aspectRatio: scene.camera.aspect,
+      player: ground.report.defenderPosition,
+      target: ground.report.attackerPosition,
     }),
     attack: () => attackRuntime.snapshot,
     camera: () => ({
