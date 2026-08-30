@@ -88,6 +88,16 @@ export function createEngagementGround(options = {}) {
   // The swing's lateral component, alongside its z component above: a swing along a frozen
   // off-axis facing spends its metres in both. On the axis this stays exactly zero.
   let attackerSwingLateralMeters = 0;
+  // R20N.1 (free movement): who each fighter is facing, when it is no longer simply each other.
+  //
+  // Everything above derives facing from the gap: the two of them are pointed at one another
+  // because geometry says so, and for a locked duel that is exactly right. Free movement breaks
+  // the premise - an unlocked fighter faces where they are going, or where their camera looks, and
+  // may have their back to the person they were fighting a moment ago. So facing becomes state a
+  // caller may own, and null means "derive it, as always". Nothing sets these by default, so the
+  // locked path reports the same numbers it always did, to the last bit.
+  let attackerOwnedFacingRadians = null;
+  let defenderOwnedFacingRadians = null;
 
   // The gap decomposed into the fixed frame. Longitudinal is the legacy scalar formula, exact;
   // lateral is the x gap; separation prefers the legacy path whenever the fight is on the axis.
@@ -136,8 +146,17 @@ export function createEngagementGround(options = {}) {
       minimumSeparationMeters,
       attackerPosition,
       defenderPosition,
-      attackerFacingRadians: facingDefined ? Math.atan2(gap.lateral, gap.longitudinal) : 0,
-      defenderFacingRadians: facingDefined ? Math.atan2(-gap.lateral, -gap.longitudinal) : Math.PI,
+      // The bearing is the geometric fact - where the other one actually is - and stays available
+      // whatever a fighter has turned to look at. A lock-on needs it to judge who is in front.
+      attackerBearingRadians: facingDefined ? Math.atan2(gap.lateral, gap.longitudinal) : 0,
+      defenderBearingRadians: facingDefined ? Math.atan2(-gap.lateral, -gap.longitudinal) : Math.PI,
+      // Facing is what the fighter is pointed at, which is the bearing until somebody owns it.
+      attackerFacingRadians: attackerOwnedFacingRadians
+        ?? (facingDefined ? Math.atan2(gap.lateral, gap.longitudinal) : 0),
+      defenderFacingRadians: defenderOwnedFacingRadians
+        ?? (facingDefined ? Math.atan2(-gap.lateral, -gap.longitudinal) : Math.PI),
+      attackerFacingSource: attackerOwnedFacingRadians == null ? 'derived-from-bearing' : 'owned',
+      defenderFacingSource: defenderOwnedFacingRadians == null ? 'derived-from-bearing' : 'owned',
       authority: 'lane-position-ledger-no-contact-authority',
     });
   }
@@ -193,6 +212,64 @@ export function createEngagementGround(options = {}) {
       defenderLateralMeters += step * (gap.longitudinal / gap.separation);
       defenderGroundMeters += step * (-gap.lateral / gap.separation);
     }
+    return report();
+  }
+
+  // R20N.1: the world verb. Everything above is spoken relative to the opponent - close the gap,
+  // circle them - which is the language of a locked duel and the reason a sidestep orbits instead
+  // of sliding away down the world's x. Free movement has no such reference: the player walks
+  // north-east because they pushed north-east, and whether that closes on anybody is a
+  // consequence rather than the instruction.
+  //
+  // So this is the same ledger addressed in the world frame. It does not replace the relative
+  // verbs and must not: those carry the exact float-op sequence the whole calibration was
+  // measured against, and the golden replay holds it to zero tolerance. A caller uses one
+  // vocabulary or the other, and the locked path never touches this one.
+  //
+  // The clamp differs too, and the difference is the point. holdMinimumSeparation pushes the
+  // ATTACKER out, because in a lane fight they are the only one whose lunge can overrun. Here
+  // whoever is walking is the one who has to stop: you may not walk through someone by holding a
+  // direction, and it must not shove the person standing still.
+  function pushMoverOutOfContact(applyBack) {
+    const gap = gapParts();
+    const overrun = minimumSeparationMeters - gap.separation;
+    if (overrun <= 0) return;
+    if (!(gap.separation > 1e-9)) {
+      // Standing exactly on top of each other has no direction to be pushed along; the lane's own
+      // axis is the last honest answer, the same fallback the bearings use.
+      applyBack(0, -overrun);
+      return;
+    }
+    applyBack(-overrun * (gap.lateral / gap.separation), -overrun * (gap.longitudinal / gap.separation));
+  }
+
+  function moveDefenderWorld(deltaX, deltaZ) {
+    const dx = finite(deltaX);
+    const dz = finite(deltaZ);
+    if (dx === 0 && dz === 0) return report();
+    defenderLateralMeters += dx;
+    defenderGroundMeters += dz;
+    // The defender's z offset carries them toward +z, the same sign their position formula uses,
+    // so the pushback is applied in the same frame it was requested in.
+    pushMoverOutOfContact((backX, backZ) => {
+      defenderLateralMeters -= backX;
+      defenderGroundMeters -= backZ;
+    });
+    return report();
+  }
+
+  function moveAttackerWorld(deltaX, deltaZ) {
+    const dx = finite(deltaX);
+    const dz = finite(deltaZ);
+    if (dx === 0 && dz === 0) return report();
+    attackerLateralMeters += dx;
+    attackerGroundMeters += dz;
+    // The gap shrinks as the attacker gains +z, so the push that opens it again runs the other
+    // way - the sign the bearings already describe, applied to the mover.
+    pushMoverOutOfContact((backX, backZ) => {
+      attackerLateralMeters += backX;
+      attackerGroundMeters += backZ;
+    });
     return report();
   }
 
@@ -295,6 +372,8 @@ export function createEngagementGround(options = {}) {
     attackerSwingLateralMeters = 0;
     attackerLateralMeters = 0;
     defenderLateralMeters = 0;
+    // Facing ownership survives a reset: it is a stance the player is holding, not ground the
+    // exchange won. Unlocking is what gives it back, and that is a caller's decision.
     return report();
   }
 
@@ -313,6 +392,12 @@ export function createEngagementGround(options = {}) {
     moveAttacker,
     moveDefender,
     moveDefenderLateral,
+    moveAttackerWorld,
+    moveDefenderWorld,
+    // null restores the derived bearing, which is what unlocking is: nobody is pointed at anybody
+    // by arrangement any more.
+    setAttackerFacing(radians) { attackerOwnedFacingRadians = radians == null ? null : finite(radians); return report(); },
+    setDefenderFacing(radians) { defenderOwnedFacingRadians = radians == null ? null : finite(radians); return report(); },
     setAttackerSwing,
     settleImpact,
     settleWhiff,
