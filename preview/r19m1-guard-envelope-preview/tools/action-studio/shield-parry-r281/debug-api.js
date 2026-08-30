@@ -48,6 +48,11 @@ export function createShieldParryDebugApi({
     // R20K.1 (B6e): a harness pins the frame step so a cell's trajectory is reproducible, and
     // counts frames instead of milliseconds. setFixedStepMs(null) hands the clock back to the wall.
     setFixedStepMs: actions.setFixedStepMs,
+    // R20S.3: free movement and the lock. Probes drive these directly; the keyboard is one caller.
+    playerController: runtimes.playerController,
+    toggleLock: () => runtimes.playerController?.toggleLock?.() ?? null,
+    setMoveIntent: (intent) => runtimes.playerController?.setMoveIntent?.(intent) ?? null,
+    get lockReport() { return runtimes.playerController?.lockReport ?? null; },
     get frameClock() { return runtimes.frameClock?.report ?? null; },
     get defenderStance() { return runtimes.defenderStance?.report ?? null; },
     forceOldTwoActorB3: actions.forceOldTwoActorB3,
