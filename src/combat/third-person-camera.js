@@ -7,11 +7,11 @@ export const THIRD_PERSON_CAMERA_STAGE = 'R20Q.1';
 // value the other uses; the alternative is two cameras that drift apart and an argument about
 // which one is the game.
 //
-// THESE NUMBERS ARE SEEDS, NOT MEASUREMENTS. Everything else in this project carries a value
-// somebody measured and a note saying how. Camera framing is not that kind of question - it is
-// judged by eye, on a real swing, by the person whose game it is - so the honest thing is to say
-// so and hand them a tuning surface. camera-lab.html is that surface, and what it prints is meant
-// to replace what is written here.
+// THE LOCKED KEYS ARE TUNED, THE REST ARE STILL SEEDS. Camera framing is not a thing anyone can
+// measure - it is judged by eye, on a real swing, by the person whose game it is - so the locked
+// numbers below came back from camera-lab.html rather than from a probe. What measurement had to
+// say about them is recorded where it applies. Free mode and the lag constants have not been
+// through the lab yet and are still seeds.
 //
 // The seven that describe a pose, and what each one means here:
 //   fovDegrees   vertical field of view. The lock-on's frontal cone is derived from it, because
@@ -32,18 +32,31 @@ export const THIRD_PERSON_CAMERA_STAGE = 'R20Q.1';
 // end keys outside the range.
 export const THIRD_PERSON_CAMERA_PROFILE = Object.freeze({
   stage: THIRD_PERSON_CAMERA_STAGE,
-  provenance: 'seed-values-awaiting-camera-lab-tuning',
+  provenance: 'locked-tuned-in-camera-lab-r20r2-free-and-dynamics-still-seeds',
   locked: Object.freeze({
+    // Tuned in camera-lab.html: a wide lens (74), low (0.69m look height), close (2.85m) and over
+    // the shoulder (20 degrees), which crops the player's own legs on purpose. You read an attack
+    // off the opponent's whole body; you read your own state off your guard, and the guard lives
+    // above the lowest measured contact floor - so the legs are frame nobody needs.
+    //
+    // Three identical keys, and that is the point rather than an oversight. A per-key azimuth makes
+    // the camera swing whenever the gap changes, which is walking: the first tuning pass had that
+    // at 30 deg/s, faster than the opponent crosses the screen. One pose for the whole band means a
+    // fight that closes and opens moves nothing but the two fighters.
+    //
+    // What measurement contributed: the shoulder is 20 rather than the 30 first chosen, because at
+    // 30 there is NO distance/panZ pair that crops the legs and keeps the guard on screen in a 4:3
+    // window - the two halves of this look compete for the same horizontal room. At 20 the crop
+    // survives (-16% against -20%), the pair still read side by side (screen gap 0.36 against 0.57)
+    // and the guard's margin goes from 15% to 26%. Narrower windows are handled at run time by
+    // fitLockedProfileToAspect rather than by giving more up here.
     distanceKeys: Object.freeze([
-      // Distance and panZ here are not taste: they are the nearest camera that still holds both
-      // full silhouettes inside a 16:9 frame with a tenth of a half-frame to spare, found by
-      // sweeping evaluateFraming below with the look point 40% of the way to the opponent. The
-      // angle, height, fov and panX ARE taste, and are the first things worth arguing with.
-      Object.freeze({ separationMeters: 1.4, fovDegrees: 50, angleDegrees: 16, distanceMeters: 3.9, lookHeightMeters: 1.25, azimuthDegrees: 0, panX: 0.35, panZ: 0.55 }),
-      Object.freeze({ separationMeters: 2.4, fovDegrees: 50, angleDegrees: 18, distanceMeters: 4.65, lookHeightMeters: 1.3, azimuthDegrees: 0, panX: 0.35, panZ: 0.95 }),
-      Object.freeze({ separationMeters: 4, fovDegrees: 50, angleDegrees: 20, distanceMeters: 5.9, lookHeightMeters: 1.35, azimuthDegrees: 0, panX: 0.3, panZ: 1.6 }),
+      Object.freeze({ separationMeters: 1.4, fovDegrees: 74, angleDegrees: 19, distanceMeters: 2.85, lookHeightMeters: 0.69, azimuthDegrees: 20, panX: 0.01, panZ: 1.45 }),
+      Object.freeze({ separationMeters: 2.4, fovDegrees: 74, angleDegrees: 19, distanceMeters: 2.85, lookHeightMeters: 0.69, azimuthDegrees: 20, panX: 0.01, panZ: 1.45 }),
+      Object.freeze({ separationMeters: 4, fovDegrees: 74, angleDegrees: 19, distanceMeters: 2.85, lookHeightMeters: 0.69, azimuthDegrees: 20, panX: 0.01, panZ: 1.45 }),
     ]),
   }),
+  // Still seeds: free mode has not been through the lab.
   free: Object.freeze({
     fovDegrees: 55,
     angleDegrees: 14,

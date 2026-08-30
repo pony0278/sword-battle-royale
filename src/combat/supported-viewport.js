@@ -2,8 +2,11 @@ export const SUPPORTED_VIEWPORT_STAGE = 'R20R.1';
 
 // R20R.1 — which windows this game is played in, as a stated contract rather than a hope.
 //
-// The decision is landscape only. It is not a taste call about phones; it is the one place where
-// every other rule in this project would have to start lying:
+// The decision is landscape only, and it is a recommendation to the player rather than a gate.
+// What the number is FOR is verification: it is the narrowest window a framing has to be tuned
+// against and the narrowest one the lock rules are guaranteed honest in. It is not a taste call
+// about phones; portrait is the one place where every other rule in this project would have to
+// start lying:
 //
 //   The lock-on cone. "In front of me" is derived from what is rendered, and in landscape the cone
 //   always lands inside the frame - 16:9 renders +-45.2 degrees and the cone is +-40.6, 4:3 renders
@@ -28,6 +31,17 @@ function finite(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+// R20R.2: the posture is ADVICE, not a gate. The platform asks for a prompt about the best
+// experience rather than a lock-out, and once we are not blocking, the reason to block evaporates
+// too - a rotate gate that freezes input is only needed if freezing is possible, and nothing here
+// freezes anything. Below the contract the game still plays: the camera's secondary lever holds the
+// framing, the lock cone stays honestly narrow instead of reaching off screen, and the player is
+// told plainly what they are missing. Nothing lies; it is just worse, and we say so.
+export const VIEWPORT_DEGRADES_BELOW_CONTRACT = Object.freeze([
+  'the lock cone narrows to what the frame actually renders, so aiming a lock takes more turning',
+  'the camera gives up the over-the-shoulder offset, and then the look point, to keep your guard on screen',
+]);
+
 export function isSupportedViewport(aspectRatio) {
   const aspect = Number(aspectRatio);
   return Number.isFinite(aspect) && aspect >= MINIMUM_SUPPORTED_ASPECT_RATIO;
@@ -45,10 +59,10 @@ export function describeViewport(aspectRatio) {
     supported,
     orientation: aspect < 1 ? 'portrait' : aspect > 1 ? 'landscape' : 'square',
     remedy: supported ? null : aspect < 1 ? 'rotate-to-landscape' : 'widen-the-window',
-    // A blocked viewport stops INPUT, never the simulation. In a battle royale, a screen a player
-    // can turn sideways to freeze the world with is a cheat, so the world keeps running and only
-    // their hands are taken away.
-    blocksInput: !supported,
+    // Advice, never a gate: play continues in any window. See the note above the constant.
+    recommend: !supported,
+    degrades: supported ? Object.freeze([]) : VIEWPORT_DEGRADES_BELOW_CONTRACT,
+    blocksInput: false,
     blocksSimulation: false,
     authority: 'viewport-contract-only-no-combat-authority',
   });

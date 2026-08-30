@@ -56,8 +56,8 @@ test('R20Q.1 what the page prints is what the module reads back', () => {
 test('R20Q.1 the page identifies its build and states the sweep it verifies', () => {
   // The tag is bumped whenever the page is published, so the legend line and the module query
   // identify the build a tester is actually looking at rather than whatever the browser cached.
-  assert.match(labHtml, /camera-lab\.js\?v=camera-lab-r20r1"/);
-  assert.match(labHtml, /v=camera-lab-r20r1 \u00b7/);
+  assert.match(labHtml, /camera-lab\.js\?v=camera-lab-r20r2"/);
+  assert.match(labHtml, /v=camera-lab-r20r2 \u00b7/);
   assert.match(labHtml, /third-person-camera\.js/);
   // The out-of-frame check runs the lock band, which is the contact floor to the break range.
   assert.match(labJs, /SWEEP_MIN_METERS = 1\.1/);
@@ -85,7 +85,7 @@ test('R20Q.1 the page can be driven from the console, which is how sets get comp
 
 test('R20Q.1 the presets are complete poses, so loading one cannot half-apply', () => {
   const presets = labJs.slice(labJs.indexOf('const PRESETS = Object.freeze({'), labJs.indexOf('const FIELD_SPECS'));
-  for (const name of ['seed:', 'yours:', 'propagated:', 'softened:', 'halfBody:', 'opponentFirst:', 'halfBodyShoulder:', 'halfBodyBehind:']) {
+  for (const name of ['current:', 'yours:', 'propagated:', 'softened:', 'halfBody:', 'opponentFirst:', 'halfBodyShoulder:', 'halfBodyBehind:']) {
     assert.ok(presets.includes(name), `missing preset ${name}`);
   }
   // Three keys each, at the separations the profile keys on, and every one of them spread from a

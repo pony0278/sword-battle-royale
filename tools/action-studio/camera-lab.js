@@ -63,8 +63,8 @@ const SEED_END = { fovDegrees: 50, azimuthDegrees: 0 };
 // two presets below argue about; these four are the look itself.
 const PRESET_HALF_BODY = { fovDegrees: 74, angleDegrees: 19, lookHeightMeters: 0.69, panX: 0.01 };
 const PRESETS = Object.freeze({
-  // What the module ships today.
-  seed: () => cloneProfile(THIRD_PERSON_CAMERA_PROFILE).locked.distanceKeys,
+  // What the module ships today - as of R20R.2 that is the tuned half-body framing, not a seed.
+  current: () => cloneProfile(THIRD_PERSON_CAMERA_PROFILE).locked.distanceKeys,
   // The first tuning pass: one key given a character, two left as seeds. Walking through 2.4m
   // swings the camera 30 deg/s on its own, which is faster than the opponent crosses the screen.
   yours: () => [

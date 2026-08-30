@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MINIMUM_SUPPORTED_ASPECT_RATIO,
+  VIEWPORT_DEGRADES_BELOW_CONTRACT,
   describeViewport,
   isSupportedViewport,
 } from '../src/combat/supported-viewport.js';
@@ -46,14 +47,21 @@ test('R20R.1 every landscape device is in, every portrait one is out, and the re
   assert.equal(isSupportedViewport(Number.NaN), false);
 });
 
-test('R20R.1 a blocked viewport takes the hands, never the world', () => {
-  // A screen a player can turn sideways to freeze the fight with is a cheat.
-  const blocked = describeViewport(9 / 19.5);
-  assert.equal(blocked.blocksInput, true);
-  assert.equal(blocked.blocksSimulation, false);
+test('R20R.2 the contract advises, it never gates', () => {
+  // The platform asks for a prompt about the best experience, not a lock-out - and once we are not
+  // blocking, the reason to block (rotating your phone to freeze a fight) cannot arise either.
+  const below = describeViewport(9 / 19.5);
+  assert.equal(below.recommend, true);
+  assert.equal(below.remedy, 'rotate-to-landscape');
+  assert.equal(below.blocksInput, false);
+  assert.equal(below.blocksSimulation, false);
+  // And it says what is actually lost, so the prompt can be specific instead of nagging.
+  assert.ok(below.degrades.length >= 2);
+  assert.deepEqual(below.degrades, VIEWPORT_DEGRADES_BELOW_CONTRACT);
+  assert.ok(below.degrades.some((line) => line.includes('lock cone')));
   const playing = describeViewport(16 / 9);
-  assert.equal(playing.blocksInput, false);
-  assert.equal(playing.blocksSimulation, false);
+  assert.equal(playing.recommend, false);
+  assert.deepEqual(playing.degrades, []);
 });
 
 test('R20R.1 inside the contract the lock cone is always strictly on screen', () => {
