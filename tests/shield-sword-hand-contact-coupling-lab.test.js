@@ -34,6 +34,10 @@ const frameReportingSource = readFileSync(
   new URL('../tools/action-studio/shield-parry-r281/frame-reporting.js', import.meta.url),
   'utf8',
 );
+const whiffReporterSource = readFileSync(
+  new URL('../tools/action-studio/shield-parry-r281/parry-whiff-reporter.js', import.meta.url),
+  'utf8',
+);
 const diagnosticFormattersSource = readFileSync(
   new URL('../tools/action-studio/shield-parry-r281/diagnostic-formatters.js', import.meta.url),
   'utf8',
@@ -342,7 +346,11 @@ test('Step 1 direct OLD B3 remains independent of Step 3A runtime', () => {
 test('Step 3A classifies a Parry whiff from measured sweep geometry without changing contact authority', () => {
   assert.match(html, /outside shield edge \/ missed shield plane \/ outside active window/);
   assert.match(html, /final plane\/edge gap · persistent arm tracking/);
-  assert.match(source, /buildParryWhiffDiagnostic/);
+  // R20S.1 moved the diagnosis out of the entry's frame loop into its own reporter - it is a
+  // report about a finished attack, not a decision made during one. The entry still triggers it.
+  assert.match(source, /parryWhiffReporter\.report\(snapshot, selectedDirection\)/);
+  assert.match(whiffReporterSource, /buildParryWhiffDiagnostic/);
+  assert.match(whiffReporterSource, /if \(!parryGate\.armed \|\| snapshot\.action \|\| exchangeState\.firstContact \|\| exchangeState\.latestParryWhiff\) return null;/);
   assert.match(preContactSource, /function recordWhiffProbe/);
   assert.match(preContactSource, /probe\.diagnostics\?\.closestApproach/);
   assert.match(diagnosticFormattersSource, /CONTACT_OUTSIDE_ACTIVE_WINDOW: 'CONTACT OUTSIDE ACTIVE WINDOW'/);

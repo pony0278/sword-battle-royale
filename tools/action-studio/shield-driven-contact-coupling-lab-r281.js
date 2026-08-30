@@ -7,7 +7,6 @@ import { sampleLongswordAttackRecovery } from '../../src/combat/longsword-contac
 import {
   measureSweptSwordBucklerClosestApproach,
 } from '../../src/combat/swept-sword-buckler-contact.js';
-import { buildParryWhiffDiagnostic } from '../../src/combat/parry-whiff-diagnostic.js';
 import { createGuardThreatTrackingRuntime, planGuardThreatCorrection } from '../../src/combat/guard-threat-tracking.js';
 import { createGuardResidualBodyReachRuntime } from '../../src/combat/guard-residual-body-reach.js';
 import {
@@ -57,7 +56,6 @@ import {
 import {
   formatInspectionFailureSummary,
   formatTerminalState,
-  formatWhiffDiagnostic,
 } from './shield-parry-r281/diagnostic-formatters.js';
 import { serializeVerificationReport } from './shield-parry-r281/report-serialization.js';
 import { buildShieldParryVerificationReport } from './shield-parry-r281/verification-report.js';
@@ -83,6 +81,7 @@ import { createNeutralStanceController } from './shield-parry-r281/neutral-stanc
 import { createBodyStrikeReactionController } from './shield-parry-r281/body-strike-reaction-controller.js';
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
 import { createLabFrameClock } from './shield-parry-r281/frame-clock.js';
+import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-reporter.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
@@ -211,6 +210,7 @@ const refreshDebugStanceProfile = (syncUrl = true) => stanceDebug.refresh(syncUr
 const resetDebugStanceDefaults = () => stanceDebug.resetDefaults();
 stanceDebug.initialize();
 const labUi = createShieldParryLabUi(uiElements);
+const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
 let ready = false;
 let selectedDirection = 'right';
@@ -602,23 +602,7 @@ function frame(timestamp) {
   if (ready) {
     const snapshot = attackRuntime.update(deltaMs);
 
-    if (parryGate.armed && !snapshot.action && !exchangeState.firstContact && !exchangeState.latestParryWhiff) {
-      exchangeState.latestParryWhiff = buildParryWhiffDiagnostic({
-        sequence: parryGate.attempt?.sequence ?? null,
-        direction: selectedDirection,
-        probeFrames: exchangeState.whiffProbeFrames,
-        closestApproachRecord: exchangeState.closestWhiffApproach,
-        outsideActiveContact: exchangeState.outsideActiveContact,
-        predictiveAnalysis: exchangeState.latestPredictiveAnalysis,
-        finePlan: exchangeState.latestFinePlan,
-        fineTracking: exchangeState.latestFineTracking,
-        shieldLeadMotion: exchangeState.latestShieldLeadMotion,
-        parryInput: exchangeState.latestParryInput,
-      });
-      const whiff = formatWhiffDiagnostic(exchangeState.latestParryWhiff, { debugMode: DEBUG_MODE });
-      status.textContent = `PARRY WHIFF · ${whiff.label} · ${whiff.detail}`;
-      status.className = 'bad';
-    }
+    parryWhiffReporter.report(snapshot, selectedDirection); // R20S.1: a report about a finished attack, never a decision
 
     laneController.update(snapshot.elapsedSeconds, Boolean(snapshot.action), snapshot.phase); // R20B.1 phase rides along
 
