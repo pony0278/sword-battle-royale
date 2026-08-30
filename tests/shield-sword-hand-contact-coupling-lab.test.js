@@ -34,6 +34,10 @@ const frameReportingSource = readFileSync(
   new URL('../tools/action-studio/shield-parry-r281/frame-reporting.js', import.meta.url),
   'utf8',
 );
+const playerControllerSource = readFileSync(
+  new URL('../tools/action-studio/shield-parry-r281/player-controller.js', import.meta.url),
+  'utf8',
+);
 const whiffReporterSource = readFileSync(
   new URL('../tools/action-studio/shield-parry-r281/parry-whiff-reporter.js', import.meta.url),
   'utf8',
@@ -121,11 +125,14 @@ test('Step 3A exposes an explicit live contact inspection state and markers', ()
 
 test('Step 3A provides a free inspection camera without changing combat time', () => {
   assert.match(sceneCompositionSource, /createFreeInspectionCameraControls/);
-  assert.match(source, /freeCamera\.update\(rawDeltaMs \/ 1000\)/);
+  // R20S.3: the inspection camera is opt-in, and the frame that drives it moved into the player
+  // controller alongside the game camera it stands in for - only one of them may own a frame.
+  assert.match(playerControllerSource, /if \(inspectionCamera\) \{ freeCamera\?\.update\?\.\(deltaSeconds\); return null; \}/);
+  assert.match(source, /INSPECTION_CAMERA = DEBUG_QUERY\.get\('camera'\) === 'free'/);
   assert.match(frameReportingSource, /inspectionCameraSnapshot: freeCamera\.snapshot\(\)/);
   assert.match(verificationReportSource, /inspectionCamera: inspectionCameraSnapshot/);
   assert.match(html, /Free inspection camera/);
-  assert.match(html, /W A S D · Q down · E up/);
+  assert.match(html, /\?camera=free/);
   assert.match(cameraSource, /pointerdown/);
   assert.match(cameraSource, /pointermove/);
   assert.match(cameraSource, /wheel/);

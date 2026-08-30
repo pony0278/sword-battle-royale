@@ -164,7 +164,7 @@ export function createShieldParryLabUi(elements) {
       parryPromptHeld, firstContact, latestFinePlan, latestGuardCoverage, latestReachableInterceptTarget,
       anchorCoverage,
       latestGripConstraintReport, step3AContactTransfer, defenderReleaseGate,
-      step3AOwnsLiveContact, directOldB3Diagnostic, debugMode,
+      step3AOwnsLiveContact, directOldB3Diagnostic, debugMode, lockReport,
     } = model;
     const outcome = latestCombatResult?.resolution?.outcome || '—';
     const recoil = combatSnapshot.attackerRecoil?.sample;
@@ -194,7 +194,15 @@ export function createShieldParryLabUi(elements) {
       : whiffGeometry
         ? `REAL Sword × Shield: NO · ${whiffGeometry.detail}`
         : 'REAL Sword × Shield: waiting';
-    hudCoupling.textContent = `Parry gate: ${inputStatus}`;
+    // R20S.3: the lock, on the line the parry gate already owns - one glance answers both "am I
+    // locked" and "is my timing being read", which are the two things a player is holding in their
+    // head at once.
+    const lockStatus = lockReport
+      ? lockReport.locked
+        ? ` · LOCK ON ${lockReport.distanceMeters == null ? '' : `${lockReport.distanceMeters.toFixed(2)}m `}(Tab 解除)`
+        : ` · FREE · Tab 鎖定${lockReport.reason === 'nobody-inside-the-frontal-view' ? '(對手不在正面視野)' : lockReport.reason === 'nobody-within-lock-range' ? '(超出 3.5m 鎖定距離)' : ''}`
+      : '';
+    hudCoupling.textContent = `Parry gate: ${inputStatus}${lockStatus}`;
     const interceptRequired = latestFinePlan?.requiredDistance;
     const interceptApplied = latestFinePlan?.appliedDistance;
     const originalPrediction = latestReachableInterceptTarget?.predictedRequiredDistanceMeters;
@@ -292,6 +300,14 @@ const LANE_KEYS = Object.freeze({ ArrowUp: -1, ArrowDown: 1 });
 // arrows to the attacker, but the attacker has no lateral verb yet, so held Shift zeroes the
 // sidestep rather than redirecting it.
 const LATERAL_KEYS = Object.freeze({ ArrowLeft: -1, ArrowRight: 1 });
+// R20S.3: free movement, in two dimensions. WASD is the movement layout every player already
+// knows, and it is free to take because the inspection camera it used to fly is now opt-in
+// (?camera=free) rather than the way the lab is looked at. The arrows keep driving the lane
+// scalars unchanged - the same ledger underneath, and nothing that depended on them moves.
+const MOVE_FORWARD_KEYS = Object.freeze({ KeyW: 1, KeyS: -1 });
+const MOVE_LATERAL_KEYS = Object.freeze({ KeyD: 1, KeyA: -1 });
+// R20S.3: locking is a decision, so it gets a key of its own rather than happening to you.
+const LOCK_KEY = 'Tab';
 
 function laneIntentFrom(held) {
   let intent = 0;
@@ -324,6 +340,24 @@ function isParryKey(event) {
     || event?.keyCode === 70;
 }
 
+// R20S.3: free look. A drag across the canvas turns the camera when nothing is locked; the entry
+// hands this to the player controller, which refuses it while a lock is held.
+function bindFreeLook(canvas, handlers) {
+  if (!canvas || typeof handlers.onLook !== 'function') return;
+  let dragging = false;
+  let lastX = null;
+  canvas.addEventListener('pointerdown', (event) => { dragging = true; lastX = event.clientX; });
+  canvas.addEventListener('pointermove', (event) => {
+    if (!dragging || lastX == null) return;
+    handlers.onLook(event.clientX - lastX);
+    lastX = event.clientX;
+  });
+  const end = () => { dragging = false; lastX = null; };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('pointerleave', end);
+}
+
 export function bindShieldParryLabUiEvents({
   documentRef,
   windowRef,
@@ -331,10 +365,17 @@ export function bindShieldParryLabUiEvents({
   elements,
   handlers,
 }) {
+  bindFreeLook(canvas, handlers);
   let parryKeyDownObserved = false;
   const heldLaneKeys = new Set();
   let attackerModifierHeld = false;
   const heldLateralKeys = new Set();
+  const heldMoveKeys = new Set();
+  function publishMoveIntent() {
+    let forward = 0; let lateral = 0;
+    for (const code of heldMoveKeys) { forward += MOVE_FORWARD_KEYS[code] || 0; lateral += MOVE_LATERAL_KEYS[code] || 0; }
+    handlers.onMoveIntent?.({ forward: Math.sign(forward), lateral: Math.sign(lateral) });
+  }
   function publishLaneIntent() {
     const intents = laneIntentsFor(heldLaneKeys, attackerModifierHeld);
     handlers.onDefenderIntent?.(intents.defender);
@@ -395,6 +436,17 @@ export function bindShieldParryLabUiEvents({
       if (!event.repeat) { heldLateralKeys.add(event.code); publishLaneIntent(); }
       return;
     }
+    if (MOVE_FORWARD_KEYS[event.code] !== undefined || MOVE_LATERAL_KEYS[event.code] !== undefined) {
+      event.preventDefault();
+      if (!event.repeat) { heldMoveKeys.add(event.code); publishMoveIntent(); }
+      return;
+    }
+    if (event.code === LOCK_KEY) {
+      // Tab moves focus by default, which would take the keyboard away from the fight.
+      event.preventDefault();
+      if (!event.repeat) handlers.onLockToggle?.();
+      return;
+    }
     if (event.code === 'Space' && !event.repeat) {
       // R20F.1: dodge. Direction comes from whatever movement keys are held at the press -
       // lateral wins over lane, nothing held dodges back - and the state itself refuses
@@ -431,6 +483,12 @@ export function bindShieldParryLabUiEvents({
       publishLaneIntent();
       return;
     }
+    if (MOVE_FORWARD_KEYS[event.code] !== undefined || MOVE_LATERAL_KEYS[event.code] !== undefined) {
+      event.preventDefault();
+      heldMoveKeys.delete(event.code);
+      publishMoveIntent();
+      return;
+    }
     if (!isParryKey(event)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -443,6 +501,8 @@ export function bindShieldParryLabUiEvents({
   windowRef.addEventListener('blur', () => {
     parryKeyDownObserved = false;
     heldLaneKeys.clear();
+    heldMoveKeys.clear();
+    publishMoveIntent();
     attackerModifierHeld = false;
     handlers.onGuardKey?.(false); // a guard held into a lost window never reports its keyup
     publishLaneIntent();

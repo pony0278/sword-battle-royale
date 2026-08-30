@@ -82,7 +82,7 @@ import { createBodyStrikeReactionController } from './shield-parry-r281/body-str
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
 import { createLabFrameClock } from './shield-parry-r281/frame-clock.js';
 import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-reporter.js';
-import { createShieldParryCameraController } from './shield-parry-r281/camera-controller.js';
+import { createShieldParryPlayerController } from './shield-parry-r281/player-controller.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
@@ -107,7 +107,6 @@ const {
 // R20S.2: the game's camera by default; ?camera=free hands the frame back to the inspection rig,
 // which is a debugging tool rather than a way anyone plays.
 const INSPECTION_CAMERA = DEBUG_QUERY.get('camera') === 'free';
-const cameraController = createShieldParryCameraController({ camera, aspectRatio: camera.aspect });
 const inspectionOverlay = createShieldParryInspectionOverlay({ THREE, scene });
 let defenderSword = null;
 
@@ -123,6 +122,8 @@ const activeParryInterceptIntent = createActiveParryInterceptIntent();
 const parryGate = createCommittedParryContactGate();
 const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
   labScene, walkClips: ATTACKER_WALK_CLIPS, services: { captureRigPose, applyRigPose } });
+const playerController = createShieldParryPlayerController({ // R20S.3: feet, lock-on and the camera
+  camera, laneController, freeCamera, inspectionCamera: INSPECTION_CAMERA });
 const exchangeState = createShieldParryExchangeState();
 // R20G.1 (B6c): defence is a choice - in block mode the guard (and the whole measured defence
 // behind it) exists only while the key is held; the machine follows this input, never auto-raises.
@@ -360,6 +361,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     selectedDirection: () => selectedDirection,
     debugStanceProfile: () => debugStanceProfile,
     parryReviewActive: (snapshot) => isParryPreContactReviewActive(snapshot),
+    lockReport: () => playerController.lockReport, // R20S.3
   },
 });
 
@@ -581,6 +583,9 @@ bindShieldParryLabUiEvents({
     onDefenderIntent: (intent) => laneController.setDefenderIntent(intent), onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
     onDefenderLateralIntent: (intent) => laneController.setDefenderLateralIntent(intent), onGuardKey: (held) => setGuardHeld(held), // R19V.1 + R20G.1
     onDodge: (direction) => requestDodge(direction), // R20F.1 through the stance gate
+    onMoveIntent: (moveIntent) => playerController.setMoveIntent(moveIntent), // R20S.3 WASD, world frame
+    onLockToggle: () => playerController.toggleLock(), // R20S.3 Tab
+    onLook: (deltaPixels) => (INSPECTION_CAMERA ? null : playerController.look(deltaPixels)), // R20S.3 free look
     onShowSurface: (checked) => buckler.setParrySurfaceVisible(checked),
     onResize: resize,
   },
@@ -600,20 +605,11 @@ function frame(timestamp) {
   const reviewRate = parryReviewActive ? PARRY_REVIEW_RATE : 1;
   const deltaMs = holdingParryPrompt ? 0 : rawDeltaMs * reviewRate;
   const deltaSeconds = Math.max(1e-5, deltaMs / 1000);
-  if (INSPECTION_CAMERA) freeCamera.update(rawDeltaMs / 1000);
+
   defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging, defenceCommitted: defenceCommitted() }); // R20G.1 + R20H.2
   syncGuardToStance(); // a deferred stand-down lands the frame its commitment ends
+  playerController.frame(rawDeltaMs / 1000); // R20S.3: lock, then feet, then the camera - in that order
   laneController.walk(rawDeltaMs / 1000, exchangeState.latestGuardFacingPlan); // real seconds; R19Q.1 facing plan rides along
-  // After the ledger has placed both fighters, before anything reads geometry. The camera is
-  // combat-inert (measured: the golden cells reproduce identically from the locked pose), so this
-  // is a presentation write and nothing downstream may treat it otherwise.
-  if (!INSPECTION_CAMERA) {
-    const ground = laneController.report;
-    cameraController.update({
-      player: ground.defenderPosition, target: ground.attackerPosition, locked: true,
-      yawRadians: ground.defenderFacingRadians, deltaSeconds: rawDeltaMs / 1000, aspectRatio: camera.aspect,
-    });
-  }
   if (ready) {
     const snapshot = attackRuntime.update(deltaMs);
 
@@ -698,7 +694,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     },
   },
   runtimes: {
-    laneController,
+    laneController, playerController, // R20S.3
     defenderStance, frameClock,
     combat,
     attackRuntime,

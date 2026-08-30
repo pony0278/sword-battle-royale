@@ -17,11 +17,23 @@ test('R19V.1 the sidestep reuses the not-straight-at-them speed and needs no cla
   assert.equal('clamped' in step, false);
 });
 
-test('R19V.1 arrows own the sidestep because WASD belongs to the camera', async () => {
+test('R20S.3 WASD moves the fighter, the arrows keep the lane scalars', async () => {
   const ui = await readFile(
     new URL('../tools/action-studio/shield-parry-r281/lab-ui.js', import.meta.url), 'utf8');
+  // R19V.1 gave the sidestep to the arrows because WASD flew the inspection camera. R20S.3 reversed
+  // the premise rather than the reasoning: the inspection camera is opt-in (?camera=free) now that
+  // the game's own camera renders the lab, so the movement layout every player knows is free to
+  // take. The arrows keep driving the lane scalars unchanged - same ledger, nothing that depended
+  // on them moves.
   assert.match(ui, /LATERAL_KEYS = Object\.freeze\(\{ ArrowLeft: -1, ArrowRight: 1 \}\)/);
-  assert.doesNotMatch(ui, /KeyA: -1/, 'A/D must stay with the free camera');
+  assert.match(ui, /MOVE_FORWARD_KEYS = Object\.freeze\(\{ KeyW: 1, KeyS: -1 \}\)/);
+  assert.match(ui, /MOVE_LATERAL_KEYS = Object\.freeze\(\{ KeyD: 1, KeyA: -1 \}\)/);
+  // Locking is a decision, so it has a key rather than happening to you - and Tab's default is to
+  // take the keyboard out of the fight, which has to be refused.
+  assert.match(ui, /const LOCK_KEY = 'Tab';/);
+  assert.match(ui, /if \(event\.code === LOCK_KEY\) \{[\s\S]*event\.preventDefault\(\);[\s\S]*onLockToggle/);
+  // A movement key held into a lost window never reports its keyup.
+  assert.match(ui, /heldMoveKeys\.clear\(\);\s*\n\s*publishMoveIntent\(\);/);
   // Shift zeroes the sidestep instead of redirecting it - the attacker has no lateral verb yet.
   assert.match(ui, /if \(attackerModifier\) return 0;/);
 
