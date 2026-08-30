@@ -79,6 +79,8 @@ export function createShieldParryDebugApi({
     get latestHiltClang() { return getExchangeState().latestHiltClang; },
     get latestGuardFacingPlan() { return getExchangeState().latestGuardFacingPlan; },
     get defenderFacingYawRadians() { return runtimes.laneController?.defenderFacingYawRadians ?? 0; },
+    get attackerBaseFacingRadians() { return runtimes.laneController?.attackerBaseFacingRadians ?? null; }, // R20T.1
+    get defenderBaseFacingRadians() { return runtimes.laneController?.defenderBaseFacingRadians ?? null; },
     get latestGuardResidual() { return getExchangeState().latestGuardResidual; },
     get latestGuardStanceReach() { return getExchangeState().latestGuardStanceReach; },
     get latestParryWhiff() { return getExchangeState().latestParryWhiff; },
