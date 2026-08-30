@@ -85,6 +85,10 @@ export function createShieldParryDebugApi({
     get defenderFacingYawRadians() { return runtimes.laneController?.defenderFacingYawRadians ?? 0; },
     get attackerBaseFacingRadians() { return runtimes.laneController?.attackerBaseFacingRadians ?? null; }, // R20T.1
     get defenderBaseFacingRadians() { return runtimes.laneController?.defenderBaseFacingRadians ?? null; },
+    // R20V.1: how far the defender's body is from square to the opponent. The cone gate reads this
+    // to decide whether committing coverage is worth anything, and until now a probe could not see
+    // what the gate saw.
+    get defenderFacingErrorRadians() { return runtimes.laneController?.defenderFacingErrorRadians ?? null; },
     get latestGuardResidual() { return getExchangeState().latestGuardResidual; },
     get latestGuardStanceReach() { return getExchangeState().latestGuardStanceReach; },
     get latestParryWhiff() { return getExchangeState().latestParryWhiff; },
