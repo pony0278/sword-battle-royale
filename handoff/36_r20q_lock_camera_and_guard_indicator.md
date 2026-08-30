@@ -191,7 +191,7 @@ Standing still unlocked blocks perfectly, so the honest sentence is **"you canno
 the same time when unlocked"**, not "unlocked cannot defend".
 
 The stated intent was to *encourage* locking; what was measured was closer to *requiring* it.
-**Resolved in R20V.2**: a raised guard pins the body. You are braced, not running, so the feet stop
+**R20V.2 built a fix and R20V.3 removed it after playtesting.** The fix was: a raised guard pins the body. You are braced, not running, so the feet stop
 steering the facing — aim first, then guard, and you can strafe or back off with the shield still
 pointed at the fight. Re-measured the same way: the error now grows at the opponent's bearing rate
 (~22°/s from 2.4m) instead of the body's 180°/s, TOP and RIGHT hold at every duration sampled, and
@@ -199,10 +199,19 @@ LEFT fails at 22.6° — its own measured cone edge of −20°. Nothing had to b
 why this was preferred over aiming the guard from the camera (that would have invalidated every
 band) and over exempting sidesteps (a rule that is inconsistent by construction).
 
-One trap the investigation caught before it shipped: simply *not steering* is not the same as
-pinning. A fighter who has not moved since the lock dropped has no owned facing at all, so their
-body would have kept tracking the opponent — unlocked play would have quietly inherited the aimed
-defence that locking is supposed to buy. The pin is written explicitly on the guard-raise edge.
+**Rejected on feel, by more than one tester.** Holding a shield and pressing right should walk
+right, the way it does with the shield down; requiring "aim first, then guard" imports locked-mode
+thinking into the mode whose premise is that you face where you are going. Consistency beat the 22°.
+Both halves stay in `lock-advantage.js` — it costs nothing to measure, it needs nothing re-measured,
+and it was still the wrong call — so the next person to propose it starts from there.
+
+**What ships is the measured penalty**: unlocked and moving, the guard is worth very little, and
+locking is how you fight. Free mode is for travelling.
+
+One trap the investigation caught while the pin existed, worth keeping: simply *not steering* is not
+the same as pinning. A fighter who has not moved since the lock dropped has no owned facing at all,
+so their body would have kept tracking the opponent — unlocked play would have quietly inherited the
+aimed defence that locking is supposed to buy.
 
 Also recorded there: R19X.1's reliable cone bands do **not** transfer to this question. They were
 measured by injecting rotation at a fixed stance; these cells rotate and displace together, because
