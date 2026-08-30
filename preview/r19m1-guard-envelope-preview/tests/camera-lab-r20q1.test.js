@@ -54,8 +54,10 @@ test('R20Q.1 what the page prints is what the module reads back', () => {
 });
 
 test('R20Q.1 the page identifies its build and states the sweep it verifies', () => {
-  assert.match(labHtml, /camera-lab\.js\?v=camera-lab-r20q1/);
-  assert.match(labHtml, /v=camera-lab-r20q1/);
+  // The tag is bumped whenever the page is published, so the legend line and the module query
+  // identify the build a tester is actually looking at rather than whatever the browser cached.
+  assert.match(labHtml, /camera-lab\.js\?v=camera-lab-r20q1d"/);
+  assert.match(labHtml, /v=camera-lab-r20q1d \u00b7/);
   assert.match(labHtml, /third-person-camera\.js/);
   // The out-of-frame check runs the lock band, which is the contact floor to the break range.
   assert.match(labJs, /SWEEP_MIN_METERS = 1\.1/);
