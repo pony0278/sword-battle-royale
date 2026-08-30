@@ -108,11 +108,25 @@ windows outside the contract, and a test asserts it is never needed inside it.
 Confirmed with the platform: a prompt about the best experience is what is expected, which is why
 the posture is advisory.
 
+## Steering budget (R20T.1) — answered
+
+A walking-speed orbit is not a dodge, at any range this game can be played at. The strafe out-turns
+the 45°/s windup tracker only inside 0.95m and the ledger clamps at 0.90m, so the exploitable band
+is five centimetres wide. Measured: aim error at the end of the windup is 0.04–0.34° at every stance
+and direction, against delivery-cone edges of −8° (LEFT) to ±20°; 24/24 orbited exchanges blocked
+with the guard up, and every TOP and RIGHT swing connected with it down. `orbit-steering-budget.js`
+carries the model and the browser numbers together.
+
+**Open finding, found while measuring that:** LEFT does not reach an unguarded body inside 1.4m —
+0/3 at 1.0–1.3m, 1/3 at 1.4m, 3/3 from 1.5m. The still control misses identically, so movement is
+not the cause. Guard up, the same cell blocks (the shield is out in front and intercepts a blade
+that passes the body), so the hole is only against a defender who is not defending — exactly the
+player a close-range attacker expects to punish. TOP and RIGHT connect 3/3 from 1.0m. Root cause not
+established; the golden grid's LEFT cells start at 1.6m, so this band had never been sampled.
+
 ## Also open from this arc
 
-- Wire the tuned profile + lock-on into the combat lab (step 3 of the free-movement plan).
-- Derive the steering budget: 45°/s windup tracking against a target strafing at 0.75 m/s
-  (17.9°/s angular at 2.4m, 39.1°/s at 1.1m).
+- Root-cause LEFT's close-range body whiff (above).
 - Locked vs unlocked win-rate balance check.
 - Mobile UI proper: touch controls for the landscape layout, and the rotate-to-landscape gate
   (`describeViewport`) wired into whatever hosts the game.

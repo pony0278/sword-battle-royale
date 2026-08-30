@@ -264,6 +264,11 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     // the old distance describe a fight that no longer exists. Held keys and the gait's phase
     // survive - only the ground is forgotten.
     get defenderFacingYawRadians() { return guardFacingTurn.yawRadians; },
+    // R20T.1: the facings actually stamped on the scene, after the integrators. The ledger's
+    // report carries the instantaneous bearing (a fact about the gap); these are where the bodies
+    // are pointed, which is what an aim error is measured against.
+    get attackerBaseFacingRadians() { return attackerBaseFacing.facingRadians; },
+    get defenderBaseFacingRadians() { return defenderBaseFacing.facingRadians; },
     // R19Z.1: how far the defender's body still deviates from square to the attacker - the
     // integrated base facing against the ledger's instantaneous bearing. Same sign convention
     // the cone was measured in (base facing and probe yaw add in the same rotation space, so
