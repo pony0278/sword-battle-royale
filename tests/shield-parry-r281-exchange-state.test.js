@@ -54,6 +54,7 @@ const EXPECTED_DIAGNOSTIC_KEYS = [
   'latestFineTracking',
   'latestGuardCoverage',
   'latestSwingRelevance',
+  'latestSwingInnerReach',
   'latestConeGate',
   'latestGuardResidual',
   'latestGuardStanceReach',

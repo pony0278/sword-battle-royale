@@ -72,6 +72,7 @@ export function createShieldParryDebugApi({
     get latestFineTracking() { return getExchangeState().latestFineTracking; },
     get latestGuardCoverage() { return getExchangeState().latestGuardCoverage; },
     get latestSwingRelevance() { return getExchangeState().latestSwingRelevance; },
+    get latestSwingInnerReach() { return getExchangeState().latestSwingInnerReach; }, // R20T.2
     get latestCloseRangePosture() { return getExchangeState().latestCloseRangePosture; },
     get latestConeGate() { return getExchangeState().latestConeGate; },
     get latestDodge() { return getExchangeState().latestDodge; },
@@ -79,6 +80,8 @@ export function createShieldParryDebugApi({
     get latestHiltClang() { return getExchangeState().latestHiltClang; },
     get latestGuardFacingPlan() { return getExchangeState().latestGuardFacingPlan; },
     get defenderFacingYawRadians() { return runtimes.laneController?.defenderFacingYawRadians ?? 0; },
+    get attackerBaseFacingRadians() { return runtimes.laneController?.attackerBaseFacingRadians ?? null; }, // R20T.1
+    get defenderBaseFacingRadians() { return runtimes.laneController?.defenderBaseFacingRadians ?? null; },
     get latestGuardResidual() { return getExchangeState().latestGuardResidual; },
     get latestGuardStanceReach() { return getExchangeState().latestGuardStanceReach; },
     get latestParryWhiff() { return getExchangeState().latestParryWhiff; },

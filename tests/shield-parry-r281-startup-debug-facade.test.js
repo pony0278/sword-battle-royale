@@ -117,7 +117,7 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
     'forceOldTwoActorB3', 'directOldB3Diagnostic', 'latestPredictiveReport', 'latestShieldLeadMotion',
     'latestLeadHandoff', 'latestCombatResult', 'latestParryInput', 'latestParryOpportunity', 'latestContact', 'latestBodyHit',
     'latestParryConfirmation', 'step3AContactTransfer', 'latestGripConstraintReport',
-    'latestFinePlan', 'latestFineTracking', 'latestGuardCoverage', 'latestSwingRelevance', 'latestCloseRangePosture', 'latestConeGate', 'latestDodge', 'tryDodge', 'latestHiltClang', 'latestGuardFacingPlan', 'defenderFacingYawRadians', 'latestGuardResidual', 'latestGuardStanceReach', 'latestParryWhiff',
+    'latestFinePlan', 'latestFineTracking', 'latestGuardCoverage', 'latestSwingRelevance', 'latestSwingInnerReach', 'latestCloseRangePosture', 'latestConeGate', 'latestDodge', 'tryDodge', 'latestHiltClang', 'latestGuardFacingPlan', 'defenderFacingYawRadians', 'attackerBaseFacingRadians', 'defenderBaseFacingRadians', 'latestGuardResidual', 'latestGuardStanceReach', 'latestParryWhiff',
     'latestInterceptDriveReport', 'latestVisualOwnershipBaseline', 'visualOwnershipTrace',
     'latestInputSignal', 'latestEngagementGround', 'latestRootDisplacement', 'latestAttackerRootDisplacement',
     'latestDefenderRootDisplacement', 'latestArmFling', 'latestArmFlingReport',

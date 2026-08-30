@@ -164,7 +164,7 @@ export function createShieldParryLabUi(elements) {
       parryPromptHeld, firstContact, latestFinePlan, latestGuardCoverage, latestReachableInterceptTarget,
       anchorCoverage,
       latestGripConstraintReport, step3AContactTransfer, defenderReleaseGate,
-      step3AOwnsLiveContact, directOldB3Diagnostic, debugMode, lockReport,
+      step3AOwnsLiveContact, directOldB3Diagnostic, debugMode, lockReport, swingInnerReach,
     } = model;
     const outcome = latestCombatResult?.resolution?.outcome || '—';
     const recoil = combatSnapshot.attackerRecoil?.sample;
@@ -187,13 +187,19 @@ export function createShieldParryLabUi(elements) {
 
     const reviewRate = parryReviewActive ? parryReviewRate : 1;
     hudAttack.textContent = `Requested: ${requestedOutcome ? requestedOutcome.toUpperCase() : 'NONE'} · Actual: ${String(outcome).toUpperCase()} · ${snapshot.phase} · committed ${committed ? 'YES' : 'NO'} · TTC ${ttcSeconds == null ? '—' : `${Math.max(0, ttcSeconds) * 1000 | 0}ms`} · review ${reviewRate.toFixed(2)}×${parryPromptHeld ? ' · VALID WINDOW HELD' : ''}`;
+    // R20T.2: too close for this swing. Said on the contact line because that is the line about
+    // whether a blade meets anything, and said in terms of what to do about it - the player is
+    // otherwise left watching a swing pass through nobody with no idea why.
+    const insideArc = swingInnerReach?.insideArc === true
+      ? ` · 太近:這一刀從身體後方掃過(需要 ${swingInnerReach.requiredSeparationMeters.toFixed(2)}m,接觸時只有 ${swingInnerReach.separationAtContactMeters.toFixed(2)}m)`
+      : swingInnerReach?.reason === 'on-the-edge-of-the-sweep-arc' ? ' · 貼在弧線邊緣' : '';
     const contactGeometry = describeContactGeometry(firstContact);
     const whiffGeometry = formatWhiffDiagnostic(latestParryWhiff, { debugMode: debugMode });
-    hudContact.textContent = contactGeometry
+    hudContact.textContent = `${contactGeometry
       ? `REAL Sword × Shield: YES · swept ${firstContact.mode || 'contact'} · ${contactGeometry.text}`
       : whiffGeometry
         ? `REAL Sword × Shield: NO · ${whiffGeometry.detail}`
-        : 'REAL Sword × Shield: waiting';
+        : 'REAL Sword × Shield: waiting'}${insideArc}`;
     // R20S.3: the lock, on the line the parry gate already owns - one glance answers both "am I
     // locked" and "is my timing being read", which are the two things a player is holding in their
     // head at once.

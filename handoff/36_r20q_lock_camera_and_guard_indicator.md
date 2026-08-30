@@ -108,11 +108,51 @@ windows outside the contract, and a test asserts it is never needed inside it.
 Confirmed with the platform: a prompt about the best experience is what is expected, which is why
 the posture is advisory.
 
+## Steering budget (R20T.1) — answered
+
+A walking-speed orbit is not a dodge, at any range this game can be played at. The strafe out-turns
+the 45°/s windup tracker only inside 0.95m and the ledger clamps at 0.90m, so the exploitable band
+is five centimetres wide. Measured: aim error at the end of the windup is 0.04–0.34° at every stance
+and direction, against delivery-cone edges of −8° (LEFT) to ±20°; 24/24 orbited exchanges blocked
+with the guard up, and every TOP and RIGHT swing connected with it down. `orbit-steering-budget.js`
+carries the model and the browser numbers together.
+
+**Found while measuring that, and then explained:** LEFT does not reach an unguarded body inside
+1.4m — 0/3 at 1.0–1.3m, 1/3 at 1.4m, 3/3 from 1.5m; the still control misses identically, so
+movement is not the cause.
+
+Root cause: **you can get inside the arc.** LEFT is a low horizontal sweep whose blade passes at a
+radius of about 1.10m from the attacker. Clamped at the ledger's 0.90m minimum separation, the
+blade travels 15.5cm *beyond* the body and misses the waist disc by 2.6cm. At 1.4m it overshoots by
+13.8cm and misses by 0.9mm, which is why that stance is a coin flip. From 1.5m the pair is still
+1.058m apart when the swing arrives and it connects 3/3. The gap closes monotonically from windup
+into the active window in both cases, so nothing is gating a contact that happened — the blade
+never arrives. TOP is immune (a chop lands on whatever is under it) and RIGHT connects from 1.0m.
+
+Guard up, the same cell blocks: the shield is out in front and intercepts a blade that passes the
+body. So the hole is only against a defender who is *not defending* — and at hugging range it
+removes one of the three directions from the mixup.
+
+**Decided: it stays a mechanic, and it is now visible** (R20T.2). `swing-inner-reach.js` is the
+mirror of `swing-threat-relevance.js` — that one says when a swing is thrown from too far to matter,
+this one says when it is thrown from too close to arrive. LEFT's inner bound is 1.05m of separation
+at contact; TOP and RIGHT have none in the playable range (null means measured-and-there-is-none,
+and the report distinguishes that from an unknown direction). The lab says "太近:這一刀從身體後方
+掃過" on the contact line, which is where a player already looks to find out whether a blade met
+anything. The module carries no contact authority and a test asserts it cannot acquire any.
+
+The model states its own tolerance (2cm): it spends the whole authored advance to reach the contact
+separation, which runs about a centimetre pessimistic against the browser, so a margin inside that
+band is reported as an edge rather than as a verdict — 1.5m lands 3/3 and a warning must never
+contradict a measured hit.
+
+Not done, and worth considering together: at hugging range the mixup narrows from three directions
+to two, which favours the defender — and the defender is usually the one who closed. If that reads
+badly in play, the answer is a disengage verb (the dash) rather than changing the geometry.
+
 ## Also open from this arc
 
-- Wire the tuned profile + lock-on into the combat lab (step 3 of the free-movement plan).
-- Derive the steering budget: 45°/s windup tracking against a target strafing at 0.75 m/s
-  (17.9°/s angular at 2.4m, 39.1°/s at 1.1m).
+- Root-cause LEFT's close-range body whiff (above).
 - Locked vs unlocked win-rate balance check.
 - Mobile UI proper: touch controls for the landscape layout, and the rotate-to-landscape gate
   (`describeViewport`) wired into whatever hosts the game.

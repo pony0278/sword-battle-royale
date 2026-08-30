@@ -73,6 +73,7 @@ export const FRAME_DIAGNOSTIC_KEYS = Object.freeze([
   'latestFineTracking',
   'latestGuardCoverage',
   'latestSwingRelevance',
+  'latestSwingInnerReach',
   'latestConeGate',
   'latestGuardResidual',
   'latestGuardStanceReach',
