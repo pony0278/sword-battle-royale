@@ -76,7 +76,7 @@ import { createDefenderStanceRuntime } from '../../src/combat/defender-stance.js
 import { createShieldParryInspectionOverlay } from './shield-parry-r281/inspection-overlay.js';
 import { createAttackerPresentationAdapter } from './shield-parry-r281/attacker-presentation.js';
 import { createDirectOldB3DiagnosticController } from './shield-parry-r281/direct-old-b3-diagnostic.js';
-import { ATTACKER_WALK_CLIPS, bootstrapShieldParryLabAssets } from './shield-parry-r281/lab-bootstrap.js';
+import { LANE_WALK_CLIPS, bootstrapShieldParryLabAssets } from './shield-parry-r281/lab-bootstrap.js';
 import { createNeutralStanceController } from './shield-parry-r281/neutral-stance.js';
 import { createBodyStrikeReactionController } from './shield-parry-r281/body-strike-reaction-controller.js';
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
@@ -121,7 +121,7 @@ const predictivePresentation = createPredictiveInterceptParryPresentationRuntime
 const activeParryInterceptIntent = createActiveParryInterceptIntent();
 const parryGate = createCommittedParryContactGate();
 const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
-  labScene, walkClips: ATTACKER_WALK_CLIPS, services: { captureRigPose, applyRigPose } });
+  labScene, walkClips: LANE_WALK_CLIPS, services: { captureRigPose, applyRigPose } });
 const playerController = createShieldParryPlayerController({ // R20S.3: feet, lock-on and the camera
   camera, laneController, freeCamera, inspectionCamera: INSPECTION_CAMERA, // R20U.1: running is refused by these two
   readGuardActive: () => defenderStance.report.guardActive === true, readAttacking: () => attackRuntime.active === true });
