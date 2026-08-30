@@ -1,4 +1,5 @@
 import { wrapAngleRadians } from './base-facing.js';
+import { horizontalHalfFovRadians, THIRD_PERSON_CAMERA_PROFILE } from './third-person-camera.js';
 
 export const LOCK_ON_STAGE = 'R20P.1';
 
@@ -19,9 +20,37 @@ export const LOCK_ON_ACQUIRE_RANGE_METERS = 3.5;
 // and would make walking out of a fight an accident; 1.5m of hysteresis makes disengaging a thing
 // you did. That band is also where the dash verb is meant to live - approach and disengage.
 export const LOCK_ON_BREAK_RANGE_METERS = 5;
-// Frontal view, and narrower than the camera's own field: at the screen's edge "in front of me"
-// stops being true, and a lock you did not intend is worse than one you had to aim for.
-export const LOCK_ON_ACQUIRE_HALF_ANGLE_RADIANS = (50 * Math.PI) / 180;
+// The frontal cone is derived from the view rather than chosen, because "in front of me" means
+// "on my screen" - and a constant cannot mean that. The rendered slice depends on the camera's
+// vertical fov AND the viewport's aspect, which is why the earlier 50 degrees was wrong in both
+// directions at once: wider than a 4:3 window renders (+-24.7) and far wider than a portrait phone
+// (+-11.0), so it promised locks on people who were not on screen.
+export const LOCK_ON_VIEW_CONE_FRACTION = 0.9;
+// Except at the narrow end, where the derivation turns against the player: on a portrait phone the
+// frame is so tight that the person you are obviously fighting sits just off the edge whenever they
+// step aside, and refusing the lock there would make the game unplayable in the exact orientation a
+// phone is held. The floor buys that back. It is a seed - the number the mobile UI work is going to
+// argue with - and it is the one place a lock can be taken on somebody off-screen.
+export const LOCK_ON_MINIMUM_HALF_ANGLE_RADIANS = (25 * Math.PI) / 180;
+// The desktop default, so callers who have no viewport to describe still get a real number.
+const DEFAULT_VIEW = Object.freeze({
+  fovDegrees: THIRD_PERSON_CAMERA_PROFILE.locked.distanceKeys[0].fovDegrees,
+  aspectRatio: 16 / 9,
+});
+
+// A fraction of what is rendered: the screen's own edge is not a place anybody aims, so the cone
+// stops short of it and a lock stays something you pointed at.
+export function lockOnAcquireHalfAngleRadians(view = {}) {
+  const fovDegrees = Number.isFinite(Number(view?.fovDegrees)) ? Number(view.fovDegrees) : DEFAULT_VIEW.fovDegrees;
+  // A non-positive aspect describes no viewport at all, so it falls back rather than collapsing the
+  // cone to nothing - null and 0 are what a half-built layout reports, not a one-pixel-wide screen.
+  const statedAspect = Number(view?.aspectRatio);
+  const aspectRatio = Number.isFinite(statedAspect) && statedAspect > 0 ? statedAspect : DEFAULT_VIEW.aspectRatio;
+  const onScreen = horizontalHalfFovRadians(fovDegrees, aspectRatio);
+  return Math.max(LOCK_ON_MINIMUM_HALF_ANGLE_RADIANS, onScreen * LOCK_ON_VIEW_CONE_FRACTION);
+}
+
+export const LOCK_ON_ACQUIRE_HALF_ANGLE_RADIANS = lockOnAcquireHalfAngleRadians(DEFAULT_VIEW);
 
 export const LOCK_ON_PROFILE = Object.freeze({
   acquireRangeMeters: LOCK_ON_ACQUIRE_RANGE_METERS,
@@ -55,7 +84,10 @@ function measure(self, candidate, viewForwardRadians) {
 // the point of aiming with the camera - but only among those close enough to matter, so a distant
 // figure dead centre never outranks the person actually swinging at you.
 export function selectLockOnCandidate(input = {}) {
-  const profile = Object.freeze({ ...LOCK_ON_PROFILE, ...(input.profile || {}) });
+  // Precedence: a cone the caller states outright, else the one this frame's viewport implies,
+  // else the desktop default. The lab needs the first, the game gives the second.
+  const derived = input.view ? { acquireHalfAngleRadians: lockOnAcquireHalfAngleRadians(input.view) } : {};
+  const profile = Object.freeze({ ...LOCK_ON_PROFILE, ...derived, ...(input.profile || {}) });
   const self = input.self || { x: 0, z: 0 };
   const viewForwardRadians = finite(input.viewForwardRadians, 0);
   const candidates = Array.isArray(input.candidates) ? input.candidates : [];
@@ -93,7 +125,10 @@ export function selectLockOnCandidate(input = {}) {
 }
 
 export function createLockOnRuntime(options = {}) {
-  const profile = Object.freeze({ ...LOCK_ON_PROFILE, ...(options.profile || {}) });
+  // Two readings of the same thing: what the caller actually stated (which is all that may override
+  // a viewport-derived cone) and the merged profile this runtime reports and measures ranges with.
+  const stated = Object.freeze({ ...(options.profile || {}) });
+  const profile = Object.freeze({ ...LOCK_ON_PROFILE, ...stated });
   let targetId = null;
   let lastReason = 'never-locked';
   let lastMeasured = null;
@@ -124,7 +159,7 @@ export function createLockOnRuntime(options = {}) {
     // because a toggle that sometimes releases and sometimes re-aims is a toggle you cannot trust.
     requestToggle(input = {}) {
       if (targetId != null) return release('released-by-request');
-      const selection = selectLockOnCandidate({ ...input, profile });
+      const selection = selectLockOnCandidate({ ...input, profile: stated });
       if (!selection.accepted) {
         lastReason = selection.reason;
         return report();
