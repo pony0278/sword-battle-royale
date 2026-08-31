@@ -47,6 +47,7 @@ export function createShieldParryFrameReporting({
       ready: read.ready(),
       lockReport: read.lockReport?.() ?? null, // R20S.3
       sprintReport: read.sprintReport?.() ?? null, // R20U.1
+      parryTally: read.parryTally?.() ?? null, // R21C.2
       swingInnerReach: exchangeState.latestSwingInnerReach, // R20T.2
       selectedMode: read.selectedMode(),
       step3AContactTransfer: exchangeState.step3AContactTransfer,
@@ -73,6 +74,7 @@ export function createShieldParryFrameReporting({
       latestParryInput: exchangeState.latestParryInput,
       lockReport: read.lockReport?.() ?? null, // R20S.3
       sprintReport: read.sprintReport?.() ?? null, // R20U.1
+      parryTally: read.parryTally?.() ?? null, // R21C.2
       swingInnerReach: exchangeState.latestSwingInnerReach, // R20T.2
       selectedMode: read.selectedMode(),
       requestedOutcome: read.selectedMode(),
@@ -116,6 +118,7 @@ export function createShieldParryFrameReporting({
       selectedDirection: read.selectedDirection(),
       lockReport: read.lockReport?.() ?? null, // R20S.3
       sprintReport: read.sprintReport?.() ?? null, // R20U.1
+      parryTally: read.parryTally?.() ?? null, // R21C.2
       swingInnerReach: exchangeState.latestSwingInnerReach, // R20T.2
       selectedMode: read.selectedMode(),
       parryProfile: parryGate.profile,

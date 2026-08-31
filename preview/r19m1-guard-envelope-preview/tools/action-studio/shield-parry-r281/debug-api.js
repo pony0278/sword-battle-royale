@@ -48,6 +48,8 @@ export function createShieldParryDebugApi({
     get laneDefenderTravelPlan() { return runtimes.laneController?.defenderTravelPlan ?? null; },
     // R21A.2: where the player is pointing. Read-only, and nothing consults it to decide anything.
     get guardSector() { return runtimes.guardSector?.report ?? null; },
+    // R21C.2: attempts per direction, split by why they missed.
+    get parryTally() { return runtimes.parryTally?.rows ?? null; },
     get laneAttackerWalkSample() { return runtimes.laneController?.attackerWalkSample ?? null; },
     get engagementStance() { return runtimes.labScene?.engagementStance ?? null; },
     setDefenderYawOffset: (radians) => runtimes.labScene?.setDefenderYawOffset?.(radians) ?? null, // R19Q.1 facing seam (tests drive it directly)
