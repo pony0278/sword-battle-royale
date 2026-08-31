@@ -395,7 +395,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
 // setAttackerIntent and startAttack, which is what leaves the golden grid and the parry gate (both
 // of which drive attacks by hand at fixed separations) untouched with the toggle off.
 const opponentDriveController = createOpponentDriveController({
-  toggle: opponentDrive, laneController, startAttack,
+  toggle: opponentDrive, laneController, startAttack, tally: parryTally,
   readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !attackerRecovery,
 });
 
@@ -526,6 +526,7 @@ function startAttack(direction = selectedDirection) {
   const started = combat.startAttack(direction);
   if (!started.accepted) return false;
   laneController.startAttack(direction, attackRuntime.snapshot?.action?.runtime?.contactSeconds);
+  parryTally.recordAttack(direction); // R21G.1: the denominator is the swing, not the press
   status.textContent = `ATTACK ${direction.toUpperCase()} · wait for committed YES, then press PARRY NOW or F`;
   status.className = 'warn';
   document.querySelectorAll('[data-attack]').forEach((button) => button.classList.toggle('active', button.dataset.attack === direction));
