@@ -20,6 +20,7 @@ const REQUIRED_IDS = Object.freeze([
   'report',
   'autoRepeat',
   'opponentDrive',
+  'copyTally',
   'slowReview',
   'showSurface',
   'forceOldB3',

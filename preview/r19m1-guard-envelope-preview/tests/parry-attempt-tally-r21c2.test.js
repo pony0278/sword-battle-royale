@@ -151,3 +151,56 @@ test('R21G.1 pressing before the attacker commits is a timing miss, not an unkno
   assert.equal(broken.rows.left.other, 1);
   assert.equal(broken.rows.left.mistimed, 0);
 });
+
+test('R21G.2 the pasteable report carries every derived column', () => {
+  const tally = createParryAttemptTally();
+  for (let i = 0; i < 4; i += 1) tally.recordAttack('top');
+  tally.record(report('top', 'parry-input-armed-awaiting-real-contact', 1, true));
+  tally.record(report('top', 'parry-input-too-late', 2));
+  const lines = tally.reportText.split('\n');
+  const head = lines[0].split('\t');
+  const top = lines.find((l) => l.startsWith('top')).split('\t');
+  const total = lines[lines.length - 1].split('\t');
+  assert.equal(head.length, top.length);
+  assert.equal(head.length, total.length);
+  // thrown and noAnswer are derived rather than stored; reading them off the raw row gave a blank
+  // cell and a NaN total, which a tester would have pasted without noticing.
+  for (const cell of [...top.slice(1), ...total.slice(1)]) {
+    assert.match(cell, /^\d+$/, `"${cell}" is not a number in:\n${tally.reportText}`);
+  }
+  assert.equal(top[1], '4', 'thrown');
+  assert.equal(top[top.length - 1], '2', 'noAnswer');
+  // Every row must still balance: the buckets account for every swing.
+  const bucketed = top.slice(2).reduce((a, v) => a + Number(v), 0);
+  assert.equal(bucketed, Number(top[1]));
+});
+
+test('R21G.2 a run that has been switched off still names its seed', async () => {
+  const { createOpponentDriveController } = await import('../tools/action-studio/shield-parry-r281/opponent-drive-controller.js');
+  const toggle = { checked: false };
+  const controller = createOpponentDriveController({
+    toggle,
+    laneController: { report: { separationMeters: 2.4 }, setAttackerIntent() {} },
+    startAttack: () => true,
+    readAttackAvailable: () => true,
+  });
+  assert.equal(controller.summary, '手動', 'nothing has happened yet');
+  toggle.checked = true;
+  for (let i = 0; i < 200 && controller.report.attacksServed === 0; i += 1) controller.frame(16);
+  assert.ok(controller.report.attacksServed > 0);
+  toggle.checked = false;
+  // A tester switches the opponent off before reading the numbers. A sample whose seed is gone
+  // cannot be replayed, which was the entire reason for seeding it.
+  assert.match(controller.summary, /seed \d+/);
+  assert.match(controller.summary, /已出 \d+/);
+});
+
+test('R21G.2 the HUD is actually handed the opponent line and the report', () => {
+  // Both were added to the entry's HUD source list and never forwarded, so the 對手 line did not
+  // update once between R21E.1 and R21G.2 - the drive had only ever been checked through the debug
+  // API, which reads the runtime rather than the screen.
+  const reporting = readFileSync(new URL('../tools/action-studio/shield-parry-r281/frame-reporting.js', import.meta.url), 'utf8');
+  const hud = reporting.slice(reporting.indexOf('function updateHud'), reporting.indexOf('function buildReport'));
+  assert.match(hud, /opponent: read\.opponent/);
+  assert.match(hud, /parryTallyReport: read\.parryTallyReport/);
+});

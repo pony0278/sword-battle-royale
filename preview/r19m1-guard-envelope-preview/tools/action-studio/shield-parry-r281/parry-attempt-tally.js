@@ -111,6 +111,29 @@ export function createParryAttemptTally() {
         return `${direction} ${row.armed}/${thrownOf(row)}${missReasons ? ` (${missReasons})` : ''}`;
       }).join(' · ');
     },
+    // R21G.2: the whole sample as pasteable text. A playtest report that has to be transcribed by
+    // eye off a HUD line is a playtest report with transcription errors in it, and the split this
+    // tally exists to show is exactly the part that gets lost.
+    get reportText() {
+      const cols = ['thrown', 'armed', 'wrongDirection', 'mistimed', 'unaimed', 'other', 'noAnswer'];
+      const head = ['方向', '揮出', '成功', '方向錯', '時機錯', '沒瞄', '其他', '沒答'];
+      const total = Object.fromEntries(cols.map((c) => [c, 0]));
+      const lines = [head.join('\t')];
+      for (const direction of DIRECTIONS) {
+        const row = rows.get(direction);
+        // thrown and noAnswer are both derived rather than stored, so neither can be read off the
+        // row the way the counted buckets can.
+        const values = cols.map((c) => {
+          if (c === 'thrown') return thrownOf(row);
+          if (c === 'noAnswer') return noAnswerOf(row);
+          return row[c];
+        });
+        cols.forEach((c, i) => { total[c] += values[i]; });
+        lines.push([direction, ...values].join('\t'));
+      }
+      lines.push(['總計', ...cols.map((c) => total[c])].join('\t'));
+      return lines.join('\n');
+    },
     get rows() {
       return Object.fromEntries(DIRECTIONS.map((direction) => {
         const row = rows.get(direction);
