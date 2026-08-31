@@ -38,10 +38,17 @@
     /* R21A.2: the guard sector indicator. Bottom centre, small, and part of the overlay set H
        hides - it is information about the fight, so it sits where a player already looks for the
        fighters without covering them. */
+    /* R21N.1: the indicator IS the control now. It already showed the three directions and already
+       sat where the eye is, so making it pressable adds an affordance instead of a second widget -
+       and gives desktop and touch the same target. */
     .guard-sector{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:grid;
-      grid-template-columns:34px 34px 34px;gap:6px;pointer-events:none;font:700 15px/34px ui-monospace,monospace;text-align:center}
-    .guard-sector div{border:1px solid #35476899;border-radius:8px;background:#07101abb;color:#5f7796;transition:color .08s,border-color .08s,background .08s}
+      grid-template-columns:46px 46px 46px;gap:8px;font:700 17px/46px ui-monospace,monospace;text-align:center}
+    .guard-sector div{border:1px solid #35476899;border-radius:10px;background:#07101abb;color:#5f7796;
+      cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;
+      transition:color .08s,border-color .08s,background .08s}
+    .guard-sector div small{display:block;font:500 9px/1 ui-monospace,monospace;color:#4a5f7d;margin-top:-11px}
     .guard-sector div.aimed{color:#7ef0ad;border-color:#7ef0ad;background:#0d382ccc}
+    .guard-sector div:active{color:#7ef0ad;border-color:#7ef0ad;background:#12503acc}
     body.overlays-off .guard-sector{display:none}
     @media(max-width:900px){
       html,body{height:auto;min-height:100%;overflow:auto}body{display:block}main{height:58vh;min-height:360px}
@@ -93,7 +100,9 @@
       <button data-dodge class="pad-dodge">✦</button>
     </div>
     <div id="parryCue" class="parry-cue wait"><span>BEST PARRY TIMING · R18I5</span><strong id="parryCueMain">LOADING…</strong><small id="parryCueDetail">等待即時 attack gate</small></div>
-    <div id="guardSector" class="guard-sector" aria-hidden="true"><div data-sector="left">&#9664;</div><div data-sector="top">&#9650;</div><div data-sector="right">&#9654;</div></div>
+    <!-- R21N.1: press one of these to parry in that direction - the press names the direction AND
+         is the timed input, so there is nothing to aim first. Keys I/J/L do the same. -->
+    <div id="guardSector" class="guard-sector"><div data-sector="left">&#9664;<small>J</small></div><div data-sector="top">&#9650;<small>I</small></div><div data-sector="right">&#9654;<small>L</small></div></div>
     <div class="hud">
       <b>Step 3A · Live Shield → Sword → Arm → OLD B3 · BUILD R18I5 TOP/RIGHT</b>
       <div id="hudAttack">Attack commitment / TTC: loading…</div>
@@ -217,6 +226,6 @@
       });
     })();
   </script>
-  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-did-the-aim-move-r21m1"></script>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-one-press-one-direction-r21n1"></script>
 </body>
 </html>

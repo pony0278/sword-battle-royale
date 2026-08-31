@@ -628,6 +628,14 @@ bindShieldParryLabUiEvents({
     onSprint: (held) => playerController.setSprintRequested(held), // R20U.1 Shift
     onLook: (deltaPixels) => (INSPECTION_CAMERA ? null : playerController.look(deltaPixels)), // R20S.3 free look
     onAim: (aim) => guardSector.aim(aim), // R21A.2 the guard sector, aim only - no rule reads it
+    // R21N.1: one press that names the direction and is the timed input. The sector is chosen
+    // first so the guard's rising edge - which IS the parry attempt (R20H.1) - already sees it;
+    // ordering these the other way round would arm every directional press against wherever the
+    // pointer happened to be left.
+    onDirectionalParry: (direction, pressed) => {
+      if (pressed) guardSector.select(direction);
+      return setGuardHeld(pressed);
+    },
     onShowSurface: (checked) => buckler.setParrySurfaceVisible(checked),
     onResize: resize,
   },

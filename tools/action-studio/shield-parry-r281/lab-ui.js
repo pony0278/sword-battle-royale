@@ -2,6 +2,7 @@
 // Callers provide snapshots/callbacks. This module never decides combat success.
 
 import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from '../../../src/combat/parry-lunge-reach.js';
+import { directionalParryFor } from '../../../src/combat/directional-parry-input.js';
 import {
   describeContactGeometry,
   formatAllInspectionGates,
@@ -391,6 +392,48 @@ function lateralIntentFrom(held, attackerModifier) {
   return Math.sign(intent);
 }
 
+// R21N.1: one press that names the direction and is the timed input. Bound alongside F rather
+// than replacing it - F is still the guard, and a held guard is still omnidirectional.
+function bindDirectionalParry(documentRef, canvas, handlers) {
+  if (typeof handlers.onDirectionalParry !== 'function') return;
+  const held = new Set();
+  const press = (direction, source) => {
+    if (held.has(direction)) return;
+    held.add(direction);
+    handlers.onDirectionalParry(direction, true, source);
+  };
+  const release = (direction) => {
+    if (!held.delete(direction)) return;
+    handlers.onDirectionalParry(direction, false);
+  };
+  documentRef.addEventListener('keydown', (event) => {
+    if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+    const direction = directionalParryFor(event.code);
+    if (!direction) return;
+    event.preventDefault();
+    press(direction, 'key');
+  });
+  documentRef.addEventListener('keyup', (event) => {
+    const direction = directionalParryFor(event.code);
+    if (direction) release(direction);
+  });
+  // The sector indicator doubles as the buttons, so touch and mouse share the target the eye is
+  // already on. Pointer capture keeps a finger that slides off the cell from sticking the guard up.
+  for (const cell of canvas?.ownerDocument?.querySelectorAll?.('#guardSector [data-sector]') || []) {
+    const direction = directionalParryFor(cell.dataset.sector);
+    if (!direction) continue;
+    cell.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      cell.setPointerCapture?.(event.pointerId);
+      press(direction, 'button');
+    });
+    for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
+      cell.addEventListener(type, () => release(direction));
+    }
+  }
+  documentRef.addEventListener('blur', () => { for (const direction of [...held]) release(direction); });
+}
+
 function isParryKey(event) {
   return event?.code === 'KeyF'
     || String(event?.key || '').toLowerCase() === 'f'
@@ -443,6 +486,7 @@ export function bindShieldParryLabUiEvents({
 }) {
   bindFreeLook(canvas, handlers);
   bindGuardAim(canvas, handlers);
+  bindDirectionalParry(documentRef, canvas, handlers);
   let sprintHeld = false;
   function publishSprint(held) {
     if (held === sprintHeld) return;
