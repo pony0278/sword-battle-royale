@@ -80,6 +80,29 @@ export function evaluateCommittedParryInput(input = {}) {
   const geometryGuidanceAvailable = Boolean(threat && trackingPlan);
   const trackingClamped = geometryGuidanceAvailable && !shieldReachable;
 
+  // R21C.1: and where the player was pointing when they pressed.
+  //
+  // Judged HERE, at the press, and never at contact. Both stages can see the attack's direction, so
+  // either was buildable - but the arm report is the only one where the cost of a wrong guess does
+  // not depend on when you pressed. Deciding it at contact would hand an early press up to 220ms to
+  // fix its aim and a late one 20ms, which rewards pressing early - the worse grade - with more
+  // time to think. Point, then press.
+  //
+  // No aim is a mismatch rather than a pass. A player who never chose a direction did not answer
+  // the question, and the indicator shows all three cells dark so that state is visible rather than
+  // discovered. Nothing here touches the block: the shield is omnidirectional and still catches the
+  // blow, which is the whole reason directional PARRY could be added without re-measuring defence.
+  // And it applies to a PRESS, not to the prompt. The same evaluation runs every frame with
+  // manual:false to answer "is the window open" - that is what lights the parry cue and what a
+  // driver waits for - and it is a question about time. Gating it on aim made it permanently false
+  // and nothing could ever be pressed: found by the browser gate, which is exactly the kind of
+  // thing no amount of unit testing this function would have shown.
+  const attackDirection = String(input.attackSnapshot?.action?.direction || '').toLowerCase() || null;
+  const aimedSector = String(input.aimedSector || '').toLowerCase() || null;
+  const directionRequired = input.manual !== false;
+  const directionMatched = Boolean(attackDirection) && aimedSector === attackDirection;
+  const directionAnswered = !directionRequired || directionMatched;
+
   let reason = 'parry-input-armed-awaiting-real-contact';
   if (!attack.available) reason = 'missing-authored-attack-timeline';
   else if (!attack.committed) reason = ttc != null && ttc < profile.latestInputTtcSeconds
@@ -87,10 +110,14 @@ export function evaluateCommittedParryInput(input = {}) {
     : 'attack-not-committed';
   else if (ttc > profile.earliestInputTtcSeconds) reason = 'parry-input-too-early';
   else if (ttc < profile.latestInputTtcSeconds) reason = 'parry-input-too-late';
+  else if (!directionAnswered) {
+    reason = aimedSector == null ? 'parry-input-unaimed' : 'parry-input-wrong-direction';
+  }
 
   const accepted = attack.available
     && attack.committed
-    && timingInsideWindow;
+    && timingInsideWindow
+    && directionAnswered;
 
   return freeze({
     stage: COMMITTED_PARRY_CONTACT_GATE_STAGE,
@@ -107,8 +134,12 @@ export function evaluateCommittedParryInput(input = {}) {
       geometryGuidanceAvailable,
       geometryGuidanceCanVetoInput: false,
       trackingClamped,
+      directionMatched,
+      directionRequired,
       realSweptContact: false,
     }),
+    aimedSector,
+    attackDirection,
     timeToContactSeconds: ttc,
     requiredShieldTravelMeters,
     predictedPlaneDistanceMeters,

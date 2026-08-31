@@ -158,7 +158,8 @@ function setGuardHeld(held) {
   // silent - the shield still rose, and that is already the answer the player asked for.
   if (stanceEdge.justRaisedGuard && attackRuntime.snapshot?.action && !exchangeState.firstContact) {
     lateGuardRaise = true; // R20J.1: raised into a live swing, whatever the gate makes of the timing
-    exchangeState.latestParryInput = parryGate.arm({ attackSnapshot: attackRuntime.snapshot, manual: true, source: 'guard-raise' });
+    exchangeState.latestParryInput = parryGate.arm({ attackSnapshot: attackRuntime.snapshot, manual: true,
+      source: 'guard-raise', aimedSector: guardSector.sector }); // R21C.1: point, then press
     if (exchangeState.latestParryInput.accepted) driveAcceptedParry(attackRuntime.snapshot);
   }
   return guardKeyHeld;
@@ -458,6 +459,7 @@ function triggerParryNow(source = 'button') {
     predictiveAnalysis: exchangeState.latestPredictiveAnalysis,
     manual: true,
     source,
+    aimedSector: guardSector.sector, // R21C.1: the other door into the same gate
   });
 
   if (exchangeState.latestParryInput.accepted) {

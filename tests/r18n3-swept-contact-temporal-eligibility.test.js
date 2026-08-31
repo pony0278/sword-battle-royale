@@ -48,12 +48,15 @@ function geometricContact(sweepAlpha) {
 
 function armedReport() {
   return evaluateCommittedParryInput({
+    // R21C.1: a parry is answered by direction now, so an arm this test relies on being accepted
+    // has to point at the swing it is answering - the same as a player's would.
+    aimedSector: 'right',
     attackSnapshot: {
       sequence: 9,
       phase: 'attack_windup',
       elapsedSeconds: 0.12,
       interrupted: false,
-      action: { runtime: { movementStartSeconds: 0.12, contactSeconds: 0.23 } },
+      action: { direction: 'right', runtime: { movementStartSeconds: 0.12, contactSeconds: 0.23 } },
     },
   });
 }
