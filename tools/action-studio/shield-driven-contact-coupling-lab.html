@@ -12,6 +12,29 @@
     .hud{position:absolute;left:16px;top:16px;min-width:660px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.5 ui-monospace,monospace;pointer-events:none}.legend{position:absolute;left:16px;bottom:16px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:8px 10px;font-size:12px}
     .parry-cue{position:absolute;left:50%;top:38%;width:min(760px,90%);transform:translate(-50%,-50%);padding:16px 22px;border:2px solid #53647d;border-radius:14px;background:#07101aee;text-align:center;pointer-events:none;box-shadow:0 10px 40px #000a}.parry-cue span{display:block;color:#9eb0c8;font:700 11px/1.2 system-ui,sans-serif;letter-spacing:.16em}.parry-cue strong{display:block;margin:6px 0 5px;font:900 clamp(22px,4vw,45px)/1 system-ui,sans-serif}.parry-cue small{display:block;color:#c4d2e5;font:600 12px/1.45 ui-monospace,monospace;white-space:normal}.parry-cue.used small{text-align:left}.parry-cue.ready{border-color:#f7e56f;background:#42360bea;box-shadow:0 0 35px #f7d84b88}.parry-cue.ready strong{color:#fff18a;animation:parryPulse .45s ease-in-out infinite alternate}.parry-cue.armed,.parry-cue.confirmed{border-color:#62e8ad;background:#0d382cea}.parry-cue.armed strong,.parry-cue.confirmed strong{color:#7ef0ad}.parry-cue.used,.parry-cue.late{border-color:#ff7e74;background:#411b1bea}.parry-cue.used strong,.parry-cue.late strong{color:#ff9b91}.parry-cue.wait strong,.parry-cue.geometry strong{color:#ffd27a}.parry-cue.idle{opacity:.72}@keyframes parryPulse{from{transform:scale(1)}to{transform:scale(1.045)}}
     .metric{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:8px 0;padding:10px;border:1px solid #243147;border-radius:8px;background:#080d14}.metric b{color:#ddecff}.toggle{display:flex;align-items:center;gap:8px;margin:10px 0}.debug-range{display:grid;grid-template-columns:1fr auto;gap:3px 10px;margin:10px 0}.debug-range input{grid-column:1/-1;width:100%}.debug-range output{color:#7ef0ad;font:700 12px ui-monospace,monospace}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px;max-height:330px;overflow:auto}.good{color:#7ef0ad}.warn{color:#ffd27a}.bad{color:#ff8c8c}
+
+    /* R20Y.1: the panels stopped being notes beside the stage and became a lid on it - the HUD
+       covers the top of the scene and the legend, which has grown a paragraph per stage, covers the
+       bottom. Both collapse to a single title bar now, at every width rather than only on a phone,
+       and the choice is remembered. H hides everything at once for watching a fight with nothing on
+       top of it. Only the title bar takes clicks, so dragging the camera through the HUD still
+       reaches the canvas exactly as it did. */
+    .hud>b,.legend>b{display:block;position:relative;cursor:pointer;pointer-events:auto;padding-right:20px;color:#94b8e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .hud>b::after,.legend>b::after{content:'\25BC';position:absolute;right:0;top:0}
+    .hud.expanded>b::after,.legend.expanded>b::after{content:'\25B2'}
+    .hud:not(.expanded)>:not(b),.legend:not(.expanded)>:not(b){display:none}
+    .hud.expanded>b{white-space:normal}
+    .legend{max-width:min(920px,60vw);pointer-events:none}
+    .legend:not(.expanded){max-width:320px}
+    .legend.expanded>span{display:block;max-height:34vh;overflow-y:auto;pointer-events:auto}
+    body.overlays-off .hud,body.overlays-off .legend,body.overlays-off .parry-cue{display:none}
+    .hud:not(.expanded){min-width:0}
+    /* The cue is a timing prompt, but between exchanges it is a mode label sitting on the fighters'
+       heads. Idle it steps down and out of the middle; the moment an attack is live it is back at
+       full size in the centre, which is the only time its position is load-bearing. */
+    .parry-cue.idle{opacity:.6;left:auto;right:16px;top:auto;bottom:16px;width:auto;max-width:320px;transform:none;padding:8px 12px;text-align:right}
+    .parry-cue.idle strong{margin:2px 0;font-size:17px}
+    .parry-cue.idle span{letter-spacing:.1em}
     @media(max-width:900px){
       html,body{height:auto;min-height:100%;overflow:auto}body{display:block}main{height:58vh;min-height:360px}
       /* On a phone the ten diagnostic lines wrap to two or three lines each and
@@ -75,7 +98,7 @@
       <div id="hudRecoil">OLD B3 recoil: —</div>
       <div id="hudDiagnostic">STEP 3A diagnostic: —</div>
     </div>
-    <div class="legend">B6c2:BLOCK 模式預設不設防,按住 F 才舉盾(放開即收;但已成立的 parry 或進行中的接觸會打完才收 — R20H.2),不舉盾會挨打;在對方出手後的正確窗口內「剛舉起」的盾自動升級為 parry(R20H.1 Sekiro 式,輕點即可:RIGHT 約115–170ms、LEFT 約220–320ms、TOP 約270–370ms,太早=普通格擋、太晚=遲舉盾自負);交鋒中才舉的盾會直接就位而非慢慢移過去(R20J.1),但仍需在接觸前約 70ms 以上舉起才來得及;LEFT 的打擊期已重新配速(R20M.1:原本單一影格內轉 132°、峰值 3972°/s,現為 1332°/s,接觸從 0.26s 移到 0.38s,起手期不變)· 格擋判定的盾面比視覺盤面寬 2cm(R20L.1:盾攔不住比手臂快 30 倍的劍,格擋本來就是「擋在路上」,擦到即算,但遲舉盾的懲罰不變) · ↑↓ 防守者進退 · ←→ 防守者側移(R19V.1,繞著對手轉)· Space 閃避(R20F.1,配方向鍵選向,無鍵=後閃;i-frame 窗 0.1–0.3s,持盾中不可閃,冷卻 1s)· 觸控:右下方向鈕+🛡持盾+✦閃避· Shift+↑↓ 攻擊者進退(揮擊中攻擊者由步伐接管)· WASD 移動(鎖定時 A/D 繞著對手側移)· Tab 鎖定/解除 · R20T.2:LEFT 是低位橫掃,刀刃在離攻擊者約 1.10m 處通過,所以貼到 1.05m 以內時它會從身體後方掃過去(TOP/RIGHT 沒有這個內緣;舉盾仍然擋得下,因為盾在身體前面)——太近時 HUD 的接觸那行會直接說「太近」 · R20T.4:最小間距 0.9m 現在由 ledger 自己守著(原本只有走路的規劃器在擋,所以前向閃避會穿進去 25cm)· R20U.1:按住 Shift 全速奔跑 1.5 m/s(未鎖定、未舉盾、未揮砍時,任何方向 —— 自由模式下沒有「後退」,身體會以 180°/s 轉向你要去的方向)—— 量到的事實是這套戰鬥裡沒有人能脫離(走路後退淨 −0.25 m/s、後閃更糟 −0.75m/循環),所以「離開」需要一個動詞,而它的代價是先放掉鎖定。鎖定時仍然是三段走路速度(前 1.0/後 0.75/側 0.75),因為那裡朝向由兩人的連線決定,後退是真的後退 · R20V.3:自由模式下「面向你要去的方向」,舉不舉盾都一樣(R20V.2 曾讓舉盾固定朝向,量測上有效——誤差從 112° 降到 22°——但實測手感不直覺,已移除)。代價是量到的:未鎖定又在移動時,盾幾乎守不住(側移 0.25 秒身體就轉開 50°+),所以自由模式是用來趕路的,要打就按 Tab 鎖定 · R20W.1:走路/奔跑的腳步接上了地面 —— 自由移動從 R20S.3 起直接寫進 ledger,而步態一直只吃舊的 lane step(對玩家恆為 0),所以玩家的腿從那時候就沒動過(實測:1.04 m/s 移動,步態回報 0.00 m/s);同時步幅不再用「0.8 個腿長」推估,改成從每支 clip 自己的腳掌著地量出來(Walking_A 作者速度 0.643 m/s、Walking_B 1.053 m/s ≈ 我們的走路速度,所以走路 clip 換成 Walking_B),倒退也改成正播它自己的 clip 而不是倒帶。衝刺 1.5 m/s 沿用走路 clip 播 1.42 倍:唯一的跑步 clip Running_A 是為 3.27 m/s 畫的(63% 騰空),在 1.5 m/s 只會播 0.46 倍變慢動作 —— 要讓衝刺長得像跑步是速度的決定,不是動畫的決定 · R20W.2:三個修正 ——(a)骨架的線是每幀從骨頭重建的,而關節的點是掛在骨頭底下自己跟著走,結果每個寫姿勢的環節都只動骨頭不重建線,線就停在「最後一次重繪」的那個姿勢,點卻是真的 —— 所以走路時點在動、線不動。現在在 render 前、所有寫入者之後統一重繪兩個角色。(b)走路動作原本只借腿(R19E.1,因為舉盾時上半身是盾的),但自由移動讓人可以不舉盾走路,那時上半身沒東西要守,卻還卡在持劍待機 —— 現在沒舉盾時走路擁有整個身體,舉盾時仍然只借腿。(c)衝刺改用 Running_A:接手的門檻不是「按了 Shift」,而是量出來的步態轉換點 1.36 m/s(Froude 0.5,這副 0.3765m 腿),走路 1.0 在下面、衝刺 1.5 在上面。代價照實記著:Running_A 是為 3.27 m/s 畫的,在 1.5 m/s 播 0.46 倍,騰空姿勢會撐比較久 —— 如果飄,要調的是衝刺速度(Running_A 大約 2.0 m/s 以上才誠實),不是再換一支 clip · Cyan = shield target · yellow = sword contact · red = original attack axis · green/orange = current sword axis PASS/FAIL · purple = wrist→hilt line</div>
+    <div class="legend"><b>說明 · 按鍵與各階段量測紀錄</b><span>R20Y.1:面板可收合 —— 點 HUD 或這行說明的標題列收合/展開,按 H 一次隱藏全部疊層(HUD、說明、中央提示),選擇會記在瀏覽器裡。中央的 parry 提示在沒有攻擊進行時縮到右下角,攻擊一開始就跳回畫面中央原本的大小。 · B6c2:BLOCK 模式預設不設防,按住 F 才舉盾(放開即收;但已成立的 parry 或進行中的接觸會打完才收 — R20H.2),不舉盾會挨打;在對方出手後的正確窗口內「剛舉起」的盾自動升級為 parry(R20H.1 Sekiro 式,輕點即可:RIGHT 約115–170ms、LEFT 約220–320ms、TOP 約270–370ms,太早=普通格擋、太晚=遲舉盾自負);交鋒中才舉的盾會直接就位而非慢慢移過去(R20J.1),但仍需在接觸前約 70ms 以上舉起才來得及;LEFT 的打擊期已重新配速(R20M.1:原本單一影格內轉 132°、峰值 3972°/s,現為 1332°/s,接觸從 0.26s 移到 0.38s,起手期不變)· 格擋判定的盾面比視覺盤面寬 2cm(R20L.1:盾攔不住比手臂快 30 倍的劍,格擋本來就是「擋在路上」,擦到即算,但遲舉盾的懲罰不變) · ↑↓ 防守者進退 · ←→ 防守者側移(R19V.1,繞著對手轉)· Space 閃避(R20F.1,配方向鍵選向,無鍵=後閃;i-frame 窗 0.1–0.3s,持盾中不可閃,冷卻 1s)· 觸控:右下方向鈕+🛡持盾+✦閃避· Shift+↑↓ 攻擊者進退(揮擊中攻擊者由步伐接管)· WASD 移動(鎖定時 A/D 繞著對手側移)· Tab 鎖定/解除 · R20T.2:LEFT 是低位橫掃,刀刃在離攻擊者約 1.10m 處通過,所以貼到 1.05m 以內時它會從身體後方掃過去(TOP/RIGHT 沒有這個內緣;舉盾仍然擋得下,因為盾在身體前面)——太近時 HUD 的接觸那行會直接說「太近」 · R20T.4:最小間距 0.9m 現在由 ledger 自己守著(原本只有走路的規劃器在擋,所以前向閃避會穿進去 25cm)· R20U.1:按住 Shift 全速奔跑 1.5 m/s(未鎖定、未舉盾、未揮砍時,任何方向 —— 自由模式下沒有「後退」,身體會以 180°/s 轉向你要去的方向)—— 量到的事實是這套戰鬥裡沒有人能脫離(走路後退淨 −0.25 m/s、後閃更糟 −0.75m/循環),所以「離開」需要一個動詞,而它的代價是先放掉鎖定。鎖定時仍然是三段走路速度(前 1.0/後 0.75/側 0.75),因為那裡朝向由兩人的連線決定,後退是真的後退 · R20V.3:自由模式下「面向你要去的方向」,舉不舉盾都一樣(R20V.2 曾讓舉盾固定朝向,量測上有效——誤差從 112° 降到 22°——但實測手感不直覺,已移除)。代價是量到的:未鎖定又在移動時,盾幾乎守不住(側移 0.25 秒身體就轉開 50°+),所以自由模式是用來趕路的,要打就按 Tab 鎖定 · R20W.1:走路/奔跑的腳步接上了地面 —— 自由移動從 R20S.3 起直接寫進 ledger,而步態一直只吃舊的 lane step(對玩家恆為 0),所以玩家的腿從那時候就沒動過(實測:1.04 m/s 移動,步態回報 0.00 m/s);同時步幅不再用「0.8 個腿長」推估,改成從每支 clip 自己的腳掌著地量出來(Walking_A 作者速度 0.643 m/s、Walking_B 1.053 m/s ≈ 我們的走路速度,所以走路 clip 換成 Walking_B),倒退也改成正播它自己的 clip 而不是倒帶。衝刺 1.5 m/s 沿用走路 clip 播 1.42 倍:唯一的跑步 clip Running_A 是為 3.27 m/s 畫的(63% 騰空),在 1.5 m/s 只會播 0.46 倍變慢動作 —— 要讓衝刺長得像跑步是速度的決定,不是動畫的決定 · R20W.2:三個修正 ——(a)骨架的線是每幀從骨頭重建的,而關節的點是掛在骨頭底下自己跟著走,結果每個寫姿勢的環節都只動骨頭不重建線,線就停在「最後一次重繪」的那個姿勢,點卻是真的 —— 所以走路時點在動、線不動。現在在 render 前、所有寫入者之後統一重繪兩個角色。(b)走路動作原本只借腿(R19E.1,因為舉盾時上半身是盾的),但自由移動讓人可以不舉盾走路,那時上半身沒東西要守,卻還卡在持劍待機 —— 現在沒舉盾時走路擁有整個身體,舉盾時仍然只借腿。(c)衝刺改用 Running_A:接手的門檻不是「按了 Shift」,而是量出來的步態轉換點 1.36 m/s(Froude 0.5,這副 0.3765m 腿),走路 1.0 在下面、衝刺 1.5 在上面。代價照實記著:Running_A 是為 3.27 m/s 畫的,在 1.5 m/s 播 0.46 倍,騰空姿勢會撐比較久 —— 如果飄,要調的是衝刺速度(Running_A 大約 2.0 m/s 以上才誠實),不是再換一支 clip · R20X.1(實驗,等你看過再決定去留):側移的腿轉向行進方向。整個 KayKit 資產包裡橫向的循環只有 Running_Strafe_Left/Right,量出來是 ±3.04 m/s、80% 騰空,我們側移 0.75 m/s 播 0.247 倍 —— 一個循環 3.24 秒、在空中掛 2.6 秒,不能用;而把側移調快到讓它誠實(1.52 m/s 才 0.5 倍)會把「繞圈超越起手瞄準」的半徑從 0.95m(在 0.9m 接觸底線內,所以到不了)推到 1.94m 的正常交戰距離,那是改戰鬥不是改動畫。所以改成把 upperleg.l/r 繞垂直軸轉一個「身體座標下的行進角」:正面走路 clip、用完整位移驅動、腿沿自己的軸零滑動,膝蓋和腳跟著轉,骨盆以上完全不動(R19E.1 量過動到 hips 會把舉盾的上半身整個帶歪)。純側移要在髖部轉 90°,最壞情況 108°(側後方那一段還算「前進 clip」)。量到一個坑:直線側移在身體座標下帶一點負的前向分量(朝向一直追著連線轉),不設死區的話會被判成後退去播倒退 clip · Cyan = shield target · yellow = sword contact · red = original attack axis · green/orange = current sword axis PASS/FAIL · purple = wrist→hilt line</span></div>
   </main>
   <aside>
     <h1>Step 3A · Live Shield → Sword → Wrist-Grip</h1>
@@ -146,12 +169,41 @@
     <h2>Verification</h2><div id="status" class="warn">Loading…</div><pre id="report">Not run.</pre>
   </aside>
   <script>
-    // Mobile HUD toggle. On desktop the HUD keeps pointer-events:none, so this
-    // click can only ever fire under the narrow-screen media query above.
-    document.querySelector('.hud').addEventListener('click', function () {
-      this.classList.toggle('expanded');
-    });
+    // R20Y.1: panel collapse. The HUD and the legend both fold to their title bar, the state is
+    // remembered per browser, and H hides every overlay at once. Wrapped in try/catch throughout
+    // because a browser with site data blocked throws on the read rather than returning nothing.
+    (function () {
+      function read(key, fallback) {
+        try { var value = localStorage.getItem(key); return value == null ? fallback : value === '1'; }
+        catch (error) { return fallback; }
+      }
+      function write(key, value) {
+        try { localStorage.setItem(key, value ? '1' : '0'); } catch (error) { /* nothing to do */ }
+      }
+      // The phone layout already folded the HUD by default and that stays; a desktop opens with the
+      // live diagnostics up and the legend - which is reference text, not state - folded away.
+      var wide = window.matchMedia('(min-width:901px)').matches;
+      [
+        { el: document.querySelector('.hud'), key: 'r281.hud.expanded', open: wide },
+        { el: document.querySelector('.legend'), key: 'r281.legend.expanded', open: false },
+      ].forEach(function (panel) {
+        if (!panel.el) return;
+        panel.el.classList.toggle('expanded', read(panel.key, panel.open));
+        var title = panel.el.querySelector('b');
+        if (!title) return;
+        title.addEventListener('click', function () {
+          write(panel.key, panel.el.classList.toggle('expanded'));
+        });
+      });
+      if (read('r281.overlays.hidden', false)) document.body.classList.add('overlays-off');
+      document.addEventListener('keydown', function (event) {
+        if (event.code !== 'KeyH' || event.metaKey || event.ctrlKey || event.altKey) return;
+        var tag = (event.target && event.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || (event.target && event.target.isContentEditable)) return;
+        write('r281.overlays.hidden', document.body.classList.toggle('overlays-off'));
+      });
+    })();
   </script>
-  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-whole-body-on-the-ground-r20w2"></script>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-fold-the-panels-r20y1"></script>
 </body>
 </html>

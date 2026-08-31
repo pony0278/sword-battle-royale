@@ -7,6 +7,7 @@ import { createLaneLocomotionRuntime, planLateralStep } from '../../../src/comba
 import { createDodgeStateRuntime, DODGE_DURATION_SECONDS } from '../../../src/combat/dodge-state.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../../../src/combat/lane-walk-cycle.js';
 import { filterPoseToWalkOverlay, planWalkOverlay } from '../../../src/combat/guard-walk-overlay.js';
+import { TRAVEL_YAW_BONES, hipYawDeltaQuaternion, planTravelRelativeLegs } from '../../../src/combat/travel-relative-legs.js';
 
 // R18Z.1 — where the two fighters are standing, and nothing else.
 //
@@ -47,6 +48,9 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   // R20W.2: the last overlay decision, kept for the HUD and for probes - which of the fighter the
   // walk got this frame, and why it did not get any of them when it did not.
   let lastWalkOverlayPlan = null;
+  // R20X.1: how far the stride has to be turned at the hip to point along this frame's travel.
+  // Zero for anything going straight ahead, a right angle for a pure sidestep.
+  let lastTravelPlan = null;
   // R20W.1: ground the player took this frame through the world-frame verbs, waiting to be spent
   // on the gait. Free movement writes straight to the ledger, so before this the defender's legs
   // were fed a lane step that is always zero for the player - measured in the lab as 1.04 m/s of
@@ -80,6 +84,25 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     if (!gait?.moving || !gait.clipId || !walkClips) return null;
     const duration = clipDurations[gait.clipId] || 1;
     return Object.freeze({ clipId: gait.clipId, timeSeconds: walkClipTimeSeconds(gait.phase, duration) });
+  }
+
+  // R20X.1: swing the stride to point along travel. Only the two upper legs are touched, so the
+  // knees and feet follow and the pelvis - and with it the spine, the guard and the shield - does
+  // not. The quaternion maths is in travel-relative-legs.js; this is the part that needs a scene.
+  function applyTravelYawToLegs() {
+    const yaw = lastTravelPlan?.legYawRadians || 0;
+    if (Math.abs(yaw) < 1e-3) return false;
+    const bones = labScene.defender?.rig?.bones;
+    const hips = bones?.hips;
+    if (!hips?.getWorldQuaternion) return false;
+    const parentWorld = hips.quaternion.clone();
+    hips.getWorldQuaternion(parentWorld);
+    const delta = hipYawDeltaQuaternion(yaw, parentWorld);
+    const applied = hips.quaternion.clone();
+    applied.set(delta.x, delta.y, delta.z, delta.w);
+    for (const id of TRAVEL_YAW_BONES) bones[id]?.quaternion.premultiply(applied);
+    labScene.defender.rig.root.updateMatrixWorld(true);
+    return true;
   }
 
   function apply() {
@@ -208,8 +231,17 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       // walking strafe leaves us with, unchanged by this and now visible in the gait's own numbers.
       const facing = defenderBaseFacing.facingRadians;
       const worldForwardMeters = pendingWorldTravel.x * Math.sin(facing) + pendingWorldTravel.z * Math.cos(facing);
+      // R20X.1: and the other half of the same vector. The lane step has no lateral component - it
+      // speaks in separation - so the sidestep only ever arrives through the world verbs.
+      const worldLateralMeters = pendingWorldTravel.x * Math.cos(facing) - pendingWorldTravel.z * Math.sin(facing);
       pendingWorldTravel = { x: 0, z: 0 };
-      defenderGait.advance({ travelledMeters: -defenderStep.meters + worldForwardMeters, deltaSeconds });
+      lastTravelPlan = planTravelRelativeLegs({
+        forwardMeters: -defenderStep.meters + worldForwardMeters,
+        lateralMeters: worldLateralMeters,
+      });
+      // The whole distance, not its forward projection: once the legs turn to face the travel, the
+      // distance the feet cover IS the distance the body covered, whichever way it went.
+      defenderGait.advance({ travelledMeters: lastTravelPlan.signedTravelMeters, deltaSeconds });
       // Stamped every frame rather than only on movement: a facing can still be turning while
       // both pairs of feet are planted, and the stamp is absolute and idempotent.
       apply();
@@ -228,6 +260,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     get attackerWalkSample() { return walkSampleFor(attackerGait.report); },
     get defenderGait() { return defenderGait.report; },
     get defenderWalkOverlay() { return lastWalkOverlayPlan; },
+    get defenderTravelPlan() { return lastTravelPlan; },
     // R19E.1, first slice of the sandwich: sample the walk on the defender and keep only the leg
     // chain. Called immediately before the guard runtime samples its own clip over the whole rig.
     // `exchangeIdle` is the caller's word that no attack is in flight and no impact is resolving -
@@ -278,6 +311,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       if (!pendingDefenderLegPose) return false;
       services.applyRigPose(labScene.defender.rig, pendingDefenderLegPose);
       pendingDefenderLegPose = null;
+      applyTravelYawToLegs();
       return true;
     },
     // A landed blow is the only thing that banks ground. The outcome decides which way it moves:

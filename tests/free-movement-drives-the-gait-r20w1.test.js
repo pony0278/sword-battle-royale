@@ -72,22 +72,42 @@ test('R20W.2 sprinting crosses into the run clip, and its stride comes with it',
   assert.ok(Math.abs(cycles - travelled / gait.cycleMeters) < 1e-6, 'phase is the ground, divided by the stride');
 });
 
-test('R20W.1 a sidestep does not pretend to be a walk', () => {
-  // Locked, the player circles: body-relative that is pure lateral travel, and KayKit ships no
-  // walking strafe. The legs stay planted rather than striding in a direction nobody is going.
+test('R20X.1 a sidestep turns the stride instead of sliding or standing still', () => {
+  // Until R20X.1 this asserted the opposite - a sidestep had no gait at all, because the walk was
+  // driven by the forward projection and a sidestep has none. KayKit ships no walking strafe, and
+  // the running one is authored for 3.04 m/s with 80% of its cycle airborne, so at 0.75 it would
+  // play at a quarter speed. Turning the stride at the hip is what is left: the walk clip, driven
+  // by the whole distance, with the leg chain yawed to point along travel.
   const laneController = harness();
   frame(laneController, {});
+  const facing = laneController.report.defenderFacingRadians;
   // Own the facing so the body cannot turn into the travel - a fighter who keeps turning to face
   // someone while walking a straight line IS partly walking forwards, and that is not the case here.
-  const facing = laneController.report.defenderFacingRadians;
   laneController.setDefenderFacing(facing);
   for (let i = 0; i < 30; i += 1) frame(laneController, {});
   const step = LANE_LOCOMOTION_PROFILE.lateralSpeedMps / 60;
   const sideX = Math.cos(facing) * step;
   const sideZ = -Math.sin(facing) * step;
   for (let i = 0; i < 30; i += 1) frame(laneController, { dx: sideX, dz: sideZ });
-  assert.equal(laneController.defenderGait.moving, false, 'a sidestep has no clip, so it has no gait');
-  assert.equal(laneController.defenderGait.phase, 0);
+
+  const gait = laneController.defenderGait;
+  assert.equal(gait.moving, true, 'a sidestep is walking, and the legs have to say so');
+  assert.equal(gait.clipId, LANE_WALK_CLIPS.forward, 'the forward walk, turned - not the backwards one');
+  assert.ok(Math.abs(gait.speedMetersPerSecond - LANE_LOCOMOTION_PROFILE.lateralSpeedMps) < 0.05,
+    `the whole distance reaches the gait, got ${gait.speedMetersPerSecond}`);
+
+  const travel = laneController.defenderTravelPlan;
+  assert.ok(Math.abs(Math.abs(travel.legYawRadians) - Math.PI / 2) < 0.05,
+    `a pure sidestep is a right angle at the hip, got ${(travel.legYawRadians * 180 / Math.PI).toFixed(1)} degrees`);
+  assert.equal(travel.backwards, false, 'a sidestep is not a backpedal');
+});
+
+test('R20X.1 walking straight leaves the stride where it was', () => {
+  const laneController = harness();
+  const step = LANE_LOCOMOTION_PROFILE.forwardSpeedMps / 60;
+  for (let i = 0; i < 30; i += 1) frame(laneController, { dz: -step });
+  assert.ok(Math.abs(laneController.defenderTravelPlan.legYawRadians) < 1e-6,
+    'nothing to turn when the legs already point where the body is going');
 });
 
 test('R20W.1 ground the ledger refused is ground the feet do not get', () => {
