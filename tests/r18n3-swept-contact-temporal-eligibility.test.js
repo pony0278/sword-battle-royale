@@ -112,13 +112,17 @@ test('R18N.3 v6.4 attack interruption freezes the authored source at actual sub-
   const runtime = createLongswordDirectionalAttackRuntime();
   const started = runtime.start('right');
   assert.equal(started.accepted, true);
-  runtime.update(300);
+  // R21B.1: the same poses, restated in the runtime clock. RIGHT's windup and burst are stretched
+  // 1.6, so what used to be 300ms of runtime is 480ms, and a sub-frame contact reported at 0.25865
+  // of runtime is 0.41384. The source times this test is about are unchanged - which is the point,
+  // and is now actually exercised rather than being true because the two clocks happened to agree.
+  runtime.update(300 * 1.6);
   assert.equal(runtime.snapshot.phase, 'attack_recovery');
 
   const temporalEligibility = Object.freeze({
     authority: SWEPT_CONTACT_TEMPORAL_ELIGIBILITY_AUTHORITY,
     eligible: true,
-    contactElapsedSeconds: 0.25865,
+    contactElapsedSeconds: 0.25865 * 1.6,
   });
   const interrupted = runtime.interrupt({
     resolution: {
@@ -135,7 +139,7 @@ test('R18N.3 v6.4 attack interruption freezes the authored source at actual sub-
   assert.equal(interrupted.snapshot.interruption.phaseAtInterrupt, 'attack_active');
   assert.ok(Math.abs(interrupted.snapshot.interruption.sourceTimeSeconds - 0.25865) < 1e-9);
   assert.equal(interrupted.snapshot.interruption.contactTemporalAuthority, SWEPT_CONTACT_TEMPORAL_ELIGIBILITY_AUTHORITY);
-  assert.ok(interrupted.snapshot.interruption.frameEndElapsedMs > 280);
+  assert.ok(interrupted.snapshot.interruption.frameEndElapsedMs > 280 * 1.6);
 });
 
 test('R18N.3 v6.4 preserves real-contact authority through controller and two-actor orchestration', () => {
