@@ -102,7 +102,7 @@ test('R18M.C5 debug facade preserves the public API shape without owning gamepla
     actions: {
       startAttack: noop, restartAttack: noop, setMode: noop, refreshDebugStanceProfile: noop,
       resetDebugStanceDefaults: noop, triggerParryNow: noop, dispatchParryInput: noop, forceOldTwoActorB3: noop,
-      setEngagementSeparation: noop,
+      setEngagementSeparation: noop, readBladePolyline: noop,
     },
     runtimes,
     debugMode: true,
