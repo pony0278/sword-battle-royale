@@ -70,11 +70,13 @@ export const ATTACK_TIME_WARP_STAGE = 'R21B.1';
 // authored pace and simply starts later.
 export const ATTACK_TIME_WARPS = Object.freeze({
   left: Object.freeze({
+    // R21K.1: the burst's stretch is barely touched; the window it opens is moved by starting
+    // 20ms of source earlier. See LEFT_SECOND_PASS_REFERENCES.
     direction: 'left',
-    startSourceSeconds: 0.2,
+    startSourceSeconds: 0.18,
     endSourceSeconds: 1 / 3,
-    stretch: 3,
-    reason: 'left-burst-3972-deg-per-second-in-one-key',
+    stretch: 3.125,
+    reason: 'left-burst-3972-deg-per-second-in-one-key; window closed 13ms before the measured press',
   }),
   right: Object.freeze({
     // R21I.1: 1.6 -> 1.87. See RIGHT_RETIME_REFERENCES.secondPass for what a player's hands
@@ -155,6 +157,61 @@ export const RIGHT_RETIME_REFERENCES = Object.freeze({
     sameSamplerPeakDegreesPerSecond: Object.freeze({ top: 2199, right: 1486, left: 1334 }),
     sameSamplerNote: 'blade-axis-turn-per-60fps-frame; reads higher than the R21B.1 record, so compare within this row only',
   }),
+});
+
+// R21K.1 - LEFT, the same fault RIGHT had, fixed a different way.
+//
+// R21I.1 moved RIGHT's contact to where a player's presses actually land and it worked outright:
+// 1 parry in 10 became 11 in 19, with 15 of 19 presses inside the window. The same tally then said
+// LEFT had inherited the problem - 12 of 19 too late, 5 of 18 presses inside - and by the same
+// margin RIGHT used to miss by:
+//
+//   direction   window closes   player's median press   presses inside
+//   top         370ms           350ms                    9 of 17
+//   right       370ms           333ms                   15 of 19
+//   left        320ms           333ms                    5 of 18   <- 13ms late
+//
+// So LEFT wants RIGHT's remedy - contact at 0.43s, where the window is 250-370ms and RIGHT's
+// median press of TTC 97ms now lands 15 times in 19. But RIGHT's METHOD does not transfer.
+//
+// LEFT is already stretched three times, and the clips are baked at 30fps: each authored key
+// already spans 100ms, six whole frames, and the blade crosses each of them at a constant rate.
+// Measured, the plateaus are plainly visible - 17.x for eight frames, 22.2 for six, 11.8 for six.
+// Reaching 0.43s by stretch alone needs 3.833, which makes every key 128ms and would fix the
+// timing by making the swing step.
+//
+// Starting the warp 20ms of source earlier buys the same delay for almost no extra stretch:
+//
+//   0.18 + (0.26 - 0.18) * 3.125 = 0.43 exactly
+//
+//   route                       stretch   contact   peak deg/s   key span
+//   as it was                   3.000     380ms     ~1324        100ms
+//   stretch alone (RIGHT's way) 3.833     430ms     ~1036        128ms
+//   earlier start (taken)       3.125     430ms     ~1271        104ms
+//
+// What is given up is 20ms of the windup's authored pace, and R20M.1 kept that pace deliberately:
+// the slow low preparation is LEFT's identity and its only tell. Twenty milliseconds of it, at
+// 3.125 rather than 1, is not that tell.
+export const LEFT_SECOND_PASS_REFERENCES = Object.freeze({
+  startSourceSecondsBefore: 0.2,
+  startSourceSecondsAfter: 0.18,
+  stretchBefore: 3,
+  stretchAfter: 3.125,
+  runtimeContactSecondsBefore: 0.38,
+  runtimeContactSecondsAfter: 0.43,
+  playerMedianPressMsAfterSwingStart: 333,
+  windowClosedMsBefore: 320,
+  msLate: 13,
+  pressesInsideWindowBefore: Object.freeze({ inside: 5, of: 18 }),
+  rightAfterItsOwnRetime: Object.freeze({ inside: 15, of: 19, parried: 11, swings: 19 }),
+  // The reason the stretch was not simply raised. A 30fps key at each candidate stretch:
+  authoredKeySeconds: 1 / 30,
+  keySpanMsBefore: 100,
+  keySpanMsIfStretchedAlone: 128,
+  keySpanMsAfter: 104,
+  stretchIfRaisedAlone: 3.833,
+  predictedPeakDegreesPerSecond: 1271,
+  authority: 'attack-timing-only-no-contact-authority',
 });
 
 function finite(value, fallback = 0) {
