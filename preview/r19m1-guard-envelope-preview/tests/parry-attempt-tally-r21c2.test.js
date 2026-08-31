@@ -127,9 +127,12 @@ test('R21G.1 recording is not gated on the session - practising by hand still co
 
 test('R21G.1 the drive tells the tally when a run starts, and the lab counts every swing', () => {
   const controller = readFileSync(new URL('../tools/action-studio/shield-parry-r281/opponent-drive-controller.js', import.meta.url), 'utf8');
-  assert.ok(controller.includes('tally?.setSessionActive(enabled());'));
+  assert.ok(controller.includes('tally?.setSessionActive(running);'));
   // Before the early return, or a run would only ever be reset by the frame that also drove it.
-  assert.ok(controller.indexOf('tally?.setSessionActive(enabled());') < controller.indexOf('if (!enabled()) return null;'));
+  assert.ok(controller.indexOf('tally?.setSessionActive(running);') < controller.indexOf('if (!enabled()) return null;'));
+  // R21L.1: and the drive's own swing counter starts on the same edge, so a report cannot carry
+  // two totals from different clocks.
+  assert.ok(controller.includes('if (running && !wasEnabled) runtime.resetRun();'));
   const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
   assert.ok(entry.includes('parryTally.recordAttack(direction);'), 'every swing is counted as it starts');
 });
@@ -317,4 +320,64 @@ test('R21G.4 the raw samples stay out of rows, so the bucket invariant is untouc
   assert.ok(!('ttcMs' in tally.rows.top), 'rows is a counts view; an array in it breaks every deepEqual');
   const row = tally.rows.top;
   assert.equal(row.armed + row.wrongDirection + row.unaimed + row.tooEarly + row.tooLate + row.other + row.noAnswer, row.thrown);
+});
+
+test('R21L.1 a misread swing records what it was mistaken FOR', () => {
+  // "Wrong direction" says the swing was misread; it cannot say misread as what. R21A.1 measured
+  // that all three attacks travel on the defender's right through the windup and are separated
+  // only by the tip's vertical velocity - TOP rises, RIGHT holds level, LEFT falls - so they are
+  // not equally alike, and "make the swings readable" is a vaguer instruction than "these two are
+  // being mistaken for each other".
+  const tally = createParryAttemptTally();
+  let sequence = 0;
+  const miss = (thrown, aimed) => {
+    tally.recordAttack(thrown);
+    tally.record({
+      attackDirection: thrown, aimedSector: aimed, sequence: sequence += 1,
+      accepted: false, reason: 'parry-input-wrong-direction', timeToContactSeconds: 0.1,
+    });
+  };
+  miss('top', 'left'); miss('top', 'left'); miss('top', 'right');
+  miss('left', 'top');
+  const confusion = tally.confusion;
+  assert.equal(confusion.top.left, 2);
+  assert.equal(confusion.top.right, 1);
+  assert.equal(confusion.left.top, 1);
+  assert.equal(confusion.right.top, 0, 'a direction nobody misread is all zeroes');
+  assert.equal(confusion.top.top, 0, 'aiming correctly is not a miss, so the diagonal stays empty');
+  // The counts view stays a counts view; a nested object in it breaks every deepEqual on rows.
+  assert.ok(!('wrongAim' in tally.rows.top));
+  assert.equal(tally.rows.top.wrongDirection, 3, 'and still totals the row');
+});
+
+test('R21L.1 the matrix only appears when there is something in it', () => {
+  const clean = createParryAttemptTally();
+  clean.recordAttack('top');
+  clean.record({ attackDirection: 'top', sequence: 1, accepted: true, reason: 'ok', timeToContactSeconds: 0.1 });
+  assert.ok(!clean.reportText.includes('方向錯的分布'), 'an empty grid every run trains the eye to skip it');
+
+  const messy = createParryAttemptTally();
+  messy.recordAttack('left');
+  messy.record({
+    attackDirection: 'left', aimedSector: 'top', sequence: 1,
+    accepted: false, reason: 'parry-input-wrong-direction', timeToContactSeconds: 0.1,
+  });
+  const text = messy.reportText;
+  assert.match(text, /方向錯的分布（列 = 對手揮的，欄 = 你瞄的）· 共 1 次/);
+  assert.match(text, /揮出\\瞄準\ttop\tright\tleft/);
+  assert.match(text, /^left\t1\t0\t—$/m, 'the diagonal is a dash, not a zero');
+});
+
+test('R21L.1 an unaimed press is not a misread one', () => {
+  // A null sector counts as a mismatch for the gate (R21C.1) but says nothing about what the
+  // player thought the swing was, so it must not land in the matrix.
+  const tally = createParryAttemptTally();
+  tally.recordAttack('right');
+  tally.record({
+    attackDirection: 'right', aimedSector: null, sequence: 1,
+    accepted: false, reason: 'parry-input-unaimed', timeToContactSeconds: 0.1,
+  });
+  assert.equal(tally.rows.right.unaimed, 1);
+  assert.equal(tally.rows.right.wrongDirection, 0);
+  for (const aimed of ['top', 'right', 'left']) assert.equal(tally.confusion.right[aimed], 0);
 });
