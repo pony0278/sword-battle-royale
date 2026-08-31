@@ -219,6 +219,42 @@ export function createCommittedParryContactGate(options = {}) {
     return confirmation;
   }
 
+  // R21D.1 - an accepted attempt is a promise about ONE attack, and it has to expire with it.
+  //
+  // `armed` is read outside this module as "the defence is committed": the defender stance holds
+  // a raised guard through a released key while it is true (R20H.2), because yanking the shield
+  // out of its own parry mid-flight wrecks both fighters' poses. That was written assuming an
+  // armed attempt always ends on its own - confirmed by contact, or replaced by the next attack's
+  // arm(). It does not. An accepted press whose contact never arrives (the swing whiffs, the
+  // fighters are out of reach, the attack is interrupted) leaves `attempt.accepted` true and
+  // `confirmation` null forever, so the guard can never come down: the fighter stands frozen in
+  // the block pose with nothing attacking and no key held, until some later attack resets us.
+  //
+  // Confirmation is provably impossible once the attack is gone - confirmCommittedParryContact
+  // needs the SAME sequence and a live active-window contact - so the moment its attack stops
+  // being the live one, the promise has lapsed. The attempt stays on the books (same sequence,
+  // now refused) so the player still cannot re-arm the swing they already answered.
+  function lapse(input = {}) {
+    if (attempt?.accepted !== true || confirmation?.accepted === true) return null;
+    const snapshot = input.attackSnapshot || null;
+    // The runtime clears its action object and its `active` flag together, so these two agree
+    // except on an interruption - action still present, active already false - and an interrupted
+    // attack is exactly one that can never confirm. Callers that have no separate flag can hand
+    // us the snapshot alone.
+    const attackActive = input.attackActive === undefined
+      ? Boolean(snapshot?.action)
+      : input.attackActive === true && Boolean(snapshot?.action);
+    if (attackActive && finite(snapshot?.sequence, 0) === attempt.sequence) return null;
+    attempt = freeze({
+      ...attempt,
+      accepted: false,
+      reason: 'parry-attempt-lapsed-without-contact',
+      lapsed: true,
+      originalAttempt: attempt,
+    });
+    return attempt;
+  }
+
   function reset() {
     attempt = null;
     confirmation = null;
@@ -227,6 +263,7 @@ export function createCommittedParryContactGate(options = {}) {
   return freeze({
     arm,
     confirm,
+    lapse,
     reset,
     get attempt() { return attempt; },
     get confirmation() { return confirmation; },

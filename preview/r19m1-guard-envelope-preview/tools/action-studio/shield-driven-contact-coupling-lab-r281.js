@@ -674,6 +674,10 @@ function frame(timestamp) {
       resolveContact(snapshot, currentBlade, deltaSeconds);
       previousBlade = currentBlade;
     }
+    // R21D.1: after contact resolution, so a confirmation landing this frame still wins. An
+    // accepted attempt whose attack has ended can never be confirmed - letting it stay armed
+    // held the guard up forever through a released key.
+    parryGate.lapse({ attackSnapshot: snapshot, attackActive: attackRuntime.active });
     updateParryCue(snapshot);
 
     const combatSnapshot = combat.snapshot;
