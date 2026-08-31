@@ -360,6 +360,25 @@ function isParryKey(event) {
 
 // R20S.3: free look. A drag across the canvas turns the camera when nothing is locked; the entry
 // hands this to the player controller, which refuses it while a lock is held.
+// R21A.2: where the player is pointing, as offsets from the middle of the view. Bound to the
+// CANVAS rather than the document on purpose: moving the cursor off to press a lab button then
+// holds the last sector instead of sweeping the guard through two others on the way there. Locked,
+// this is the only thing the mouse does - the lock owns the camera, and free look already refuses
+// while locked - so it collides with nothing that exists.
+function bindGuardAim(canvas, handlers) {
+  if (!canvas || typeof handlers.onAim !== 'function') return;
+  canvas.addEventListener('pointermove', (event) => {
+    const rect = canvas.getBoundingClientRect();
+    if (!(rect.width > 0) || !(rect.height > 0)) return;
+    handlers.onAim({
+      offsetX: event.clientX - (rect.left + rect.width / 2),
+      offsetY: event.clientY - (rect.top + rect.height / 2),
+      viewportWidth: rect.width,
+      viewportHeight: rect.height,
+    });
+  });
+}
+
 function bindFreeLook(canvas, handlers) {
   if (!canvas || typeof handlers.onLook !== 'function') return;
   let dragging = false;
@@ -384,6 +403,7 @@ export function bindShieldParryLabUiEvents({
   handlers,
 }) {
   bindFreeLook(canvas, handlers);
+  bindGuardAim(canvas, handlers);
   let sprintHeld = false;
   function publishSprint(held) {
     if (held === sprintHeld) return;

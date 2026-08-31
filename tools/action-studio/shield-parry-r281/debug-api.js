@@ -33,6 +33,8 @@ export function createShieldParryDebugApi({
     // outside the frame pipeline and measurably flips outcomes (RIGHT@2.1m: passive polling
     // 3/3 blocked, polling this 3/3 body hits). Call it between exchanges only.
     captureBladeGeometry: actions.captureBladeGeometry,
+    // R21A.1: passive, safe mid-swing - see the note beside its action.
+    readBladePolyline: actions.readBladePolyline,
     get laneGround() { return runtimes.laneController?.report ?? null; },
     get laneDefenderIntent() { return runtimes.laneController?.defenderIntent ?? 0; },
     get laneDefenderLateralIntent() { return runtimes.laneController?.defenderLateralIntent ?? 0; },
@@ -44,6 +46,8 @@ export function createShieldParryDebugApi({
     get laneDefenderWalkOverlay() { return runtimes.laneController?.defenderWalkOverlay ?? null; },
     // R20X.1: which way the body is travelling in its own frame, and how far the stride is turned.
     get laneDefenderTravelPlan() { return runtimes.laneController?.defenderTravelPlan ?? null; },
+    // R21A.2: where the player is pointing. Read-only, and nothing consults it to decide anything.
+    get guardSector() { return runtimes.guardSector?.report ?? null; },
     get laneAttackerWalkSample() { return runtimes.laneController?.attackerWalkSample ?? null; },
     get engagementStance() { return runtimes.labScene?.engagementStance ?? null; },
     setDefenderYawOffset: (radians) => runtimes.labScene?.setDefenderYawOffset?.(radians) ?? null, // R19Q.1 facing seam (tests drive it directly)
