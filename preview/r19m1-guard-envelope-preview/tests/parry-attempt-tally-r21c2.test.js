@@ -162,10 +162,13 @@ test('R21G.2 the pasteable report carries every derived column', () => {
   for (let i = 0; i < 4; i += 1) tally.recordAttack('top');
   tally.record(report('top', 'parry-input-armed-awaiting-real-contact', 1, true));
   tally.record(report('top', 'parry-input-too-late', 2));
+  // R21G.4 appended a second table, so the counts table is the block before the first blank line.
   const lines = tally.reportText.split('\n');
-  const head = lines[0].split('\t');
-  const top = lines.find((l) => l.startsWith('top')).split('\t');
-  const total = lines[lines.length - 1].split('\t');
+  const counts = lines.slice(0, lines.indexOf(''));
+  const head = counts[0].split('\t');
+  const top = counts.find((l) => l.startsWith('top')).split('\t');
+  const total = counts[counts.length - 1].split('\t');
+  assert.ok(total[0] === '總計', `expected the counts total, got ${total[0]}`);
   assert.equal(head.length, top.length);
   assert.equal(head.length, total.length);
   // thrown and noAnswer are derived rather than stored; reading them off the raw row gave a blank
@@ -241,4 +244,77 @@ test('R21G.3 a broken attack timeline is still neither kind of mistiming', () =>
   assert.equal(tally.rows.left.mistimed, 0);
   assert.equal(tally.rows.left.tooEarly, 0);
   assert.equal(tally.rows.left.tooLate, 0);
+});
+
+test('R21G.4 how late a press was, not just that it was late', () => {
+  // A 78-swing sample came back 64% too late, and "too late" cannot distinguish presses clustered
+  // 40ms past the closing edge - which a small retime recovers - from presses 300ms past it, which
+  // no window change reaches. The pacing target would otherwise have been a guess.
+  const tally = createParryAttemptTally();
+  let sequence = 0;
+  const press = (direction, reason, ttcSeconds, accepted = false) => {
+    tally.recordAttack(direction);
+    tally.record({ attackDirection: direction, sequence: sequence += 1, accepted, reason, timeToContactSeconds: ttcSeconds });
+  };
+  press('top', 'parry-input-armed-awaiting-real-contact', 0.12, true);
+  press('top', 'parry-input-too-late', 0.03);
+  press('top', 'parry-input-too-late', 0.01);
+  press('top', 'parry-input-too-late', -0.04); // pressed after the blade had already arrived
+
+  const { opensMs, closesMs } = tally.windowMs;
+  assert.equal(opensMs, 180);
+  assert.equal(closesMs, 60);
+  const top = tally.timing.top;
+  assert.equal(top.presses, 4);
+  assert.equal(top.earliestMs, 120, 'largest TTC is the soonest press');
+  assert.equal(top.medianMs, 20);
+  assert.equal(top.latestMs, -40, 'negative TTC means the blade had landed');
+  assert.equal(top.insideWindow, 1);
+  assert.equal(top.medianMsPastClose, 50);
+  assert.equal(top.worstMsPastClose, 100);
+});
+
+test('R21G.4 a direction with no late press reports no lateness rather than zero', () => {
+  const tally = createParryAttemptTally();
+  tally.recordAttack('left');
+  tally.record({ attackDirection: 'left', sequence: 1, accepted: true, reason: 'ok', timeToContactSeconds: 0.11 });
+  const left = tally.timing.left;
+  assert.equal(left.insideWindow, 1);
+  assert.equal(left.medianMsPastClose, null, 'zero would read as "on the edge", which is not what happened');
+  assert.equal(left.worstMsPastClose, null);
+  assert.deepEqual(tally.timing.right, {
+    presses: 0, earliestMs: null, medianMs: null, latestMs: null,
+    insideWindow: 0, medianMsPastClose: null, worstMsPastClose: null,
+  });
+});
+
+test('R21G.4 a press the gate could not time is counted but not timed', () => {
+  // inspectCommittedAttackTiming returns a null TTC when the attack has no authored timeline.
+  const tally = createParryAttemptTally();
+  tally.recordAttack('right');
+  tally.record({ attackDirection: 'right', sequence: 1, reason: 'missing-authored-attack-timeline', timeToContactSeconds: null });
+  assert.equal(tally.rows.right.attempts, 1);
+  assert.equal(tally.rows.right.other, 1);
+  assert.equal(tally.timing.right.presses, 0, 'no timing sample to report');
+});
+
+test('R21G.4 the timing table rides along with the report, on the shared TTC axis', () => {
+  const tally = createParryAttemptTally();
+  tally.recordAttack('top');
+  tally.record({ attackDirection: 'top', sequence: 1, accepted: true, reason: 'ok', timeToContactSeconds: 0.1 });
+  const text = tally.reportText;
+  assert.match(text, /按下時距接觸多久/);
+  assert.match(text, /窗口 = 180→60ms/);
+  assert.match(text, /方向\t按壓\t最早\t中位\t最晚\t窗口內\t過關中位\t過關最差/);
+  // The counts table must still be there and still balance.
+  assert.match(text, /方向\t揮出\t成功/);
+});
+
+test('R21G.4 the raw samples stay out of rows, so the bucket invariant is untouched', () => {
+  const tally = createParryAttemptTally();
+  tally.recordAttack('top');
+  tally.record({ attackDirection: 'top', sequence: 1, accepted: true, reason: 'ok', timeToContactSeconds: 0.1 });
+  assert.ok(!('ttcMs' in tally.rows.top), 'rows is a counts view; an array in it breaks every deepEqual');
+  const row = tally.rows.top;
+  assert.equal(row.armed + row.wrongDirection + row.unaimed + row.tooEarly + row.tooLate + row.other + row.noAnswer, row.thrown);
 });
