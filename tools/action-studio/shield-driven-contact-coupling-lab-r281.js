@@ -62,6 +62,8 @@ import { buildShieldParryVerificationReport } from './shield-parry-r281/verifica
 import { createShieldParryLabDom } from './shield-parry-r281/lab-dom.js';
 import { createStanceDebugController } from './shield-parry-r281/stance-debug-controls.js';
 import { createShieldParryLabUi, bindShieldParryLabUiEvents } from './shield-parry-r281/lab-ui.js';
+import { createGuardSectorIndicator } from './shield-parry-r281/guard-sector-indicator.js';
+import { createGuardSectorRuntime } from '../../src/game/guard-sector-runtime.js';
 import {
   createShieldParryExchangeState,
   resetShieldParryExchangeState,
@@ -220,6 +222,11 @@ const refreshDebugStanceProfile = (syncUrl = true) => stanceDebug.refresh(syncUr
 const resetDebugStanceDefaults = () => stanceDebug.resetDefaults();
 stanceDebug.initialize();
 const labUi = createShieldParryLabUi(uiElements);
+// R21A.2: the player's aim, and the widget that draws it. Nothing reads the sector to decide an
+// outcome yet - step one is that the direction exists and is visible, so a person can answer
+// whether it is readable in time before any rule is written against it.
+const guardSector = createGuardSectorRuntime();
+const guardSectorIndicator = createGuardSectorIndicator(document.getElementById('guardSector'));
 const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
 let ready = false;
@@ -598,6 +605,7 @@ bindShieldParryLabUiEvents({
     onLockToggle: () => playerController.toggleLock(), // R20S.3 Tab
     onSprint: (held) => playerController.setSprintRequested(held), // R20U.1 Shift
     onLook: (deltaPixels) => (INSPECTION_CAMERA ? null : playerController.look(deltaPixels)), // R20S.3 free look
+    onAim: (aim) => guardSector.aim(aim), // R21A.2 the guard sector, aim only - no rule reads it
     onShowSurface: (checked) => buckler.setParrySurfaceVisible(checked),
     onResize: resize,
   },
@@ -670,6 +678,8 @@ function frame(timestamp) {
       if (repeatCooldownMs >= 700) startAttack(selectedDirection);
     }
   }
+  guardSectorIndicator.update({ sector: guardSector.sector, // R21A.2: aim, and what is being thrown
+    threatDirection: attackRuntime.snapshot?.action ? selectedDirection : null });
   defender.update(0, camera); attacker.update(0, camera); // R20W.2: rebuild the skeleton lines from
   renderer.render(scene, camera); // the bones AFTER every pose writer, or they draw a stale pose
   requestAnimationFrame(frame);
@@ -725,6 +735,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     residualStanceReachRuntime,
     swordGripConstraint,
     labScene,
+    guardSector,
   },
   debugMode: DEBUG_MODE,
   getDebugStanceProfile: () => debugStanceProfile,
