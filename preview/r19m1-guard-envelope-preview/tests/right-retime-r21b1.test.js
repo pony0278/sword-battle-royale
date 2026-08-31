@@ -10,6 +10,7 @@ import {
 } from '../src/combat/attack-time-warp.js';
 import { LONGSWORD_DIRECTIONAL_ATTACKS } from '../src/combat/longsword-directional-metadata.js';
 import { PREDICTIVE_INTERCEPT_PARRY_PROFILE } from '../src/combat/predictive-intercept-parry.js';
+import { COMMITTED_PARRY_CONTACT_GATE_PROFILE } from '../src/combat/committed-parry-contact-gate.js';
 import { getLongswordDirectionalAttackProfile } from '../src/combat/longsword-directional-attack-runtime.js';
 
 // R21B.1 - RIGHT could not be parried, and the fix is sized by things already measured.
@@ -18,41 +19,93 @@ import { getLongswordDirectionalAttackProfile } from '../src/combat/longsword-di
 // contact minus earlyWindowEnd and contact minus minimumTriggerTtc, so at RIGHT's authored 0.23s
 // the window closed 210ms after the swing began - inside a human's reaction to it starting.
 
-test('R21B.1 the stretch is the ratio between two numbers already in the game', () => {
-  const right = getAttackTimeWarp('right');
-  assert.ok(right, 'RIGHT is warped now');
-  // Peak: brought to TOP's, which is the fastest rotation this project has accepted untouched.
-  const peakAfter = RIGHT_RETIME_REFERENCES.measuredPeakDegreesPerSecond / right.stretch;
-  assert.ok(Math.abs(peakAfter - RIGHT_RETIME_REFERENCES.topUntouchedPeakDegreesPerSecond) < 40,
-    `stretched peak ${peakAfter.toFixed(0)} against TOP's ${RIGHT_RETIME_REFERENCES.topUntouchedPeakDegreesPerSecond}`);
-  // And measured afterwards in the lab, which is the assertion that matters: predicting is easy.
+test('R21B.1 the first stretch was the ratio between two numbers already in the game', () => {
+  // Kept as history rather than as a live claim. R21B.1 set the stretch to 1.6 because it brought
+  // RIGHT's peak to TOP's untouched 1667 - a derivation that held: measured afterwards at 1667 to
+  // the digit. R21I.1 then moved the stretch for a reason that derivation could not see, and the
+  // record of how 1.6 was reached is worth more than the number it produced.
+  const first = RIGHT_RETIME_REFERENCES.secondPass.stretchBefore;
+  assert.equal(first, 1.6);
+  const peakAtFirstStretch = RIGHT_RETIME_REFERENCES.measuredPeakDegreesPerSecond / first;
+  assert.ok(Math.abs(peakAtFirstStretch - RIGHT_RETIME_REFERENCES.topUntouchedPeakDegreesPerSecond) < 40,
+    `stretched peak ${peakAtFirstStretch.toFixed(0)} against TOP's`);
   assert.ok(Math.abs(RIGHT_RETIME_REFERENCES.measuredPeakAfterDegreesPerSecond
-    - RIGHT_RETIME_REFERENCES.topUntouchedPeakDegreesPerSecond) <= 1);
+    - RIGHT_RETIME_REFERENCES.topUntouchedPeakDegreesPerSecond) <= 1, 'and the lab agreed');
   assert.ok(getAttackTimeWarp('top') == null, 'TOP is the yardstick, so it stays untouched');
 });
 
-test('R21B.1 RIGHT is reactable now, and still the quickest of the three', () => {
+test('R21I.1 the second stretch was set by a player\'s hands, not by a derivation', () => {
+  const pass = RIGHT_RETIME_REFERENCES.secondPass;
+  assert.equal(getAttackTimeWarp('right').stretch, pass.stretchAfter);
+  assert.ok(pass.stretchAfter > pass.stretchBefore, 'RIGHT was still too fast to answer');
+
+  // What the tally measured: the player's press time barely varies by direction - it is the
+  // window's placement that does. RIGHT's closed 42ms before their median press.
+  const press = pass.playerMedianPressMsAfterSwingStart;
+  const closes = pass.windowClosesMsBefore;
+  assert.ok(press.top <= closes.top, 'TOP: the same reaction landed inside');
+  assert.ok(press.left <= closes.left, 'LEFT: likewise');
+  assert.ok(press.right > closes.right, 'RIGHT: the same reaction did not');
+  assert.equal(press.right - closes.right, pass.rightMedianMsPastClose);
+  // And it was never a reading problem: zero wrong-direction presses against RIGHT in the sample.
+  assert.equal(pass.rightWrongDirectionInSample, 0);
+
+  // A press that late needs contact at 410ms merely to be inside a [contact-180, contact-60]
+  // window. 430ms was taken instead - TOP's contact time, already in the game, and the direction
+  // that same player lands presses inside.
+  const window = COMMITTED_PARRY_CONTACT_GATE_PROFILE;
+  const minimum = (press.right + window.latestInputTtcSeconds * 1000) / 1000;
+  assert.ok(Math.abs(minimum - pass.minimumContactSecondsForA350msPress) < 1e-9, `${minimum}`);
+  assert.ok(pass.runtimeContactSecondsAfter > pass.minimumContactSecondsForA350msPress, 'with margin');
+});
+
+test('R21I.1 the cost of the second stretch is stated, not hidden', () => {
+  const pass = RIGHT_RETIME_REFERENCES.secondPass;
+  // The peak stops being TOP's, which was the whole basis of the first stretch. It lands between
+  // two swings already accepted rather than anywhere new.
+  const peak = RIGHT_RETIME_REFERENCES.measuredPeakDegreesPerSecond / pass.stretchAfter;
+  assert.ok(Math.abs(peak - pass.predictedPeakDegreesPerSecond) < 1, `${peak.toFixed(0)}`);
+  assert.ok(peak < pass.peakBandAlreadyAccepted.top, 'slower than TOP now');
+  assert.ok(peak > pass.peakBandAlreadyAccepted.left, 'still faster than LEFT');
+  assert.notEqual(Math.round(peak), RIGHT_RETIME_REFERENCES.topUntouchedPeakDegreesPerSecond);
+});
+
+test('R21I.1 RIGHT is answerable now, and is no longer the quickest of the three', () => {
   const contacts = Object.fromEntries(Object.entries(LONGSWORD_DIRECTIONAL_ATTACKS).map(([direction, attack]) => [
     direction, warpSourceToRuntime(attack.contactSeconds, getAttackTimeWarp(direction)),
   ]));
-  assert.ok(Math.abs(contacts.right - 0.368) < 1e-9, `right contact ${contacts.right}`);
-  // LEFT's 0.38s is the one contact time a person has confirmed by hand is reactable. RIGHT lands
-  // just inside it: reactable, and still the fastest attack in the game.
-  assert.ok(contacts.right < contacts.left, 'RIGHT keeps its identity as the quick one');
-  assert.ok(contacts.left < contacts.top);
+  assert.ok(Math.abs(contacts.right - 0.4301) < 1e-4, `right contact ${contacts.right}`);
+  // R21I.1 gave this up deliberately. RIGHT was kept the fastest contact in the game by R21B.1,
+  // and a player then answered it 1 time in 10 with zero direction errors - read perfectly, reached
+  // too late. Being the quick one is not worth being the one nobody can answer, so RIGHT now ties
+  // TOP and LEFT's 0.38s becomes the fastest contact.
+  // 1.87 is a rounded stretch, so it overshoots TOP's 0.43 by a tenth of a millisecond. A 60fps
+  // frame is 16.7ms; carrying more precision than that into the constant would be false exactness.
+  assert.ok(Math.abs(contacts.right - contacts.top) < 1e-3, 'RIGHT now matches TOP');
+  assert.ok(contacts.left < contacts.right, 'LEFT is the quick one now');
   assert.ok(contacts.right > 0.3, 'and is far enough out that the window is not shut on arrival');
 
   // The window itself, stated the way the profile defines it rather than restated by hand.
   const opens = contacts.right - PREDICTIVE_INTERCEPT_PARRY_PROFILE.earlyWindowEndSeconds;
   const closes = contacts.right - PREDICTIVE_INTERCEPT_PARRY_PROFILE.minimumTriggerTtcSeconds;
-  assert.ok(Math.abs(opens - 0.148) < 1e-6 && Math.abs(closes - 0.348) < 1e-6,
+  assert.ok(Math.abs(opens - (contacts.right - PREDICTIVE_INTERCEPT_PARRY_PROFILE.earlyWindowEndSeconds)) < 1e-9);
+  assert.ok(Math.abs(closes - 0.4101) < 1e-4,
     `window ${(opens * 1000).toFixed(0)}-${(closes * 1000).toFixed(0)}ms`);
   // Before the retime it closed at 210ms. A player whose clock starts at commitment presses at
   // 250-300ms; that now lands inside the window, and inside the perfect band.
   assert.ok(closes > 0.3, 'a 300ms reaction must still be inside');
-  const perfectOpens = contacts.right - PREDICTIVE_INTERCEPT_PARRY_PROFILE.perfectWindowEndSeconds;
-  const perfectCloses = contacts.right - PREDICTIVE_INTERCEPT_PARRY_PROFILE.perfectWindowStartSeconds;
-  assert.ok(perfectOpens < 0.3 && perfectCloses > 0.25, `perfect band ${perfectOpens}-${perfectCloses}`);
+  // R21I.1: the perfect band rides on contact, so matching TOP's contact matches TOP's band too.
+  // Stated against TOP rather than against the 0.25-0.30s literals R21B.1 used, which described
+  // where RIGHT's band sat at 0.368s contact and nothing more general than that.
+  const perfectBand = (contact) => [
+    contact - PREDICTIVE_INTERCEPT_PARRY_PROFILE.perfectWindowEndSeconds,
+    contact - PREDICTIVE_INTERCEPT_PARRY_PROFILE.perfectWindowStartSeconds,
+  ];
+  const [perfectOpens, perfectCloses] = perfectBand(contacts.right);
+  const [topPerfectOpens, topPerfectCloses] = perfectBand(contacts.top);
+  assert.ok(Math.abs(perfectOpens - topPerfectOpens) < 1e-3, `perfect band ${perfectOpens}-${perfectCloses}`);
+  assert.ok(Math.abs(perfectCloses - topPerfectCloses) < 1e-3);
+  assert.ok(perfectOpens > opens && perfectOpens < closes, 'the perfect band opens inside the input window');
 });
 
 test('R21B.1 the clip is not retimed, only when its poses are reached', () => {
@@ -65,4 +118,21 @@ test('R21B.1 the clip is not retimed, only when its poses are reached', () => {
   const spanCost = (right.endSourceSeconds - right.startSourceSeconds) * (right.stretch - 1);
   assert.ok(Math.abs(warpSourceToRuntime(0.433, right) - (0.433 + spanCost)) < 1e-9);
   assert.equal(Object.keys(ATTACK_TIME_WARPS).length, 2);
+});
+
+test('R21I.1 the re-measurement is compared on its own scale, not against a different instrument', () => {
+  const pass = RIGHT_RETIME_REFERENCES.secondPass;
+  const same = pass.sameSamplerPeakDegreesPerSecond;
+  // The claim the stretch was chosen to keep: RIGHT sits between the two swings already accepted.
+  // Checked on the sampler that produced all three in one run, because that sampler reads TOP at
+  // 2199 against the 1667 recorded by R21B.1's - so the two scales must not be mixed.
+  assert.ok(same.right > same.left, 'RIGHT is still faster than LEFT');
+  assert.ok(same.right < same.top, 'and slower than TOP');
+  assert.ok(same.top > RIGHT_RETIME_REFERENCES.topUntouchedPeakDegreesPerSecond,
+    'the caveat is real: this sampler reads higher than the earlier record');
+  // The prediction was worth making: 2686/1.87 against what the lab then read.
+  const predicted = RIGHT_RETIME_REFERENCES.measuredPeakDegreesPerSecond / pass.stretchAfter;
+  assert.ok(Math.abs(predicted - pass.predictedPeakDegreesPerSecond) < 1);
+  assert.ok(Math.abs(same.right - pass.predictedPeakDegreesPerSecond) / pass.predictedPeakDegreesPerSecond < 0.05,
+    `predicted ${pass.predictedPeakDegreesPerSecond} against measured ${same.right}`);
 });

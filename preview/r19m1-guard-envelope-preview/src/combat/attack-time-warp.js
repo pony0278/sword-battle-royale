@@ -77,11 +77,13 @@ export const ATTACK_TIME_WARPS = Object.freeze({
     reason: 'left-burst-3972-deg-per-second-in-one-key',
   }),
   right: Object.freeze({
+    // R21I.1: 1.6 -> 1.87. See RIGHT_RETIME_REFERENCES.secondPass for what a player's hands
+    // measured against the first one.
     direction: 'right',
     startSourceSeconds: 0,
     endSourceSeconds: 0.3,
-    stretch: 1.6,
-    reason: 'right-windup-was-already-a-strike-and-peaked-at-2686-deg-per-second',
+    stretch: 1.87,
+    reason: 'right-window-closed-42ms-before-the-players-measured-press',
   }),
 });
 
@@ -103,6 +105,56 @@ export const RIGHT_RETIME_REFERENCES = Object.freeze({
   windupRuntimeMsAfter: Object.freeze({ from: 17, to: 283 }),
   runtimeContactSecondsAfter: 0.368,
   authority: 'attack-timing-only-no-contact-authority',
+
+  // R21I.1 - the second pass, and this one was set by a person's hands rather than by a
+  // derivation. R21B.1 got RIGHT from "nobody can block it" to "blockable", and the parry tally
+  // then measured what was still wrong with it.
+  //
+  // Across 29 driven swings a player pressed at a strikingly consistent moment in every direction:
+  // median 350ms after the swing began for TOP, 350ms for RIGHT, 300ms for LEFT. The reaction is
+  // not what differs between the three - the WINDOW's placement is.
+  //
+  //   direction   window closes   player's median press   verdict
+  //   top         370ms           350ms                   inside, 4 of 9 presses land in it
+  //   left        320ms           300ms                   inside, 5 of 9
+  //   right       308ms           350ms                   42ms LATE, 1 of 9
+  //
+  // RIGHT got zero wrong-direction errors in that sample - it is read perfectly and answered too
+  // late - so this is a placement problem and nothing else. The window is [contact-180, contact-60],
+  // so a 350ms press needs contact at 410ms or later simply to be inside it.
+  //
+  // 0.430s is taken rather than the 0.410s minimum because it is TOP's contact time, a number
+  // already in the game, and TOP is the direction whose window that same player demonstrably lands
+  // presses inside. Tuning instead to capture 100% of their current presses would have wanted
+  // ~450ms, and that would be over-fitting: their success rate went 1.3% to 10% between two
+  // sessions, so the distribution being fitted is still moving.
+  //
+  // The cost, stated: RIGHT is no longer the quickest of the three - it ties TOP, and LEFT's 380ms
+  // becomes the fastest contact. And the peak that R21B.1 tuned to match TOP exactly (1667) drops
+  // to a predicted 2686/1.87 = 1436 deg/s, which stops being TOP's number. It lands between LEFT's
+  // measured 1347 and TOP's 1667 - inside the band of two swings already accepted - rather than
+  // anywhere new.
+  secondPass: Object.freeze({
+    stretchBefore: 1.6,
+    stretchAfter: 1.87,
+    runtimeContactSecondsAfter: 0.4301,
+    playerMedianPressMsAfterSwingStart: Object.freeze({ top: 350, right: 350, left: 300 }),
+    windowClosesMsBefore: Object.freeze({ top: 370, right: 308, left: 320 }),
+    rightMedianMsPastClose: 42,
+    rightWrongDirectionInSample: 0,
+    minimumContactSecondsForA350msPress: 0.41,
+    predictedPeakDegreesPerSecond: 1436,
+    peakBandAlreadyAccepted: Object.freeze({ left: 1347, top: 1667 }),
+    sampleSwings: 29,
+    // Re-measured after the change, and the honest caveat with it: this sampler reads the blade
+    // AXIS turning between two 60fps frames, and it puts TOP at 2199 where the record above says
+    // 1667. So it is not the instrument R21B.1 used, and 1486 must not be read against 1667 as if
+    // it were. All three were taken on this one sampler in the same run, which is what makes them
+    // comparable - and on it RIGHT still lands between LEFT and TOP, which is the claim the
+    // stretch was chosen to keep. The prediction (1436) and the reading (1486) agree to 3.5%.
+    sameSamplerPeakDegreesPerSecond: Object.freeze({ top: 2199, right: 1486, left: 1334 }),
+    sameSamplerNote: 'blade-axis-turn-per-60fps-frame; reads higher than the R21B.1 record, so compare within this row only',
+  }),
 });
 
 function finite(value, fallback = 0) {

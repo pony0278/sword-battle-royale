@@ -23,11 +23,12 @@ const EXPECTED = Object.freeze({
   }),
   right: Object.freeze({
     clipId: 'UAL2/Sword_Regular_A',
-    // R21B.1: the windup and the burst together are source [0, 0.3] at 1/1.6 speed, so contact
-    // 0.23 lands at 0.23 * 1.6 and everything after 0.3 is pushed back by what the stretch cost.
-    // Written out from the design rather than read back from the code, the same way LEFT's is.
-    contactSeconds: 0.23 * 1.6,
-    durationSeconds: 0.433 + 0.3 * 0.6,
+    // R21B.1, restretched by R21I.1: the windup and the burst together are source [0, 0.3] at
+    // 1/1.87 speed, so contact 0.23 lands at 0.23 * 1.87 and everything after 0.3 is pushed back by
+    // what the stretch cost. Written out from the design rather than read back from the code, the
+    // same way LEFT's is - which is why this had to be edited by hand for the retime, and should be.
+    contactSeconds: 0.23 * 1.87,
+    durationSeconds: 0.433 + 0.3 * 0.87,
     sourceContactSeconds: 0.23, sourceDurationSeconds: 0.433, warped: true,
   }),
   left: Object.freeze({
