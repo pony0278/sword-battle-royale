@@ -42,3 +42,14 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      # R20Z.1: the two gates that protect the measured combat. The golden grid replays eleven
+      # exchanges and diffs every outcome, posture, relevance verdict and separation against the
+      # committed record; the parry gate plays one parry per direction and reads the in-page
+      # verdicts. Both existed before this and neither ran anywhere - they drive a page that was
+      # gitignored, so CI could not have run them even if a workflow had asked. The page is
+      # generated from the published lab now, and verify:combat serves the repo itself.
+      - name: Verify measured combat (golden grid + parry gate)
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm run verify:combat
