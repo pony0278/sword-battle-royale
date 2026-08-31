@@ -71,7 +71,7 @@ test('R20T.2 it warns and nothing else - contact authority never moves', () => {
   // No blade, no probe, no gate: this module may not be able to change an outcome even by mistake.
   assert.doesNotMatch(source, /probe|contact:\s*true|parryGate|resolveContact/);
   // The lab reads it beside relevance - the same question about the other end of the same swing.
-  const preContact = readFileSync(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
+  const preContact = readFileSync(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
   assert.ok(preContact.indexOf('exchangeState.latestSwingRelevance') < preContact.indexOf('exchangeState.latestSwingInnerReach'));
   // And says it where a player is already looking for whether a blade met anything.
   const labUi = readFileSync(new URL('../tools/action-studio/shield-parry-r281/lab-ui.js', import.meta.url), 'utf8');

@@ -6,11 +6,11 @@ import {
   SHIELD_PARRY_EXCHANGE_STATE_GROUPS,
   createShieldParryExchangeState,
   resetShieldParryExchangeState,
-} from '../tools/action-studio/shield-parry-r281/exchange-state.js';
+} from '../src/game/exchange-state.js';
 
 const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-const preContactController = await readFile(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
-const contactHandoffController = await readFile(new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url), 'utf8');
+const preContactController = await readFile(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
+const contactHandoffController = await readFile(new URL('../src/game/contact-handoff-controller.js', import.meta.url), 'utf8');
 const visualOwnershipRuntimeTaps = await readFile(new URL('../tools/action-studio/shield-parry-r281/visual-ownership-runtime-taps.js', import.meta.url), 'utf8');
 const debugApi = await readFile(new URL('../tools/action-studio/shield-parry-r281/debug-api.js', import.meta.url), 'utf8');
 const frameReporting = await readFile(new URL('../tools/action-studio/shield-parry-r281/frame-reporting.js', import.meta.url), 'utf8');
@@ -149,7 +149,7 @@ test('R18M.4 reset preserves state identity and restores the exact exchange defa
 });
 
 test('R18M.4 entry uses one explicit exchange owner while lab/runtime lifetime stays separate', () => {
-  assert.match(entry, /shield-parry-r281\/exchange-state\.js/);
+  assert.match(entry, /src\/game\/exchange-state\.js/);
   assert.match(entry, /const exchangeState = createShieldParryExchangeState\(\);/);
   assert.match(entry, /resetShieldParryExchangeState\(exchangeState, \{/);
   assert.match(entry, /previousShieldLeadSurface: cloneSurface\(buckler\.getWorldParrySurface\(\)\)/);
@@ -178,7 +178,7 @@ test('R18M.4 entry uses one explicit exchange owner while lab/runtime lifetime s
 });
 
 test('R18M.4 state owner contains no combat authority or runtime calls', async () => {
-  const source = await readFile(new URL('../tools/action-studio/shield-parry-r281/exchange-state.js', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../src/game/exchange-state.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /parryGate\.|combat\.|swordGripConstraint\.|guardRuntime\.|attackRuntime\./);
   assert.doesNotMatch(source, /resolveContact|DEFLECT_IMPULSE|OLD B3/);
 });

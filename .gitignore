@@ -6,6 +6,8 @@ assets/skyrim/guard/converted/*.glb
 # Local dev dependencies (three.js is loaded from a CDN at runtime; npm install is only for headless probes).
 node_modules/
 
-# Headless probe entry: the published lab loads three.js from a CDN, this local copy rewrites
-# those two script tags to node_modules so a sandboxed browser can boot the same lab.
+# Headless probe entry: the published lab loads three.js from a CDN, this copy rewrites those two
+# script tags to node_modules so a sandboxed browser or a CI runner can boot the same lab. Ignored
+# because it is GENERATED - npm run build:probe-lab, which verify:combat runs first every time. It
+# used to be hand-maintained, and drifted several stages behind the page it was standing in for.
 tools/action-studio/probe.lab.html

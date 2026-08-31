@@ -64,7 +64,7 @@ test('R19K.1 the clip is the measured one and the pack that holds it is loaded',
   // what makes the clip resolvable, and an unresolvable clip id throws on the first sampled frame
   // and takes the whole requestAnimationFrame loop with it (R19E).
   const bootstrap = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/lab-bootstrap.js', import.meta.url),
+    new URL('../src/game/bootstrap.js', import.meta.url),
     'utf8',
   );
   assert.match(bootstrap, /packIds: \['basic', 'advanced', 'general'\]/);
@@ -75,7 +75,7 @@ test('R19K.1 the clip is the measured one and the pack that holds it is loaded',
 
 test('R19K.1 the reaction is driven by the event and applied after every other defender writer', async () => {
   const handoff = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url),
+    new URL('../src/game/contact-handoff-controller.js', import.meta.url),
     'utf8',
   );
   // Fired from the body-struck branch, which the lifecycle reaches only on contact === true.

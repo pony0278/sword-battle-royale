@@ -1,13 +1,13 @@
-import { createAttackAdvanceRuntime } from '../../../src/combat/attack-advance.js';
-import { createGuardFacingTurnRuntime } from '../../../src/combat/guard-facing-turn.js';
-import { createBaseFacingRuntime, wrapAngleRadians } from '../../../src/combat/base-facing.js';
-import { planSwingFacingPolicy } from '../../../src/combat/swing-windup-tracking.js';
-import { createEngagementGround } from '../../../src/combat/engagement-ground.js';
-import { createLaneLocomotionRuntime, planLateralStep } from '../../../src/combat/lane-locomotion.js';
-import { createDodgeStateRuntime, DODGE_DURATION_SECONDS } from '../../../src/combat/dodge-state.js';
-import { createLaneWalkCycle, walkClipTimeSeconds } from '../../../src/combat/lane-walk-cycle.js';
-import { filterPoseToWalkOverlay, planWalkOverlay } from '../../../src/combat/guard-walk-overlay.js';
-import { TRAVEL_YAW_BONES, hipYawDeltaQuaternion, planTravelRelativeLegs } from '../../../src/combat/travel-relative-legs.js';
+import { createAttackAdvanceRuntime } from '../combat/attack-advance.js';
+import { createGuardFacingTurnRuntime } from '../combat/guard-facing-turn.js';
+import { createBaseFacingRuntime, wrapAngleRadians } from '../combat/base-facing.js';
+import { planSwingFacingPolicy } from '../combat/swing-windup-tracking.js';
+import { createEngagementGround } from '../combat/engagement-ground.js';
+import { createLaneLocomotionRuntime, planLateralStep } from '../combat/lane-locomotion.js';
+import { createDodgeStateRuntime, DODGE_DURATION_SECONDS } from '../combat/dodge-state.js';
+import { createLaneWalkCycle, walkClipTimeSeconds } from '../combat/lane-walk-cycle.js';
+import { filterPoseToWalkOverlay, planWalkOverlay } from '../combat/guard-walk-overlay.js';
+import { TRAVEL_YAW_BONES, hipYawDeltaQuaternion, planTravelRelativeLegs } from '../combat/travel-relative-legs.js';
 
 // R18Z.1 — where the two fighters are standing, and nothing else.
 //

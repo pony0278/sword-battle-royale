@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs';
 // that still cannot cover - which is why LEFT past its parry window still lands, and why the
 // lateness cliff survives at all.
 const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-const preContact = readFileSync(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
+const preContact = readFileSync(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
 const latch = readFileSync(new URL('../src/combat/guard-coverage-latch.js', import.meta.url), 'utf8');
 
 test('R20J.1 latches the late raise per exchange and clears it with the exchange', () => {

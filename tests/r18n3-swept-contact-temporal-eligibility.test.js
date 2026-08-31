@@ -12,7 +12,7 @@ import {
 import { createLongswordDirectionalAttackRuntime } from '../src/combat/longsword-directional-attack-runtime.js';
 
 const lifecycleSource = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
-const controllerSource = await readFile(new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url), 'utf8');
+const controllerSource = await readFile(new URL('../src/game/contact-handoff-controller.js', import.meta.url), 'utf8');
 const integrationSource = await readFile(new URL('../src/combat/two-actor-combat-integration.js', import.meta.url), 'utf8');
 
 function rightSnapshot({ previousElapsedMs = 248.684, elapsedSeconds = 0.298684, phase = 'attack_recovery' } = {}) {

@@ -168,8 +168,8 @@ test('R18N.4.1-B runtime tap adapter remains observer-only', async () => {
 });
 
 test('R18N.4.1-B wires taps after existing writers and exposes diagnostics without changing contact authority', async () => {
-  const preContact = await readFile(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
-  const exchangeStateSource = await readFile(new URL('../tools/action-studio/shield-parry-r281/exchange-state.js', import.meta.url), 'utf8');
+  const preContact = await readFile(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
+  const exchangeStateSource = await readFile(new URL('../src/game/exchange-state.js', import.meta.url), 'utf8');
   const debugApi = await readFile(new URL('../tools/action-studio/shield-parry-r281/debug-api.js', import.meta.url), 'utf8');
   const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
   function assertBefore(sourceText, earlier, later, label) {
@@ -216,5 +216,6 @@ test('R18N.4.1-B wires taps after existing writers and exposes diagnostics witho
   assert.match(debugApi, /get latestVisualOwnershipBaseline\(\)/);
   assert.match(debugApi, /get visualOwnershipTrace\(\)/);
   assert.doesNotMatch(preContact, /parryGate\.confirm\(|combat\.resolveContact\(|probeSweptSwordBucklerContact\(/);
-  assert.ok(entry.split('\n').length <= 725, 'R18N.4.1-B must not expand the thin R281 entry');
+  // R20Z.1: the entry's size budget has one owner, shield-parry-r281-thin-entry-audit.test.js.
+  // A copy here meant one added line failed three unrelated suites and told you nothing extra.
 });

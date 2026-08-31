@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createShieldParryContactHandoffController } from '../tools/action-studio/shield-parry-r281/contact-handoff-controller.js';
+import { createShieldParryContactHandoffController } from '../src/game/contact-handoff-controller.js';
 
 const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-const controller = await readFile(new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url), 'utf8');
+const controller = await readFile(new URL('../src/game/contact-handoff-controller.js', import.meta.url), 'utf8');
 // R18S.4: the lifecycle state machine lives in src; the controller is its lab shell.
 const director = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
 
@@ -19,7 +19,7 @@ function indexOrder(source, markers) {
 
 test('R18M.6 entry delegates contact/release ownership while preserving frame order', () => {
   assert.equal(typeof createShieldParryContactHandoffController, 'function');
-  assert.match(entry, /shield-parry-r281\/contact-handoff-controller\.js/);
+  assert.match(entry, /src\/game\/contact-handoff-controller\.js/);
   assert.match(entry, /contactHandoffController\.updateCombatBeforeGuard\(/);
   assert.match(entry, /guardRuntime\.update\(deltaMs, camera\);/);
   assert.match(entry, /contactHandoffController\.updateDefenderDeflectReleaseGate\(\);/);

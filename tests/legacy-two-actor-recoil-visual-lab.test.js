@@ -10,9 +10,9 @@ import { readFile } from 'node:fs/promises';
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 const entry = await read('tools/action-studio/shield-driven-contact-coupling-lab-r281.js');
-const preContactController = await read('tools/action-studio/shield-parry-r281/pre-contact-controller.js');
+const preContactController = await read('src/game/pre-contact-controller.js');
 const lifecycleDirector = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
-const contactHandoffController = await read('tools/action-studio/shield-parry-r281/contact-handoff-controller.js');
+const contactHandoffController = await read('src/game/contact-handoff-controller.js');
 const directOldB3Diagnostic = await read('tools/action-studio/shield-parry-r281/direct-old-b3-diagnostic.js');
 const html = await read('tools/action-studio/shield-driven-contact-coupling-lab.html');
 
@@ -33,7 +33,7 @@ function functionBody(source, name, nextName) {
 
 test('current R281 HTML runs the Step 3A shield to sword to hand entry', () => {
   assert.match(html, /Step 3A · Live Shield → Sword → Wrist-Grip Constraint/);
-  assert.match(html, /shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-fold-the-panels-r20y1/);
+  assert.match(html, /shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-game-out-of-the-lab-r20z4/);
   assert.match(html, /PARRY NOW \(F\)/);
   assert.doesNotMatch(html, /data-mode="perfect"/);
 });

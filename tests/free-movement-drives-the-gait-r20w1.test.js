@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createShieldParryLaneController } from '../tools/action-studio/shield-parry-r281/lane-controller.js';
+import { createShieldParryLaneController } from '../src/game/lane-controller.js';
 import { LANE_WALK_CLIPS } from '../src/combat/lane-walk-cycle.js';
 import { LANE_LOCOMOTION_PROFILE } from '../src/combat/lane-locomotion.js';
 import { SPRINT_SPEED_MPS } from '../src/combat/sprint-locomotion.js';

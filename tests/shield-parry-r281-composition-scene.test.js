@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-const sceneSource = await readFile(new URL('../tools/action-studio/shield-parry-r281/lab-scene.js', import.meta.url), 'utf8');
+const sceneSource = await readFile(new URL('../src/game/scene.js', import.meta.url), 'utf8');
 const overlaySource = await readFile(new URL('../tools/action-studio/shield-parry-r281/inspection-overlay.js', import.meta.url), 'utf8');
 
 const forbiddenAuthority = [

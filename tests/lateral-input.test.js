@@ -38,7 +38,7 @@ test('R20S.3 WASD moves the fighter, the arrows keep the lane scalars', async ()
   assert.match(ui, /if \(attackerModifier\) return 0;/);
 
   const lane = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/lane-controller.js', import.meta.url), 'utf8');
+    new URL('../src/game/lane-controller.js', import.meta.url), 'utf8');
   // R20T.3: positive intent is the defender's own right, and that is world +x, not -x. The old
   // note reasoned backwards - facing -z is how the default camera faces and its screen right is
   // +x - so both this path and WASD walked the wrong way. Measured through the real keys with the

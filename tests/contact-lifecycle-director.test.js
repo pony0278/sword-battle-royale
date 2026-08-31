@@ -229,7 +229,7 @@ test('R18S.4 reset returns the lifecycle to before-first-contact', () => {
 
 test('R18S.4 the lab keeps presentation and words, and no state transition of its own', async () => {
   const controller = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url),
+    new URL('../src/game/contact-handoff-controller.js', import.meta.url),
     'utf8',
   );
   assert.match(controller, /createContactLifecycleDirector\(\{/);

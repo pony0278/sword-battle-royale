@@ -1,14 +1,14 @@
 // R18M.C5 — startup asset loading and defender weapon-bind initialization only.
 // Ready state, Guard entry, initial report, and initial attack ordering stay in the R281 entry.
 
-import { createDebugSword, mountDebugSword } from '../../../src/character/debug-sword.js';
-import { DEFAULT_KAYKIT_SWORD_MOUNT } from '../../../src/character/default-character-mount.js';
-import { loadUal1AnimationLibrary } from '../../../src/animation/ual1-animation-library.js';
-import { loadUal2AnimationLibrary } from '../../../src/animation/ual2-animation-library.js';
-import { loadSkyrimConvertedAnimationLibrary } from '../../../src/animation/skyrim-converted-animation-library.js';
-import { loadKayKitAnimationLibrary } from '../../../src/animation/kaykit-animation-library.js';
-import { composeSkyrimWeaponMountCalibration } from '../../../src/animation/skyrim-weapon-bind-calibration.js';
-import { LANE_WALK_CLIPS } from '../../../src/combat/lane-walk-cycle.js';
+import { createDebugSword, mountDebugSword } from '../character/debug-sword.js';
+import { DEFAULT_KAYKIT_SWORD_MOUNT } from '../character/default-character-mount.js';
+import { loadUal1AnimationLibrary } from '../animation/ual1-animation-library.js';
+import { loadUal2AnimationLibrary } from '../animation/ual2-animation-library.js';
+import { loadSkyrimConvertedAnimationLibrary } from '../animation/skyrim-converted-animation-library.js';
+import { loadKayKitAnimationLibrary } from '../animation/kaykit-animation-library.js';
+import { composeSkyrimWeaponMountCalibration } from '../animation/skyrim-weapon-bind-calibration.js';
+import { LANE_WALK_CLIPS } from '../combat/lane-walk-cycle.js';
 
 // R19I.1: the clip both fighters stand in when nobody has chosen anything yet. The attacker
 // already idled on it out of combat; the defender now shares it so "no state" is one pose for
