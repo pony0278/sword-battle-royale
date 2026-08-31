@@ -67,6 +67,7 @@ import {
   resetShieldParryExchangeState,
 } from './shield-parry-r281/exchange-state.js';
 import { createShieldParryPreContactController } from './shield-parry-r281/pre-contact-controller.js';
+import { createVisualOwnershipRuntimeTaps } from './shield-parry-r281/visual-ownership-runtime-taps.js';
 import { createShieldParryContactHandoffController } from './shield-parry-r281/contact-handoff-controller.js';
 import { createShieldParryLabScene } from './shield-parry-r281/lab-scene.js';
 import { cloneSurface, magnitude, createBladePolylineSampler } from './shield-parry-r281/lab-geometry.js';
@@ -232,6 +233,7 @@ let hudClockMs = HUD_INTERVAL_MS;
 let reportClockMs = REPORT_INTERVAL_MS;
 
 const preContactController = createShieldParryPreContactController({
+  createOwnershipTaps: createVisualOwnershipRuntimeTaps, // R20Z.3: the lab supplies its own watcher
   exchangeState,
   buckler,
   defender,

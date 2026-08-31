@@ -1,4 +1,3 @@
-import { createVisualOwnershipRuntimeTaps } from './visual-ownership-runtime-taps.js';
 import { createBoundedShieldArmAdditiveRuntime } from '../../../src/combat/predictive-parry-arm-additive.js';
 import { createTopPrepReadabilityHoldRuntime } from '../../../src/combat/parry-top-prep-readability-hold.js';
 import { createGuardCoverageDirector } from '../../../src/combat/guard-coverage-director.js';
@@ -8,6 +7,16 @@ import { planCloseRangeGuardPosture } from '../../../src/combat/close-range-guar
 import { planGuardFacingTurn } from '../../../src/combat/guard-facing-turn.js';
 import { planGuardConeGate } from '../../../src/combat/guard-cone-gate.js';
 import { createParryInterceptDirector } from '../../../src/combat/parry-intercept-director.js';
+
+// The tap points, spelled out rather than proxied away: this list IS the set of moments a pose
+// writer announces itself, and a reader of this file should be able to see it without opening the
+// lab's implementation.
+const NO_OP_OWNERSHIP_TAPS = Object.freeze({
+  beginFrame() {}, finishFrame() {}, reset() {},
+  afterPrimaryArm() {}, afterResidualArm() {}, afterBody() {}, afterStance() {},
+  afterPredictive() {}, afterShieldArmAdditive() {}, afterTopPrepReadabilityHold() {},
+  afterFinalClosure() {},
+});
 
 export function createShieldParryPreContactController({
   exchangeState,
@@ -26,10 +35,16 @@ export function createShieldParryPreContactController({
   debugMode,
   readContext,
   services,
+  // R20Z.3: who watches the pose writers. The ownership taps snapshot the rig at the instant each
+  // stage of the reach ladder owns it, which is a lab question - it exists to answer "who moved
+  // this bone" - and this controller used to construct them itself, making a gameplay module
+  // import a diagnostic one. Injected now, and no-op by default: the fight runs identically with
+  // nobody watching, which is what a diagnostic is supposed to mean.
+  createOwnershipTaps = () => NO_OP_OWNERSHIP_TAPS,
 }) {
   const LONGSWORD_ATTACK_PHASES = longswordAttackPhases;
   const PARRY_PROMPT_HOLD_MS = promptHoldMs;
-  const visualOwnership = createVisualOwnershipRuntimeTaps({ rig: defender.rig, exchangeState });
+  const visualOwnership = createOwnershipTaps({ rig: defender.rig, exchangeState }) || NO_OP_OWNERSHIP_TAPS;
   const shieldArmAdditiveRuntime = createBoundedShieldArmAdditiveRuntime();
   const topPrepReadabilityHoldRuntime = createTopPrepReadabilityHoldRuntime();
   // Everything about which coverage pass runs when, and what each one may look at, lives in the

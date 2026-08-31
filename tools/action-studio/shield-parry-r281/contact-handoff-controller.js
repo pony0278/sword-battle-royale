@@ -1,7 +1,7 @@
 import { createContactReactionDirector } from '../../../src/combat/contact-reaction-director.js';
 import { createContactLifecycleDirector } from '../../../src/combat/contact-lifecycle-director.js';
 import { buildBodyHurtbox } from '../../../src/combat/body-hurtbox.js';
-import { diagnosticIncomingVelocity } from './direct-old-b3-diagnostic.js';
+import { authoredIncomingVelocity } from './authored-incoming-velocity.js';
 
 export function createShieldParryContactHandoffController({
   exchangeState,
@@ -97,7 +97,7 @@ export function createShieldParryContactHandoffController({
       const world = bone.getWorldPosition(new THREE_.Vector3());
       return { x: world.x, y: world.y, z: world.z };
     },
-    fallbackIncomingVelocity: (direction) => diagnosticIncomingVelocity(direction),
+    fallbackIncomingVelocity: (direction) => authoredIncomingVelocity(direction),
     releaseReachOwnership: () => {
       fineTrackingRuntime.reset();
       residualBodyReachRuntime.reset();

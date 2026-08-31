@@ -3,12 +3,8 @@
 // Production Parry success remains owned by real swept Sword × Shield contact outside this module.
 
 import { LEGACY_TWO_ACTOR_RECOIL_HANDOFF_MODE } from '../../../src/combat/post-coupling-recoil-stagger-handoff.js';
+import { authoredIncomingVelocity } from './authored-incoming-velocity.js';
 
-export function diagnosticIncomingVelocity(direction) {
-  if (direction === 'left') return Object.freeze({ x: -4.8, y: -0.4, z: 2.0 });
-  if (direction === 'top') return Object.freeze({ x: 0.2, y: -6.4, z: 0.6 });
-  return Object.freeze({ x: 4.8, y: -0.4, z: 2.0 });
-}
 
 export function diagnosticCouplingReport(direction) {
   const lateral = direction === 'left' ? -1 : direction === 'right' ? 1 : 0;
@@ -81,7 +77,7 @@ export function createDirectOldB3DiagnosticController({
       geometricContact: true,
       eligible: true,
       point: Object.freeze({ x: contactPoint.x, y: contactPoint.y, z: contactPoint.z }),
-      incomingVelocity: diagnosticIncomingVelocity(direction),
+      incomingVelocity: authoredIncomingVelocity(direction),
       radialDistance: 0.08,
       bladeFraction: 0.5,
       sweepAlpha: 0.5,

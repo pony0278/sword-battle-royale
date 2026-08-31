@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 import {
-  diagnosticIncomingVelocity,
   diagnosticCouplingReport,
 } from '../tools/action-studio/shield-parry-r281/direct-old-b3-diagnostic.js';
+import { authoredIncomingVelocity } from '../tools/action-studio/shield-parry-r281/authored-incoming-velocity.js';
 
 const entrySource = await readFile(
   new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url),
@@ -37,9 +37,9 @@ test('R18M.C4 entry keeps the public forceOldTwoActorB3 wrapper but delegates di
 });
 
 test('R18M.C4 preserves exact direct diagnostic velocity and coupling helper semantics', () => {
-  assert.deepEqual(diagnosticIncomingVelocity('left'), { x: -4.8, y: -0.4, z: 2.0 });
-  assert.deepEqual(diagnosticIncomingVelocity('top'), { x: 0.2, y: -6.4, z: 0.6 });
-  assert.deepEqual(diagnosticIncomingVelocity('right'), { x: 4.8, y: -0.4, z: 2.0 });
+  assert.deepEqual(authoredIncomingVelocity('left'), { x: -4.8, y: -0.4, z: 2.0 });
+  assert.deepEqual(authoredIncomingVelocity('top'), { x: 0.2, y: -6.4, z: 0.6 });
+  assert.deepEqual(authoredIncomingVelocity('right'), { x: 4.8, y: -0.4, z: 2.0 });
 
   const right = diagnosticCouplingReport('right');
   assert.equal(right.outcome, 'parry');
