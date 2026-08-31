@@ -14,6 +14,23 @@ on:
       - 'tools/action-studio/guard-reaction-runtime-lab.*'
       - 'tools/action-studio/power-bash-readability-lab.*'
       - '.github/workflows/guard-reaction-runtime-visual.yml'
+  # R21H.1: these gates only ever fired on pull_request, and this repository reaches main by
+  # fast-forward rather than by pull request - so this workflow had never run, not once. The paths
+  # filter below is what keeps that cheap: the gate wakes only when the code it guards moves.
+  push:
+    branches: ['**']
+    paths:
+      - 'assets/skyrim/guard/converted/**'
+      - 'src/animation/skyrim-converted-animation-library.js'
+      - 'src/animation/parry-contact-deflect-runtime-clip.js'
+      - 'src/animation/parry-upper-body-continuity.js'
+      - 'src/animation/power-bash-readability-probe.js'
+      - 'src/combat/guard-*.js'
+      - 'src/combat/longsword-guard-*.js'
+      - 'tests/power-bash-readability-probe.test.js'
+      - 'tools/action-studio/guard-reaction-runtime-lab.*'
+      - 'tools/action-studio/power-bash-readability-lab.*'
+      - '.github/workflows/guard-reaction-runtime-visual.yml'
   workflow_dispatch:
 
 permissions:

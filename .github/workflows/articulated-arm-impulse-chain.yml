@@ -14,9 +14,25 @@ on:
       - 'tests/articulated-arm-impulse-chain-lab.test.js'
       - 'tests/swept-blade-shield-physical-contact.test.js'
       - '.github/workflows/articulated-arm-impulse-chain.yml'
+  # R21H.1: was pinned to 'g43b5r28-legacy-two-actor-recoil-passthrough', a branch still on the
+  # remote that nobody has pushed to in months - which is indistinguishable from having no push
+  # trigger at all, and reads as coverage while providing none. Retargeted, with the paths filter
+  # mirrored from pull_request so it stays cheap. NOTE: every test this runs is already run by
+  # `npm test` in ci.yml, so what this buys is a faster, narrower signal, not new coverage.
   push:
-    branches:
-      - 'g43b5r28-legacy-two-actor-recoil-passthrough'
+    branches: ['**']
+    paths:
+      - 'src/combat/articulated-arm-impulse-chain.js'
+      - 'src/combat/swept-blade-shield-physical-contact.js'
+      - 'src/combat/swept-sword-buckler-contact.js'
+      - 'src/combat/physical-shield-sword-impulse.js'
+      - 'tools/action-studio/articulated-arm-impulse-chain-lab-r292r1.html'
+      - 'tools/action-studio/articulated-arm-impulse-chain-lab-r292r1.js'
+      - 'tests/articulated-arm-impulse-chain.test.js'
+      - 'tests/articulated-arm-impulse-chain-lab.test.js'
+      - 'tests/swept-blade-shield-physical-contact.test.js'
+      - '.github/workflows/articulated-arm-impulse-chain.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

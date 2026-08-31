@@ -12,9 +12,23 @@ on:
       - 'tests/physical-shield-sword-impulse.test.js'
       - 'tests/physical-shield-sword-impulse-lab.test.js'
       - '.github/workflows/physical-shield-sword-impulse.yml'
+  # R21H.1: was pinned to 'g43b5r28-legacy-two-actor-recoil-passthrough', a branch still on the
+  # remote that nobody has pushed to in months - which is indistinguishable from having no push
+  # trigger at all, and reads as coverage while providing none. Retargeted, with the paths filter
+  # mirrored from pull_request so it stays cheap. NOTE: every test this runs is already run by
+  # `npm test` in ci.yml, so what this buys is a faster, narrower signal, not new coverage.
   push:
-    branches:
-      - 'g43b5r28-legacy-two-actor-recoil-passthrough'
+    branches: ['**']
+    paths:
+      - 'src/combat/physical-shield-sword-impulse.js'
+      - 'tools/action-studio/physical-shield-sword-impulse-lab.html'
+      - 'tools/action-studio/physical-shield-sword-impulse-lab.js'
+      - 'tools/action-studio/physical-shield-sword-impulse-lab-r29.html'
+      - 'tools/action-studio/physical-shield-sword-impulse-lab-r29.js'
+      - 'tests/physical-shield-sword-impulse.test.js'
+      - 'tests/physical-shield-sword-impulse-lab.test.js'
+      - '.github/workflows/physical-shield-sword-impulse.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

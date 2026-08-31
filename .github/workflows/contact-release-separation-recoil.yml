@@ -32,9 +32,43 @@ on:
       - 'tests/recoil-presentation-authority.test.js'
       - 'tests/directional-recoil-planner.test.js'
       - '.github/workflows/contact-release-separation-recoil.yml'
+  # R21H.1: was pinned to 'g43b5r28-legacy-two-actor-recoil-passthrough', a branch still on the
+  # remote that nobody has pushed to in months - which is indistinguishable from having no push
+  # trigger at all, and reads as coverage while providing none. Retargeted, with the paths filter
+  # mirrored from pull_request so it stays cheap. NOTE: every test this runs is already run by
+  # `npm test` in ci.yml, so what this buys is a faster, narrower signal, not new coverage.
   push:
-    branches:
-      - 'g43b5r28-legacy-two-actor-recoil-passthrough'
+    branches: ['**']
+    paths:
+      - 'src/combat/post-coupling-recoil-stagger-handoff.js'
+      - 'src/combat/two-actor-whole-body-recoil-burst.js'
+      - 'src/combat/shield-driven-contact-coupling.js'
+      - 'src/combat/active-shield-lead-parry.js'
+      - 'src/combat/immediate-block-rebound-parity.js'
+      - 'src/combat/parallel-parry-body-stagger.js'
+      - 'src/combat/parry-backward-balance-break.js'
+      - 'src/combat/attacker-recoil-presentation.js'
+      - 'src/combat/directional-recoil-planner.js'
+      - 'src/combat/predictive-intercept-parry.js'
+      - 'tools/action-studio/shield-driven-contact-coupling-lab.html'
+      - 'tools/action-studio/shield-driven-contact-coupling-lab.js'
+      - 'tools/action-studio/shield-driven-contact-coupling-lab-r28.js'
+      - 'tools/action-studio/shield-driven-contact-coupling-lab-r281.js'
+      - 'tests/active-shield-lead-parry.test.js'
+      - 'tests/legacy-two-actor-recoil-passthrough.test.js'
+      - 'tests/legacy-two-actor-recoil-visual-lab.test.js'
+      - 'tests/post-coupling-recoil-stagger-handoff.test.js'
+      - 'tests/attacker-recoil-presentation.test.js'
+      - 'tests/contact-release-separation-motion.test.js'
+      - 'tests/immediate-block-rebound-parity.test.js'
+      - 'tests/parallel-parry-body-stagger.test.js'
+      - 'tests/parry-backward-balance-break.test.js'
+      - 'tests/two-actor-whole-body-recoil-burst.test.js'
+      - 'tests/shield-driven-contact-coupling.test.js'
+      - 'tests/recoil-presentation-authority.test.js'
+      - 'tests/directional-recoil-planner.test.js'
+      - '.github/workflows/contact-release-separation-recoil.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -3,8 +3,13 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  # R21H.1: every branch, not just main. This ran on push to main only, which meant the suite, the
+  # staleness check, the browser surface check and the measured-combat gates all reported AFTER a
+  # fast-forward had already put the change on main - the one moment their verdict could not be
+  # acted on. Work happens on branches here and reaches main by fast-forward, so the branch push is
+  # where CI has to speak.
   push:
-    branches: [main]
+    branches: ['**']
 
 permissions:
   contents: read
