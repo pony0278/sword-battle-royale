@@ -36,11 +36,11 @@ const EXPECTED = Object.freeze({
   }),
   left: Object.freeze({
     clipId: 'UAL2/Sword_Regular_B',
-    // Written out from the design rather than read back from the code: the burst is source
-    // [0.2, 1/3] at a third speed, so contact 0.26 lands at 0.2 + 0.06*3 and everything after the
-    // burst is pushed back by what the burst cost.
-    contactSeconds: 0.2 + (0.26 - 0.2) * 3,
-    durationSeconds: 0.533 + (1 / 3 - 0.2) * 2,
+    // Written out from the design rather than read back from the code: R21K.1 has the burst at
+    // source [0.18, 1/3] at 1/3.125 speed, so contact 0.26 lands at 0.18 + 0.08*3.125 - exactly
+    // 0.43 - and everything after the burst is pushed back by what the burst cost.
+    contactSeconds: 0.18 + (0.26 - 0.18) * 3.125,
+    durationSeconds: 0.533 + (1 / 3 - 0.18) * 2.125,
     sourceContactSeconds: 0.26, sourceDurationSeconds: 0.533, warped: true,
   }),
 });
