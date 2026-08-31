@@ -14,9 +14,10 @@ function close(actual, expected, epsilon = 1e-9) {
 }
 
 test('G4.2.1 starts Parry presentation before canonical contact for every longsword direction', () => {
-  // R20M.1 (B6h): these are the exchange's contact times, not the clips'. LEFT's burst is stretched
-  // three times, so its contact moved 0.26 -> 0.38 while the clip itself is unchanged.
-  const expectedContacts = { top: 0.43, right: 0.23, left: 0.38 };
+  // R20M.1 (B6h) and R21B.1: these are the exchange's contact times, not the clips'. LEFT's burst
+  // is stretched three times, so its contact moved 0.26 -> 0.38; RIGHT's windup and burst are
+  // stretched 1.6 together, so its contact moved 0.23 -> 0.368. Neither clip is retimed.
+  const expectedContacts = { top: 0.43, right: 0.368, left: 0.38 };
   for (const [direction, contactSeconds] of Object.entries(expectedContacts)) {
     const profile = getLongswordContactRecoveryProfile(direction);
     assert.equal(profile.stage, LONGSWORD_CONTACT_RECOVERY_STAGE);
