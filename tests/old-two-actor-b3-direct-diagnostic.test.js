@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab.html', import.meta.url), 'utf8');
 const source = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-const preContactSource = readFileSync(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
+const preContactSource = readFileSync(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
 const diagnosticSource = readFileSync(new URL('../tools/action-studio/shield-parry-r281/direct-old-b3-diagnostic.js', import.meta.url), 'utf8');
 
 function functionBody(name) {
@@ -16,7 +16,7 @@ function functionBody(name) {
 
 test('Step 1 exposes a direct OLD Two-Actor B3 diagnostic control', () => {
   assert.match(html, /id="forceOldB3"/);
-  assert.match(html, /g43b5r281-fold-the-panels-r20y1/);
+  assert.match(html, /g43b5r281-game-out-of-the-lab-r20z4/);
   assert.match(source, /forceOldTwoActorB3/);
   assert.match(diagnosticSource, /direct-existing-old-two-actor-b3-diagnostic/);
 });

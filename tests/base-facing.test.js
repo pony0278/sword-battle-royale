@@ -48,7 +48,7 @@ test('R19T.1 a frozen facing holds through anything the bearing does', () => {
 
 test('R19T.1 the lane controller integrates both facings and stamps them, attacker frozen by the swing', async () => {
   const lane = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/lane-controller.js', import.meta.url), 'utf8');
+    new URL('../src/game/lane-controller.js', import.meta.url), 'utf8');
   assert.match(lane, /attackerBaseFacing\.update\(bearings\.attackerFacingRadians, deltaSeconds, \{\n\s+frozen: facingPolicy\.mode === 'frozen',/);
   assert.match(lane, /defenderBaseFacing\.update\(bearings\.defenderFacingRadians, deltaSeconds\)/);
   // The stamp carries the integrated facings, never the raw bearings - the ledger keeps the

@@ -3,7 +3,7 @@
 // Production Parry success remains owned by real swept Sword × Shield contact outside this module.
 
 import { LEGACY_TWO_ACTOR_RECOIL_HANDOFF_MODE } from '../../../src/combat/post-coupling-recoil-stagger-handoff.js';
-import { authoredIncomingVelocity } from './authored-incoming-velocity.js';
+import { authoredIncomingVelocity } from '../../../src/game/authored-incoming-velocity.js';
 
 
 export function diagnosticCouplingReport(direction) {

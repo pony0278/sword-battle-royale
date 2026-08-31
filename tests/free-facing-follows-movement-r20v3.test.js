@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createFreeMovementController } from '../tools/action-studio/shield-parry-r281/free-movement-controller.js';
+import { createFreeMovementController } from '../src/game/free-movement-controller.js';
 import { createEngagementGround } from '../src/combat/engagement-ground.js';
 
 // R20V.3 - in free mode you face where you are going, guard or no guard.

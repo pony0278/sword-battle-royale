@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import {
   diagnosticCouplingReport,
 } from '../tools/action-studio/shield-parry-r281/direct-old-b3-diagnostic.js';
-import { authoredIncomingVelocity } from '../tools/action-studio/shield-parry-r281/authored-incoming-velocity.js';
+import { authoredIncomingVelocity } from '../src/game/authored-incoming-velocity.js';
 
 const entrySource = await readFile(
   new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url),
@@ -17,7 +17,7 @@ const diagnosticSource = await readFile(
 );
 const lifecycleDirectorSource = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
 const contactHandoffSource = await readFile(
-  new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url),
+  new URL('../src/game/contact-handoff-controller.js', import.meta.url),
   'utf8',
 );
 

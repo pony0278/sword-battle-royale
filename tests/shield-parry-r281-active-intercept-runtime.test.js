@@ -8,8 +8,8 @@ import {
 } from '../src/combat/predictive-parry-ownership-policy.js';
 
 const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-const preContact = await readFile(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
-const exchangeState = await readFile(new URL('../tools/action-studio/shield-parry-r281/exchange-state.js', import.meta.url), 'utf8');
+const preContact = await readFile(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
+const exchangeState = await readFile(new URL('../src/game/exchange-state.js', import.meta.url), 'utf8');
 const director = await readFile(new URL('../src/combat/parry-intercept-director.js', import.meta.url), 'utf8');
 
 class FakeQuaternion {

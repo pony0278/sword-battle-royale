@@ -65,25 +65,26 @@ import { createShieldParryLabUi, bindShieldParryLabUiEvents } from './shield-par
 import {
   createShieldParryExchangeState,
   resetShieldParryExchangeState,
-} from './shield-parry-r281/exchange-state.js';
-import { createShieldParryPreContactController } from './shield-parry-r281/pre-contact-controller.js';
+} from '../../src/game/exchange-state.js';
+import { createShieldParryPreContactController } from '../../src/game/pre-contact-controller.js';
 import { createVisualOwnershipRuntimeTaps } from './shield-parry-r281/visual-ownership-runtime-taps.js';
-import { createShieldParryContactHandoffController } from './shield-parry-r281/contact-handoff-controller.js';
-import { createShieldParryLabScene } from './shield-parry-r281/lab-scene.js';
-import { cloneSurface, magnitude, createBladePolylineSampler } from './shield-parry-r281/lab-geometry.js';
+import { createShieldParryContactHandoffController } from '../../src/game/contact-handoff-controller.js';
+import { createShieldParryLabScene } from '../../src/game/scene.js';
+import { createFreeInspectionCameraControls } from './free-inspection-camera-controls.js';
+import { cloneSurface, magnitude, createBladePolylineSampler } from '../../src/game/geometry.js';
 import { createShieldParryFrameReporting } from './shield-parry-r281/frame-reporting.js';
-import { createShieldParryLaneController } from './shield-parry-r281/lane-controller.js';
+import { createShieldParryLaneController } from '../../src/game/lane-controller.js';
 import { createDefenderStanceRuntime } from '../../src/combat/defender-stance.js';
 import { createShieldParryInspectionOverlay } from './shield-parry-r281/inspection-overlay.js';
-import { createAttackerPresentationAdapter } from './shield-parry-r281/attacker-presentation.js';
+import { createAttackerPresentationAdapter } from '../../src/game/attacker-presentation.js';
 import { createDirectOldB3DiagnosticController } from './shield-parry-r281/direct-old-b3-diagnostic.js';
-import { LANE_WALK_CLIPS, bootstrapShieldParryLabAssets } from './shield-parry-r281/lab-bootstrap.js';
-import { createNeutralStanceController } from './shield-parry-r281/neutral-stance.js';
-import { createBodyStrikeReactionController } from './shield-parry-r281/body-strike-reaction-controller.js';
+import { LANE_WALK_CLIPS, bootstrapShieldParryLabAssets } from '../../src/game/bootstrap.js';
+import { createNeutralStanceController } from '../../src/game/neutral-stance.js';
+import { createBodyStrikeReactionController } from '../../src/game/body-strike-reaction-controller.js';
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
-import { createLabFrameClock } from './shield-parry-r281/frame-clock.js';
+import { createLabFrameClock } from '../../src/game/frame-clock.js';
 import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-reporter.js';
-import { createShieldParryPlayerController } from './shield-parry-r281/player-controller.js';
+import { createShieldParryPlayerController } from '../../src/game/player-controller.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
@@ -99,6 +100,7 @@ const DEBUG_QUERY = new URLSearchParams(window.location.search);
 const DEBUG_MODE = DEBUG_QUERY.get('debug') === '1';
 
 const labScene = createShieldParryLabScene({
+  createInspectionCamera: createFreeInspectionCameraControls, // R20Z.4: the lab brings its own observer
   THREE, documentRef: document, windowRef: window,
   separationMeters: DEBUG_QUERY.has('spacing') ? Number(DEBUG_QUERY.get('spacing')) : undefined,
 });

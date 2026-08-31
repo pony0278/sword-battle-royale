@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createShieldParryLaneController } from '../tools/action-studio/shield-parry-r281/lane-controller.js';
+import { createShieldParryLaneController } from '../src/game/lane-controller.js';
 import { LONGSWORD_ATTACK_PHASES } from '../src/combat/longsword-directional-attack-runtime.js';
 import { ATTACK_ADVANCE_PROFILES } from '../src/combat/attack-advance.js';
 import { DODGE_DURATION_SECONDS } from '../src/combat/dodge-state.js';

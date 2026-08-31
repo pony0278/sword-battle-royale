@@ -80,18 +80,18 @@ test('R20F.1 the i-frame veto lets the whole exchange pass, after every question
 
 test('R20F.1 the lane owns the state, the guard pays the cost, the input only asks', async () => {
   const lane = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/lane-controller.js', import.meta.url), 'utf8');
+    new URL('../src/game/lane-controller.js', import.meta.url), 'utf8');
   assert.match(lane, /const dodgeStep = dodge\.advance\(deltaSeconds\)/);
   assert.match(lane, /dodging\n?\s*\? Object\.freeze\(\{ meters: 0 \}\)/, 'a dodge owns the feet');
   assert.match(lane, /overlayDefenderDodge\(\)/);
   const preContact = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
+    new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
   assert.match(preContact, /dodgeReport\?\.guardSuppressed === true/);
   assert.match(preContact, /&& !dodgeGuardDown/);
   const ui = await readFile(
     new URL('../tools/action-studio/shield-parry-r281/lab-ui.js', import.meta.url), 'utf8');
   assert.match(ui, /event\.code === 'Space' && !event\.repeat/);
   const handoff = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url), 'utf8');
+    new URL('../src/game/contact-handoff-controller.js', import.meta.url), 'utf8');
   assert.match(handoff, /readDodgeIFramesActive: \(\) => callbacks\.readDodgeReport\?\.\(\)\?\.iFramesActive === true/);
 });

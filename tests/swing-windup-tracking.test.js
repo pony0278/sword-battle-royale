@@ -60,7 +60,7 @@ test('R20B.1 the per-update rate override can only slow a facing, never hurry it
 
 test('R20B.1 the lane wires the policy and the entry hands the phase down', async () => {
   const lane = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/lane-controller.js', import.meta.url), 'utf8');
+    new URL('../src/game/lane-controller.js', import.meta.url), 'utf8');
   assert.match(lane, /planSwingFacingPolicy\(\{ swingLive, phase: swingPhase \}\)/);
   assert.match(lane, /frozen: facingPolicy\.mode === 'frozen'/);
   assert.match(lane, /rateRadiansPerSecond: facingPolicy\.rateRadiansPerSecond/);

@@ -162,7 +162,7 @@ test('R18S.2 reset clears the reaction clock and the smoothed aim together', () 
 
 test('R18S.2 the lab wires the director and keeps no coverage pass of its own', async () => {
   const controller = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url),
+    new URL('../src/game/pre-contact-controller.js', import.meta.url),
     'utf8',
   );
   assert.match(controller, /createGuardCoverageDirector\(\{/);

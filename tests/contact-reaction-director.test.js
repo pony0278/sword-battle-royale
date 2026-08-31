@@ -185,7 +185,7 @@ test('R18S.1 owns the writer order, and it is a dependency order', async () => {
 
 test('R18S.1 the lab wires the director and keeps no reaction runtime of its own', async () => {
   const controller = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url),
+    new URL('../src/game/contact-handoff-controller.js', import.meta.url),
     'utf8',
   );
   assert.match(controller, /createContactReactionDirector/);

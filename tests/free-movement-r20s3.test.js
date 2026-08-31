@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createFreeMovementController } from '../tools/action-studio/shield-parry-r281/free-movement-controller.js';
+import { createFreeMovementController } from '../src/game/free-movement-controller.js';
 import { createEngagementGround } from '../src/combat/engagement-ground.js';
 import { LANE_LOCOMOTION_PROFILE } from '../src/combat/lane-locomotion.js';
 
@@ -111,7 +111,7 @@ test('R20S.3 the lock is manual, breaks on distance, and refuses a target behind
 });
 
 test('R20S.3 the wiring keeps the lock, the feet and the camera in that order', () => {
-  const player = readFileSync(new URL('../tools/action-studio/shield-parry-r281/player-controller.js', import.meta.url), 'utf8');
+  const player = readFileSync(new URL('../src/game/player-controller.js', import.meta.url), 'utf8');
   const frame = player.slice(player.indexOf('frame(deltaSeconds)'));
   const update = frame.indexOf('movement.update()');
   const move = frame.indexOf('movement.move(');
@@ -122,6 +122,6 @@ test('R20S.3 the wiring keeps the lock, the feet and the camera in that order', 
   assert.ok(entry.indexOf('playerController.frame(rawDeltaMs / 1000)') < entry.indexOf('laneController.walk(rawDeltaMs / 1000'));
   // Defence when unlocked is not special-cased: the measured cone is what decides coverage, and a
   // second rule saying "you cannot block behind you" would be a weaker copy of geometry.
-  const movementSource = readFileSync(new URL('../tools/action-studio/shield-parry-r281/free-movement-controller.js', import.meta.url), 'utf8');
+  const movementSource = readFileSync(new URL('../src/game/free-movement-controller.js', import.meta.url), 'utf8');
   assert.doesNotMatch(movementSource, /guardMachine|parryGate|GUARD_/, 'free movement holds no defence authority');
 });

@@ -109,7 +109,7 @@ test('R18M.C6 keeps R281 module dependencies one-way from entry into extracted m
 });
 
 test('R18M.C6 preserves immutable visual-preview bootstrap path safety from the C5 hotfix', async () => {
-  const bootstrapUrl = new URL('../tools/action-studio/shield-parry-r281/lab-bootstrap.js', import.meta.url);
+  const bootstrapUrl = new URL('../src/game/bootstrap.js', import.meta.url);
   const bootstrapSource = await readFile(bootstrapUrl, 'utf8');
   const imports = [...bootstrapSource.matchAll(/from ['"](\.\.\/[^'"]+)['"]/g)].map((match) => match[1]);
   // R20Z.1: no count here either - see the note in shield-parry-r281-startup-debug-facade.test.js.

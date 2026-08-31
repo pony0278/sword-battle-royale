@@ -190,7 +190,7 @@ test('R18S.3 standing down releases the reaches rather than holding an undriven 
 
 test('R18S.3 the lab keeps the analysis and the gate, and no rung of the ladder', async () => {
   const controller = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url),
+    new URL('../src/game/pre-contact-controller.js', import.meta.url),
     'utf8',
   );
   assert.match(controller, /createParryInterceptDirector\(\{/);

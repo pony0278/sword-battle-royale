@@ -168,8 +168,8 @@ test('R18N.4.1-B runtime tap adapter remains observer-only', async () => {
 });
 
 test('R18N.4.1-B wires taps after existing writers and exposes diagnostics without changing contact authority', async () => {
-  const preContact = await readFile(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
-  const exchangeStateSource = await readFile(new URL('../tools/action-studio/shield-parry-r281/exchange-state.js', import.meta.url), 'utf8');
+  const preContact = await readFile(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
+  const exchangeStateSource = await readFile(new URL('../src/game/exchange-state.js', import.meta.url), 'utf8');
   const debugApi = await readFile(new URL('../tools/action-studio/shield-parry-r281/debug-api.js', import.meta.url), 'utf8');
   const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
   function assertBefore(sourceText, earlier, later, label) {

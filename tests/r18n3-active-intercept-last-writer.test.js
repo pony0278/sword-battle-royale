@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const preContact = await readFile(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
+const preContact = await readFile(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
 const tracking = await readFile(new URL('../src/combat/guard-threat-tracking.js', import.meta.url), 'utf8');
 const bodyReach = await readFile(new URL('../src/combat/guard-residual-body-reach.js', import.meta.url), 'utf8');
-const handoff = await readFile(new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url), 'utf8');
+const handoff = await readFile(new URL('../src/game/contact-handoff-controller.js', import.meta.url), 'utf8');
 const intent = await readFile(new URL('../src/combat/active-parry-intercept-intent.js', import.meta.url), 'utf8');
 const director = await readFile(new URL('../src/combat/parry-intercept-director.js', import.meta.url), 'utf8');
 const lifecycle = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');

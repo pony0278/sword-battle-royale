@@ -1,12 +1,12 @@
-import { createBoundedShieldArmAdditiveRuntime } from '../../../src/combat/predictive-parry-arm-additive.js';
-import { createTopPrepReadabilityHoldRuntime } from '../../../src/combat/parry-top-prep-readability-hold.js';
-import { createGuardCoverageDirector } from '../../../src/combat/guard-coverage-director.js';
-import { assessSwingThreatRelevance } from '../../../src/combat/swing-threat-relevance.js';
-import { assessSwingInnerReach } from '../../../src/combat/swing-inner-reach.js';
-import { planCloseRangeGuardPosture } from '../../../src/combat/close-range-guard-hold.js';
-import { planGuardFacingTurn } from '../../../src/combat/guard-facing-turn.js';
-import { planGuardConeGate } from '../../../src/combat/guard-cone-gate.js';
-import { createParryInterceptDirector } from '../../../src/combat/parry-intercept-director.js';
+import { createBoundedShieldArmAdditiveRuntime } from '../combat/predictive-parry-arm-additive.js';
+import { createTopPrepReadabilityHoldRuntime } from '../combat/parry-top-prep-readability-hold.js';
+import { createGuardCoverageDirector } from '../combat/guard-coverage-director.js';
+import { assessSwingThreatRelevance } from '../combat/swing-threat-relevance.js';
+import { assessSwingInnerReach } from '../combat/swing-inner-reach.js';
+import { planCloseRangeGuardPosture } from '../combat/close-range-guard-hold.js';
+import { planGuardFacingTurn } from '../combat/guard-facing-turn.js';
+import { planGuardConeGate } from '../combat/guard-cone-gate.js';
+import { createParryInterceptDirector } from '../combat/parry-intercept-director.js';
 
 // The tap points, spelled out rather than proxied away: this list IS the set of moments a pose
 // writer announces itself, and a reader of this file should be able to see it without opening the

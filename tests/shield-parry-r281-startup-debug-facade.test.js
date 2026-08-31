@@ -7,7 +7,7 @@ const source = readFileSync(
   new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url),
   'utf8',
 );
-const bootstrapUrl = new URL('../tools/action-studio/shield-parry-r281/lab-bootstrap.js', import.meta.url);
+const bootstrapUrl = new URL('../src/game/bootstrap.js', import.meta.url);
 const bootstrapSource = readFileSync(bootstrapUrl, 'utf8');
 const debugApiSource = readFileSync(
   new URL('../tools/action-studio/shield-parry-r281/debug-api.js', import.meta.url),

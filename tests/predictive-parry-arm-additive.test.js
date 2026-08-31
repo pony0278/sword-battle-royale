@@ -119,7 +119,7 @@ test('R18N.4.3-B.1 additive runtime has pose authority only and no contact autho
 });
 
 test('R18N.4.3-B.1 is wired after stance and before final Active Intercept closure', async () => {
-  const preContact = await readFile(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
+  const preContact = await readFile(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
   // R18S.3: the stance is the last writer of the director's reach ladder.
   const stanceIndex = preContact.indexOf('parryInterceptDirector.reach({');
   const additiveIndex = preContact.indexOf('shieldArmAdditiveRuntime.update({');

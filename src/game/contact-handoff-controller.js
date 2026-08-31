@@ -1,6 +1,6 @@
-import { createContactReactionDirector } from '../../../src/combat/contact-reaction-director.js';
-import { createContactLifecycleDirector } from '../../../src/combat/contact-lifecycle-director.js';
-import { buildBodyHurtbox } from '../../../src/combat/body-hurtbox.js';
+import { createContactReactionDirector } from '../combat/contact-reaction-director.js';
+import { createContactLifecycleDirector } from '../combat/contact-lifecycle-director.js';
+import { buildBodyHurtbox } from '../combat/body-hurtbox.js';
 import { authoredIncomingVelocity } from './authored-incoming-velocity.js';
 
 export function createShieldParryContactHandoffController({

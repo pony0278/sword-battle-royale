@@ -1,25 +1,36 @@
-import { createDefaultCharacter } from '../../../src/character/default-character.js';
-import { createDebugSword, mountDebugSword } from '../../../src/character/debug-sword.js';
-import { DEFAULT_KAYKIT_SWORD_MOUNT } from '../../../src/character/default-character-mount.js';
-import { createProceduralBuckler, mountOffhandBuckler } from '../../../src/character/offhand-buckler.js';
+import { createDefaultCharacter } from '../character/default-character.js';
+import { createDebugSword, mountDebugSword } from '../character/debug-sword.js';
+import { DEFAULT_KAYKIT_SWORD_MOUNT } from '../character/default-character-mount.js';
+import { createProceduralBuckler, mountOffhandBuckler } from '../character/offhand-buckler.js';
 import {
   ACCEPTED_OFFHAND_BUCKLER_MOUNT_G423,
   ACCEPTED_OFFHAND_BUCKLER_SHAPE_G423,
-} from '../../../src/character/offhand-buckler-accepted-calibration.js';
-import { createFreeInspectionCameraControls } from '../free-inspection-camera-controls.js';
+} from '../character/offhand-buckler-accepted-calibration.js';
 import {
   CALIBRATED_ENGAGEMENT_SEPARATION_METERS,
   planEngagementStance,
-} from '../../../src/combat/engagement-spacing.js';
+} from '../combat/engagement-spacing.js';
 
 const DEFAULT_VIEW = Object.freeze({ x: 4.8, y: 2.4, z: 4.9 });
 const CAMERA_TARGET = Object.freeze({ x: 0, y: 1.05, z: 0 });
+
+// R20Z.4: the observation camera is a lab affordance - a free-flying orbit rig for looking at the
+// fight from outside it, reached with ?camera=free. The scene used to construct it directly, which
+// was the one edge left pointing from the game into the lab. Injected now, with a null object that
+// answers the same shape so the scene needs no branches: no controls means the game camera is the
+// only camera, which is what a player gets.
+const NO_INSPECTION_CAMERA = Object.freeze({
+  update() {}, setPose() {}, syncFromCamera() {}, dispose() {},
+  snapshot: () => Object.freeze({ authority: 'no-inspection-camera-attached' }),
+  target: Object.freeze({ x: 0, y: 0, z: 0 }),
+});
 
 export function createShieldParryLabScene({
   THREE,
   documentRef = document,
   windowRef = window,
   separationMeters = CALIBRATED_ENGAGEMENT_SEPARATION_METERS,
+  createInspectionCamera = null,
 } = {}) {
   if (!THREE?.WebGLRenderer) throw new Error('createShieldParryLabScene requires Three.js WebGLRenderer');
 
@@ -39,13 +50,15 @@ export function createShieldParryLabScene({
   camera.lookAt(CAMERA_TARGET.x, CAMERA_TARGET.y, CAMERA_TARGET.z);
   camera.updateMatrixWorld(true);
 
-  const freeCamera = createFreeInspectionCameraControls(THREE, {
-    camera,
-    domElement: canvas,
-    target: CAMERA_TARGET,
-    minimumRadius: 0.65,
-    maximumRadius: 18,
-  });
+  const freeCamera = createInspectionCamera
+    ? createInspectionCamera(THREE, {
+      camera,
+      domElement: canvas,
+      target: CAMERA_TARGET,
+      minimumRadius: 0.65,
+      maximumRadius: 18,
+    })
+    : NO_INSPECTION_CAMERA;
 
   scene.add(new THREE.HemisphereLight(0xddeaff, 0x202738, 1.25));
   const key = new THREE.DirectionalLight(0xffffff, 1.1);
