@@ -30,8 +30,9 @@ test('G4.2.1 starts Parry presentation before canonical contact for every longsw
   const expectedContacts = {
     top: 0.43,
     right: warpSourceToRuntime(LONGSWORD_DIRECTIONAL_ATTACKS.right.contactSeconds, getAttackTimeWarp('right')),
-    left: 0.38,
+    left: warpSourceToRuntime(LONGSWORD_DIRECTIONAL_ATTACKS.left.contactSeconds, getAttackTimeWarp('left')),
   };
+  close(expectedContacts.left, 0.43, 1e-9);
   close(expectedContacts.right, 0.4301, 1e-4);
   for (const [direction, contactSeconds] of Object.entries(expectedContacts)) {
     const profile = getLongswordContactRecoveryProfile(direction);
