@@ -64,6 +64,7 @@ import { createStanceDebugController } from './shield-parry-r281/stance-debug-co
 import { createShieldParryLabUi, bindShieldParryLabUiEvents } from './shield-parry-r281/lab-ui.js';
 import { createGuardSectorIndicator } from './shield-parry-r281/guard-sector-indicator.js';
 import { createParryAttemptTally } from './shield-parry-r281/parry-attempt-tally.js';
+import { clampAttackTempoScale } from '../../src/combat/attack-tempo.js'; // R21O.1
 import { createOpponentDriveController } from './shield-parry-r281/opponent-drive-controller.js'; // R21E.1
 import { createGuardSectorRuntime } from '../../src/game/guard-sector-runtime.js';
 import {
@@ -117,7 +118,10 @@ const INSPECTION_CAMERA = DEBUG_QUERY.get('camera') === 'free';
 const inspectionOverlay = createShieldParryInspectionOverlay({ THREE, scene });
 let defenderSword = null;
 
-const attackRuntime = createLongswordDirectionalAttackRuntime();
+// R21O.1: how long a swing takes. 1x by default - the golden grid and the parry gate are a record
+// of the exchange at 1x - and ?tempo=1.8 for the readability playtest.
+const ATTACK_TEMPO_SCALE = clampAttackTempoScale(DEBUG_QUERY.get('tempo'));
+const attackRuntime = createLongswordDirectionalAttackRuntime({ tempoScale: ATTACK_TEMPO_SCALE });
 const guardMachine = createGuardStateMachine();
 const guardRuntime = createGuardPresentationRuntime(THREE, { machine: guardMachine, character: defender });
 const bracingRuntime = createArticulatedImpactBracingRuntime(THREE, { rig: defender.rig, buckler });
@@ -232,7 +236,7 @@ const labUi = createShieldParryLabUi(uiElements);
 const guardSector = createGuardSectorRuntime();
 const guardSectorIndicator = createGuardSectorIndicator(document.getElementById('guardSector'));
 // R21C.2: counts what the attempts did, so a play test produces numbers rather than impressions.
-const parryTally = createParryAttemptTally();
+const parryTally = createParryAttemptTally({ conditions: () => ({ tempoScale: ATTACK_TEMPO_SCALE, slowReview: slowReview.checked }) });
 const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
 let ready = false;
