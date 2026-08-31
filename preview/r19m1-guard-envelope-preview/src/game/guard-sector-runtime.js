@@ -34,6 +34,18 @@ export function createGuardSectorRuntime(options = {}) {
       sector = lastPlan.sector;
       return report();
     },
+    // R21N.1: chosen outright rather than pointed at. A discrete input names the sector and is
+    // the timed press in one action, so there is no aiming plan behind it - the reason below says
+    // so rather than leaving a stale pointer plan looking like the cause.
+    select(direction) {
+      const chosen = GUARD_SECTORS.includes(String(direction || '').toLowerCase())
+        ? String(direction).toLowerCase()
+        : null;
+      if (chosen == null) return report();
+      sector = chosen;
+      lastPlan = { sector: chosen, angleDegrees: null, magnitude: null, reason: 'chosen-by-a-discrete-input' };
+      return report();
+    },
     reset() { sector = null; lastPlan = null; return report(); },
     get sector() { return sector; },
     get report() { return report(); },
