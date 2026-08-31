@@ -64,11 +64,33 @@ export const MEASURED_FULL_COVERAGE_BAND_METERS = Object.freeze({
 // R19L.1 asks the question these bands cannot: not "does a block resolve" but "would the swing
 // have landed if it had not". Paired against unguarded runs, the guard answers a landing blow at
 // three of twenty-seven sampled stances - see guard-effectiveness.
+//
+// R21E.1 RE-MEASURED, and the old numbers were badly stale. Swept guard-down over 1.40-3.90m in
+// 0.10m steps, both edges re-run and identical, the reach is far longer than R18X.1 recorded:
+//
+//   top    2.90m start (contact 2.04m)   right  2.60m start (contact 1.94m)   left  2.60m (2.15m)
+//
+// Two things moved underneath the old figures and neither prompted a re-measure. The swept contact
+// test learned to follow the blade's ARC - R18X.1's own note records that fix pushing the coverage
+// band's floor from 2.00m down to 1.40m, and it lengthened reach for the same reason - and R21B.1
+// retimed RIGHT outright. The advance model was never the problem: the start-to-contact drop came
+// back at 0.862 / 0.663 / 0.448m, matching ATTACK_ADVANCE_PROFILES to the millimetre.
+//
+// What this corrects in practice: the old numbers said an attack from the calibrated 2.40m stance
+// contacted beyond its own reach and so could not have landed - that a block there was answering
+// a blow that would have missed. Measured, all three strike the body from 2.40m (chest, chest,
+// knees). The stakes at the calibrated distance are real.
+//
+// Kept as start separations, the same way R18X.1 stated them, because that is the number a stance
+// is chosen in; effectiveSeparationAtContact converts either way.
 export const MEASURED_UNDEFENDED_BODY_REACH_METERS = Object.freeze({
-  top: 1.55,
-  right: 1.55,
-  left: 2.05,
-  testedRange: Object.freeze({ minimum: 1.4, maximum: 2.5 }),
+  top: 2.9,
+  right: 2.6,
+  left: 2.6,
+  contactSeparationMeters: Object.freeze({ top: 2.04, right: 1.94, left: 2.15 }),
+  supersedes: Object.freeze({ stage: 'R18X.1', top: 1.55, right: 1.55, left: 2.05 }),
+  method: 'guard-down-sweep-body-hit-or-not',
+  testedRange: Object.freeze({ minimum: 1.4, maximum: 3.9 }),
 });
 
 // R18Y.1: the distance that actually decides everything, which is not the one the fighters start

@@ -112,23 +112,44 @@ test('R18V.1 replaces the provisional band with the measured one', () => {
   assert.ok(band.maximum <= band.testedRange.maximum);
 });
 
-test('R18X.1 records where an unopposed attack still reaches the body', () => {
+test('R21E.1 records where an unopposed attack still reaches the body', () => {
   const reach = MEASURED_UNDEFENDED_BODY_REACH_METERS;
-  const coverage = MEASURED_FULL_COVERAGE_BAND_METERS;
   for (const direction of ['top', 'right', 'left']) {
     assert.ok(reach[direction] >= reach.testedRange.minimum, direction);
     assert.ok(reach[direction] <= reach.testedRange.maximum, direction);
+    // Stated as start separations; the drop to contact is the direction's own advance.
+    assert.ok(reach.contactSeparationMeters[direction] < reach[direction], direction);
   }
-  // LEFT is the outlier the whole guard stack exists for: it lands from far enough out that the
-  // resting shield never covers it, where TOP and RIGHT finish short.
-  assert.ok(reach.left > reach.top && reach.left > reach.right);
+  // R21E.1 overturned the shape of this, not just the numbers. LEFT was the outlier the guard
+  // stack was built around - the one direction that landed from far enough out that the resting
+  // shield never covered it. Re-measured, TOP reaches furthest of the three and LEFT ties RIGHT.
+  assert.ok(reach.top > reach.left);
+  assert.equal(reach.left, reach.right);
+  assert.ok(reach.top > reach.supersedes.top, 'every direction reaches further than R18X.1 recorded');
+  assert.ok(reach.right > reach.supersedes.right);
+  assert.ok(reach.left > reach.supersedes.left);
+});
 
-  // The two measurements meet at a point rather than over a band, and saying so is the point of
-  // keeping them side by side: the guard becomes fully reliable exactly where TOP and RIGHT stop
-  // being able to land at all.
-  assert.equal(coverage.minimum, reach.top);
-  assert.equal(coverage.minimum, reach.right);
-  // Past that, only LEFT still threatens anything, and it does so right up to the far end of the
-  // guard's own band.
-  assert.equal(reach.left, coverage.maximum);
+test('R21E.1 the calibrated stance is inside every direction\'s threat, which it was not', () => {
+  const reach = MEASURED_UNDEFENDED_BODY_REACH_METERS;
+  for (const direction of ['top', 'right', 'left']) {
+    assert.ok(CALIBRATED_ENGAGEMENT_SEPARATION_METERS <= reach[direction], direction);
+    // Under R18X.1's figures the calibrated stance sat outside all three, which said a block at
+    // 2.40m was answering a blow that could not have landed. Measured, it is not.
+    assert.ok(CALIBRATED_ENGAGEMENT_SEPARATION_METERS > reach.supersedes[direction], direction);
+  }
+});
+
+test('R21E.1 the coverage band is NOT re-measured, so it may not be paired with the reach', () => {
+  // These two used to be asserted against each other - coverage.minimum === reach.top === 1.55,
+  // reach.left === coverage.maximum - to say they "meet at a point rather than over a band".
+  // R21E.1 re-measured only the reach half. The pairing is therefore unsupported now: it must not
+  // be re-asserted from these constants until the guard's own reliability sweep is re-run, and
+  // this test exists to say so rather than to let the old equalities quietly return.
+  const reach = MEASURED_UNDEFENDED_BODY_REACH_METERS;
+  const coverage = MEASURED_FULL_COVERAGE_BAND_METERS;
+  assert.notEqual(coverage.minimum, reach.top);
+  assert.notEqual(coverage.maximum, reach.left);
+  assert.equal(reach.supersedes.top, coverage.minimum, 'the old pairing held against the OLD reach');
+  assert.equal(reach.supersedes.left, coverage.maximum);
 });

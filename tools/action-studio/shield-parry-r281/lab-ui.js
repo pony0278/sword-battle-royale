@@ -13,7 +13,7 @@ import {
 export function createShieldParryLabUi(elements) {
   const {
     hudAttack, hudInput, parryCue, parryCueMain, parryCueDetail, hudContact, hudCoupling,
-    hudShield, hudWeapon, hudSeparation, hudLineClearance, hudRecoil, hudDiagnostic, hudParryTally,
+    hudShield, hudWeapon, hudSeparation, hudLineClearance, hudRecoil, hudDiagnostic, hudParryTally, hudOpponent,
     parryNow, retryAttack,
   } = elements;
 
@@ -219,6 +219,7 @@ export function createShieldParryLabUi(elements) {
     // R21C.2: what the attempts actually did, split by why they failed - a wrong direction says the
     // swing was unreadable, a wrong moment says the window is tight, and they want opposite fixes.
     if (hudParryTally && model.parryTally) hudParryTally.textContent = `Parry 命中: ${model.parryTally}`;
+    if (hudOpponent && model.opponent) hudOpponent.textContent = `對手: ${model.opponent}`;
     const interceptRequired = latestFinePlan?.requiredDistance;
     const interceptApplied = latestFinePlan?.appliedDistance;
     const originalPrediction = latestReachableInterceptTarget?.predictedRequiredDistanceMeters;
