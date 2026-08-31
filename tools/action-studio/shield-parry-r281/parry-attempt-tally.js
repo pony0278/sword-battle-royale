@@ -83,7 +83,13 @@ function noAnswerOf(row) {
 function emptyRow() {
   // ttcMs holds one entry per press, so the distribution survives rather than a running mean -
   // a mean over a bimodal set of presses describes neither of its halves.
-  return { thrown: 0, attempts: 0, armed: 0, wrongDirection: 0, unaimed: 0, tooEarly: 0, tooLate: 0, other: 0, ttcMs: [] };
+  return {
+    thrown: 0, attempts: 0, armed: 0, wrongDirection: 0, unaimed: 0, tooEarly: 0, tooLate: 0, other: 0,
+    ttcMs: [],
+    // R21L.1: which way the player pointed when they pointed the wrong way. Kept per swing
+    // direction, so the two tables together say "this attack was mistaken for that one".
+    wrongAim: Object.create(null),
+  };
 }
 
 export function createParryAttemptTally() {
@@ -126,7 +132,11 @@ export function createParryAttemptTally() {
       const ttc = report.timeToContactSeconds == null ? null : Number(report.timeToContactSeconds);
       if (ttc != null && Number.isFinite(ttc)) row.ttcMs.push(Math.round(ttc * 1000));
       if (report.accepted) row.armed += 1;
-      else if (report.reason === 'parry-input-wrong-direction') row.wrongDirection += 1;
+      else if (report.reason === 'parry-input-wrong-direction') {
+        row.wrongDirection += 1;
+        const aimed = String(report.aimedSector || '').toLowerCase();
+        if (aimed) row.wrongAim[aimed] = (row.wrongAim[aimed] || 0) + 1;
+      }
       else if (report.reason === 'parry-input-unaimed') row.unaimed += 1;
       else if (TOO_EARLY_REASONS.has(report.reason)) row.tooEarly += 1;
       else if (TOO_LATE_REASONS.has(report.reason)) row.tooLate += 1;
@@ -183,6 +193,19 @@ export function createParryAttemptTally() {
         lines.push([direction, t.presses, show(t.earliestMs), show(t.medianMs), show(t.latestMs),
           t.insideWindow, show(t.medianMsPastClose), show(t.worstMsPastClose)].join('\t'));
       }
+
+      // The third table only appears when there is something to show; an empty grid of zeroes in
+      // every report would train the eye to skip past it on the runs where it matters.
+      const confusion = this.confusion;
+      const misread = DIRECTIONS.reduce((sum, d) => sum + rows.get(d).wrongDirection, 0);
+      if (misread > 0) {
+        lines.push('');
+        lines.push(`方向錯的分布（列 = 對手揮的，欄 = 你瞄的）· 共 ${misread} 次`);
+        lines.push(['揮出\\瞄準', ...DIRECTIONS].join('\t'));
+        for (const thrown of DIRECTIONS) {
+          lines.push([thrown, ...DIRECTIONS.map((aimed) => (aimed === thrown ? '—' : confusion[thrown][aimed]))].join('\t'));
+        }
+      }
       return lines.join('\n');
     },
     // R21G.4: the distribution of presses on the one axis all three directions share. Negative
@@ -204,13 +227,27 @@ export function createParryAttemptTally() {
         })];
       }));
     },
+    // R21L.1 - what a direction was mistaken FOR.
+    //
+    // "wrong direction" says the swing was misread; it cannot say misread as what. R21A.1 measured
+    // that all three attacks travel on the defender's right through the windup and are separated
+    // only by the tip's vertical velocity - TOP rises at +4.45 m/s, RIGHT holds level at -1.79,
+    // LEFT falls at -7.01 - so the three are not equally alike. Rising against falling is one
+    // question; either against level is another. A confusion matrix is the difference between
+    // "make the swings readable", which is vague, and "these two are being mistaken for each
+    // other", which names a pair.
+    get confusion() {
+      return Object.fromEntries(DIRECTIONS.map((thrown) => [thrown, Object.freeze(
+        Object.fromEntries(DIRECTIONS.map((aimed) => [aimed, rows.get(thrown).wrongAim[aimed] || 0])),
+      )]));
+    },
     get windowMs() { return Object.freeze({ opensMs: WINDOW_OPENS_MS, closesMs: WINDOW_CLOSES_MS }); },
     get rows() {
       return Object.fromEntries(DIRECTIONS.map((direction) => {
         const row = rows.get(direction);
         // mistimed is kept as the derived total of the two halves, so a reader who only wants
         // "was the timing wrong" still has it without re-adding them.
-        const { ttcMs, ...counts } = row;
+        const { ttcMs, wrongAim, ...counts } = row;
         return [direction, {
           ...counts, thrown: thrownOf(row), noAnswer: noAnswerOf(row), mistimed: row.tooEarly + row.tooLate,
         }];
