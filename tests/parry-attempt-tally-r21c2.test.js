@@ -18,13 +18,18 @@ test('R21C.2 counts attempts per direction and why they missed', () => {
 
   const rows = tally.rows;
   // R21G.1 added thrown/noAnswer; with no swings recorded the denominator falls back to the
-  // presses, which is what keeps this pre-R21G.1 reading of the split intact.
-  assert.deepEqual(rows.right, { thrown: 3, attempts: 3, armed: 1, wrongDirection: 1, unaimed: 0, mistimed: 1, other: 0, noAnswer: 0 });
-  assert.deepEqual(rows.top, { thrown: 1, attempts: 1, armed: 0, wrongDirection: 0, unaimed: 1, mistimed: 0, other: 0, noAnswer: 0 });
-  assert.deepEqual(rows.left, { thrown: 0, attempts: 0, armed: 0, wrongDirection: 0, unaimed: 0, mistimed: 0, other: 0, noAnswer: 0 });
+  // presses, which is what keeps this pre-R21G.1 reading of the split intact. R21G.3 split
+  // mistimed into tooEarly/tooLate and kept mistimed as their derived total.
+  const row = (extra) => ({
+    thrown: 0, attempts: 0, armed: 0, wrongDirection: 0, unaimed: 0,
+    tooEarly: 0, tooLate: 0, other: 0, noAnswer: 0, mistimed: 0, ...extra,
+  });
+  assert.deepEqual(rows.right, row({ thrown: 3, attempts: 3, armed: 1, wrongDirection: 1, tooLate: 1, mistimed: 1 }));
+  assert.deepEqual(rows.top, row({ thrown: 1, attempts: 1, unaimed: 1 }));
+  assert.deepEqual(rows.left, row());
   // The split is what makes the number actionable: wrong direction wants a more legible windup,
   // wrong moment wants a wider window, and a bare failure rate says only that it is hard.
-  assert.match(tally.summary, /right 1\/3 \(1 方向\/1 時機\)/);
+  assert.match(tally.summary, /right 1\/3 \(1 方向\/1 太晚\)/);
   assert.match(tally.summary, /left —/);
 });
 
@@ -203,4 +208,37 @@ test('R21G.2 the HUD is actually handed the opponent line and the report', () =>
   const hud = reporting.slice(reporting.indexOf('function updateHud'), reporting.indexOf('function buildReport'));
   assert.match(hud, /opponent: read\.opponent/);
   assert.match(hud, /parryTallyReport: read\.parryTallyReport/);
+});
+
+test('R21G.3 too early and too late are counted apart, because they want opposite fixes', () => {
+  // The first real playtest came back 4 mistimed out of 7 - the dominant failure by far - and
+  // could not say which kind. Too early means the player cannot see WHEN the swing starts and the
+  // fix is the attacker's commitment being legible; too late means they saw it and could not get
+  // there, and the fix is the window or the pace. One number chooses neither.
+  const tally = createParryAttemptTally();
+  let sequence = 0;
+  const press = (reason) => { tally.recordAttack('top'); tally.record(report('top', reason, sequence += 1)); };
+  press('parry-input-too-early');
+  press('attack-not-committed'); // the earliest a press can be: before movementStartSeconds
+  press('parry-input-too-late');
+  const row = tally.rows.top;
+  assert.equal(row.tooEarly, 2);
+  assert.equal(row.tooLate, 1);
+  assert.equal(row.mistimed, 3, 'still available as the derived total');
+  assert.match(tally.summary, /2 太早/);
+  assert.match(tally.summary, /1 太晚/);
+  assert.match(tally.reportText.split('\n')[0], /太早\t太晚/);
+  // And the buckets still account for every swing.
+  const bucketed = row.armed + row.wrongDirection + row.unaimed + row.tooEarly + row.tooLate + row.other + row.noAnswer;
+  assert.equal(bucketed, row.thrown);
+});
+
+test('R21G.3 a broken attack timeline is still neither kind of mistiming', () => {
+  const tally = createParryAttemptTally();
+  tally.recordAttack('left');
+  tally.record(report('left', 'missing-authored-attack-timeline', 1));
+  assert.equal(tally.rows.left.other, 1);
+  assert.equal(tally.rows.left.mistimed, 0);
+  assert.equal(tally.rows.left.tooEarly, 0);
+  assert.equal(tally.rows.left.tooLate, 0);
 });
