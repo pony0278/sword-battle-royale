@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { getAttackTimeWarp, warpSourceToRuntime } from '../src/combat/attack-time-warp.js';
+import { LONGSWORD_DIRECTIONAL_ATTACKS } from '../src/combat/longsword-directional-metadata.js';
 import {
   LONGSWORD_CONTACT_RECOVERY_STAGE,
   LONGSWORD_PARRY_VISUAL_LEAD_SECONDS,
@@ -14,10 +16,19 @@ function close(actual, expected, epsilon = 1e-9) {
 }
 
 test('G4.2.1 starts Parry presentation before canonical contact for every longsword direction', () => {
-  // R20M.1 (B6h) and R21B.1: these are the exchange's contact times, not the clips'. LEFT's burst
-  // is stretched three times, so its contact moved 0.26 -> 0.38; RIGHT's windup and burst are
-  // stretched 1.6 together, so its contact moved 0.23 -> 0.368. Neither clip is retimed.
-  const expectedContacts = { top: 0.43, right: 0.368, left: 0.38 };
+  // R20M.1 (B6h), R21B.1 and R21I.1: these are the exchange's contact times, not the clips'. LEFT's
+  // burst is stretched three times, so its contact moved 0.26 -> 0.38; RIGHT's windup and burst are
+  // stretched together, moving its contact from 0.23. Neither clip is retimed.
+  //
+  // RIGHT's figure is derived from the warp rather than written down, because it has now moved
+  // twice and this test is about the recovery profile agreeing with the exchange, not about any
+  // particular number. TOP and LEFT stay literal: TOP is unwarped, and LEFT's warp has not moved.
+  const expectedContacts = {
+    top: 0.43,
+    right: warpSourceToRuntime(LONGSWORD_DIRECTIONAL_ATTACKS.right.contactSeconds, getAttackTimeWarp('right')),
+    left: 0.38,
+  };
+  close(expectedContacts.right, 0.4301, 1e-4);
   for (const [direction, contactSeconds] of Object.entries(expectedContacts)) {
     const profile = getLongswordContactRecoveryProfile(direction);
     assert.equal(profile.stage, LONGSWORD_CONTACT_RECOVERY_STAGE);
