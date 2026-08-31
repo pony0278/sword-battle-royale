@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { getAttackTimeWarp } from '../src/combat/attack-time-warp.js';
 import { readFile } from 'node:fs/promises';
 import {
   SWEPT_CONTACT_TEMPORAL_ELIGIBILITY_AUTHORITY,
@@ -115,17 +116,22 @@ test('R18N.3 v6.4 attack interruption freezes the authored source at actual sub-
   const runtime = createLongswordDirectionalAttackRuntime();
   const started = runtime.start('right');
   assert.equal(started.accepted, true);
-  // R21B.1: the same poses, restated in the runtime clock. RIGHT's windup and burst are stretched
-  // 1.6, so what used to be 300ms of runtime is 480ms, and a sub-frame contact reported at 0.25865
-  // of runtime is 0.41384. The source times this test is about are unchanged - which is the point,
-  // and is now actually exercised rather than being true because the two clocks happened to agree.
-  runtime.update(300 * 1.6);
+  // R21B.1: the same poses, restated in the runtime clock. RIGHT's windup and burst are stretched,
+  // so what used to be 300ms of runtime is longer, while the SOURCE times this test is about are
+  // unchanged - which is the point, and is exercised rather than being true because the two clocks
+  // happened to agree.
+  //
+  // R21I.1: the factor is read from the warp rather than written here. It was hardcoded as 1.6 in
+  // three places, so the next retime broke a test whose whole claim is that retimes do not change
+  // what it asserts.
+  const stretch = getAttackTimeWarp('right').stretch;
+  runtime.update(300 * stretch);
   assert.equal(runtime.snapshot.phase, 'attack_recovery');
 
   const temporalEligibility = Object.freeze({
     authority: SWEPT_CONTACT_TEMPORAL_ELIGIBILITY_AUTHORITY,
     eligible: true,
-    contactElapsedSeconds: 0.25865 * 1.6,
+    contactElapsedSeconds: 0.25865 * stretch,
   });
   const interrupted = runtime.interrupt({
     resolution: {
@@ -142,7 +148,7 @@ test('R18N.3 v6.4 attack interruption freezes the authored source at actual sub-
   assert.equal(interrupted.snapshot.interruption.phaseAtInterrupt, 'attack_active');
   assert.ok(Math.abs(interrupted.snapshot.interruption.sourceTimeSeconds - 0.25865) < 1e-9);
   assert.equal(interrupted.snapshot.interruption.contactTemporalAuthority, SWEPT_CONTACT_TEMPORAL_ELIGIBILITY_AUTHORITY);
-  assert.ok(interrupted.snapshot.interruption.frameEndElapsedMs > 280 * 1.6);
+  assert.ok(interrupted.snapshot.interruption.frameEndElapsedMs > 280 * stretch);
 });
 
 test('R18N.3 v6.4 preserves real-contact authority through controller and two-actor orchestration', () => {

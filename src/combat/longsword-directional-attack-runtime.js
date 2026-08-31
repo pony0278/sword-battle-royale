@@ -26,6 +26,33 @@ const NATURAL_DURATIONS = Object.freeze({
   left: 0.533,
 });
 
+// R21J.1 - where the presentation stops sampling the clip, when its authored tail is unusable.
+//
+// Reported from play: RIGHT does not settle after the swing, it looks like a dropped frame.
+// Measured, the blade axis turned per 60fps frame through the tail of each attack:
+//
+//   top     7.6  6.2  5.0  4.0  8.7  8.6  9.1  9.2 ...   never stops moving
+//   left   11.7  2.3  2.3  2.3  2.7  0.7  1.0  1.6 ...   decelerates, then eases out
+//   right  12.3  7.7  0.7  0.7  0.6  1.5  2.2  2.2 ...   stops dead for three frames, then resumes
+//
+// RIGHT is the only one that halts and restarts, and that halt is what reads as a skipped frame.
+// It is NOT the time warp: moving the warp's end from source 0.30 through 0.34, 0.38 and 0.42 left
+// the halt at exactly the same runtime moment, and it is present at the old 1.6 stretch too, which
+// puts it in the clip rather than in anything R21B.1 or R21I.1 did. Converting back through each
+// stretch lands both readings on source 0.306-0.307, so UAL2/Sword_Regular_A simply has a dead
+// interval between its 30fps keys 9 and 10.
+//
+// So the presentation stops sampling this clip where its real motion stops, at source 0.31 - the
+// last frame still turning (7.7 deg) sits at source 0.303, the first dead one at 0.312 - and the
+// existing attack-recovery blend covers the rest, easing to Sword_Idle over 155ms instead of
+// playing 123ms of authored stall and slow drift.
+//
+// The trim is in SOURCE seconds and the clip's own length is still reported unchanged as
+// sourceDurationSeconds: this says when we stop looking at the clip, not how long the clip is.
+export const PRESENTATION_END_SOURCE_SECONDS = Object.freeze({
+  right: 0.31,
+});
+
 const ACTIVE_LEAD_SECONDS = Object.freeze({ top: 0.055, right: 0.04, left: 0.045 });
 const ACTIVE_TRAIL_SECONDS = Object.freeze({ top: 0.065, right: 0.05, left: 0.055 });
 const TRAIL_LEAD_SECONDS = Object.freeze({ top: 0.16, right: 0.11, left: 0.12 });
@@ -83,7 +110,16 @@ export function getLongswordDirectionalAttackProfile(direction, options = {}) {
   // RIGHT - the two clocks are the same and this is the identity, byte for byte.
   const timeWarp = options.timeWarp === null ? null : (options.timeWarp || getAttackTimeWarp(key));
   const toRuntime = (seconds) => warpSourceToRuntime(seconds, timeWarp);
-  const durationSeconds = toRuntime(sourceDurationSeconds);
+  // R21J.1: the clip may be abandoned before it ends, but never extended past it, and never
+  // trimmed back over anything the exchange is calibrated against - the trim is refused if it
+  // would land at or before contact.
+  const presentationEnd = PRESENTATION_END_SOURCE_SECONDS[key];
+  const usableSourceSeconds = presentationEnd != null
+    && presentationEnd > entry.contactSeconds
+    && presentationEnd < sourceDurationSeconds
+    ? presentationEnd
+    : sourceDurationSeconds;
+  const durationSeconds = toRuntime(usableSourceSeconds);
   const contactSeconds = toRuntime(clamp(entry.contactSeconds, 0, sourceDurationSeconds));
   const activeStartSeconds = toRuntime(clamp(entry.contactSeconds - ACTIVE_LEAD_SECONDS[key], 0, sourceDurationSeconds));
   const activeEndSeconds = Math.max(activeStartSeconds, toRuntime(clamp(entry.contactSeconds + ACTIVE_TRAIL_SECONDS[key], 0, sourceDurationSeconds)));

@@ -12,6 +12,7 @@ export function createOpponentDriveController({
   startAttack,
   readAttackAvailable,
   runtime = createOpponentDriveRuntime(),
+  tally = null, // R21G.1: told when a run starts, so each run is read on its own sample
 }) {
   if (!laneController || typeof startAttack !== 'function' || typeof readAttackAvailable !== 'function') {
     throw new Error('R21E.1 opponent drive needs the lane, the attack verb and the availability read');
@@ -22,6 +23,9 @@ export function createOpponentDriveController({
     // Called every frame with real milliseconds. A tester slowing the pre-contact review down is
     // slowing the fight they are watching, not asking the opponent to think more slowly.
     frame(rawDeltaMs) {
+      // Told every frame rather than on the click: the checkbox is polled, not listened to, and a
+      // rising edge the tally detects itself cannot be missed by a handler that was never bound.
+      tally?.setSessionActive(enabled());
       if (!enabled()) return null;
       const plan = runtime.frame({
         deltaMs: rawDeltaMs,
@@ -42,7 +46,13 @@ export function createOpponentDriveController({
     // One HUD line: the seed a tester quotes in a bug report, what is coming, and why it is or is
     // not swinging right now.
     get summary() {
-      if (!enabled()) return '手動';
+      // R21G.2: a run that has been switched off still names its seed. A tester switches the
+      // opponent off before reading the numbers, and a sample whose seed is gone cannot be replayed
+      // - which was the whole reason for seeding it.
+      if (!enabled()) {
+        const last = runtime.report;
+        return last.attacksServed > 0 ? `手動（上一輪 seed ${last.seed} · 已出 ${last.attacksServed}）` : '手動';
+      }
       const report = runtime.report;
       const gap = report.offsetMeters == null
         ? '—'

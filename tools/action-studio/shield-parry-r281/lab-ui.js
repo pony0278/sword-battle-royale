@@ -14,8 +14,38 @@ export function createShieldParryLabUi(elements) {
   const {
     hudAttack, hudInput, parryCue, parryCueMain, parryCueDetail, hudContact, hudCoupling,
     hudShield, hudWeapon, hudSeparation, hudLineClearance, hudRecoil, hudDiagnostic, hudParryTally, hudOpponent,
-    parryNow, retryAttack,
+    parryNow, retryAttack, copyTally,
   } = elements;
+
+  // R21G.2: the tally lives in the HUD, and the HUD folds to its title bar with the state
+  // remembered per browser (R20Y.1) - so the panel a tester collapsed to see the stage is the same
+  // panel the sample they are collecting is printed in. The button does not care whether it is
+  // open: it copies the whole run, with the build it was collected on, because a number pasted
+  // without its build cannot be compared to the next one.
+  let copyableReport = null;
+  if (copyTally) {
+    const label = copyTally.textContent;
+    let restore = null;
+    copyTally.addEventListener('click', async () => {
+      const version = document.querySelector('script[type="module"][src*="v="]')?.src.split('v=')[1] || 'unknown';
+      const text = [`build ${version}`, ...(copyableReport || ['(尚未有任何攻擊)'])].join('\n');
+      let ok = true;
+      try { await navigator.clipboard.writeText(text); } catch (error) { ok = false; }
+      if (!ok) {
+        // A clipboard write can be refused outright (permissions, an insecure origin). Selecting
+        // the text in a field is the fallback that always leaves the tester something to copy.
+        const field = document.createElement('textarea');
+        field.value = text;
+        field.style.cssText = 'position:fixed;left:8px;bottom:8px;width:min(90vw,520px);height:9em;z-index:99';
+        document.body.appendChild(field);
+        field.select();
+        setTimeout(() => field.remove(), 20000);
+      }
+      copyTally.textContent = ok ? '已複製' : '請手動複製 ↙';
+      clearTimeout(restore);
+      restore = setTimeout(() => { copyTally.textContent = label; }, 2000);
+    });
+  }
 
   let parryCueState = null;
   let parryCueMainText = null;
@@ -220,6 +250,11 @@ export function createShieldParryLabUi(elements) {
     // swing was unreadable, a wrong moment says the window is tight, and they want opposite fixes.
     if (hudParryTally && model.parryTally) hudParryTally.textContent = `Parry 命中: ${model.parryTally}`;
     if (hudOpponent && model.opponent) hudOpponent.textContent = `對手: ${model.opponent}`;
+    // Kept current here rather than assembled on the click, so the button copies exactly the run
+    // the tester is looking at even if the HUD is folded away.
+    if (model.parryTallyReport) {
+      copyableReport = [`對手: ${model.opponent || '手動'}`, `Parry 命中: ${model.parryTally || '—'}`, '', model.parryTallyReport];
+    }
     const interceptRequired = latestFinePlan?.requiredDistance;
     const interceptApplied = latestFinePlan?.appliedDistance;
     const originalPrediction = latestReachableInterceptTarget?.predictedRequiredDistanceMeters;

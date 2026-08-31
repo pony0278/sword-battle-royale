@@ -388,6 +388,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     sprintReport: () => playerController.sprintReport, // R20U.1
     parryTally: () => parryTally.summary, // R21C.2
     opponent: () => opponentDriveController.summary, // R21E.1
+    parryTallyReport: () => parryTally.reportText, // R21G.2: the whole run, pasteable
   },
 });
 
@@ -395,7 +396,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
 // setAttackerIntent and startAttack, which is what leaves the golden grid and the parry gate (both
 // of which drive attacks by hand at fixed separations) untouched with the toggle off.
 const opponentDriveController = createOpponentDriveController({
-  toggle: opponentDrive, laneController, startAttack,
+  toggle: opponentDrive, laneController, startAttack, tally: parryTally,
   readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !attackerRecovery,
 });
 
@@ -526,6 +527,7 @@ function startAttack(direction = selectedDirection) {
   const started = combat.startAttack(direction);
   if (!started.accepted) return false;
   laneController.startAttack(direction, attackRuntime.snapshot?.action?.runtime?.contactSeconds);
+  parryTally.recordAttack(direction); // R21G.1: the denominator is the swing, not the press
   status.textContent = `ATTACK ${direction.toUpperCase()} · wait for committed YES, then press PARRY NOW or F`;
   status.className = 'warn';
   document.querySelectorAll('[data-attack]').forEach((button) => button.classList.toggle('active', button.dataset.attack === direction));
@@ -663,6 +665,13 @@ function frame(timestamp) {
       hasAttackerRecovery: Boolean(attackerRecovery),
       beginAttackRecovery,
     });
+    // R21J.1: a swing that ends without the combat path completing it - the blade missed, or it
+    // landed on a body that never resolved an exchange - got no recovery at all, so the attacker
+    // teleported to idle in a single frame. Measured: the blade tip jumped 2.105m between two
+    // frames, then moved 0.011m in the next. Every other lab in this repo already begins the
+    // recovery on the attack's own completion; only this one relied on the combat path, which is
+    // why the snap appeared exactly when a player FAILED to answer a swing.
+    if (snapshot.completed && !attackerRecovery) beginAttackRecovery(selectedDirection);
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
 
     laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active, // R20W.2: and whether
