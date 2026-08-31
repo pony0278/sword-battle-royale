@@ -30,7 +30,28 @@ async function waitFor(windowRef, predicate, timeoutMs) {
   return predicate();
 }
 
-async function driveOneParry({ api, windowRef, direction }) {
+// R21C.1: the gate parries by direction now, so the probe has to point before it presses - and it
+// points the way a player does, by dispatching a real pointer event at the canvas, rather than
+// through a back door that would leave the input path unverified. The offset is 40% of the smaller
+// dimension, comfortably past the dead zone, along the sector's own screen axis.
+function aimAt(documentRef, windowRef, direction) {
+  const canvas = documentRef.getElementById('canvas');
+  if (!canvas) return false;
+  const rect = canvas.getBoundingClientRect();
+  if (!(rect.width > 0) || !(rect.height > 0)) return false;
+  const reach = Math.min(rect.width, rect.height) * 0.4;
+  const offset = { top: { x: 0, y: -reach }, right: { x: reach, y: 0 }, left: { x: -reach, y: 0 } }[direction];
+  if (!offset) return false;
+  const PointerEventCtor = windowRef.PointerEvent || windowRef.MouseEvent;
+  canvas.dispatchEvent(new PointerEventCtor('pointermove', {
+    clientX: rect.left + rect.width / 2 + offset.x,
+    clientY: rect.top + rect.height / 2 + offset.y,
+    bubbles: true,
+  }));
+  return true;
+}
+
+async function driveOneParry({ api, windowRef, documentRef, direction }) {
   await waitFor(windowRef, () => !api.attackRuntime.active && !api.combat.active, EXCHANGE_TIMEOUT_MS);
   const settleUntil = windowRef.performance.now() + QUIESCENT_SETTLE_MS;
   while (windowRef.performance.now() < settleUntil) await nextFrame(windowRef);
@@ -38,11 +59,14 @@ async function driveOneParry({ api, windowRef, direction }) {
   // Choosing the mode is also what raises the guard now (R19I.1), so the gate exercises the same
   // path a person takes rather than assuming a defender who is already holding one.
   api.setMode('parry');
+  // Aim before the attack starts: the sector is held between frames, so pointing once is enough.
+  const aimed = aimAt(documentRef, windowRef, direction);
   // Readiness is asked for rather than inferred: restartAttack refuses until the assets are in,
   // so retrying it IS the wait. R19I.1 removed the boot demo attack this used to watch for, and
   // an unconditional single attempt would simply have raced it.
   const started = await waitFor(windowRef, () => api.restartAttack(direction), EXCHANGE_TIMEOUT_MS);
   if (!started) return { direction, outcome: 'attack-not-started' };
+  if (!aimed) return { direction, outcome: 'probe-could-not-aim' };
 
   let triggered = false;
   let outcome = null;
@@ -63,7 +87,7 @@ async function driveOneParry({ api, windowRef, direction }) {
     if (outcome && carryDirection) break;
     if (!api.attackRuntime.active && !api.combat.active && triggered && outcome) break;
   }
-  return { direction, triggered, outcome, carryDirection };
+  return { direction, triggered, outcome, carryDirection, aimedSector: api.guardSector?.sector ?? null };
 }
 
 function stamp(documentRef, run, exchanges) {
@@ -104,7 +128,7 @@ export function maybeStartParryGateProbe({ api, windowRef, documentRef }) {
     for (const direction of PARRY_GATE_DIRECTIONS) {
       if (windowRef.performance.now() - startedAt > GATE_TIMEOUT_MS) break;
       root.dataset.parryGateProgress = `driving-${direction}@${Math.round(windowRef.performance.now())}`;
-      exchanges.push(await driveOneParry({ api, windowRef, direction }));
+      exchanges.push(await driveOneParry({ api, windowRef, documentRef, direction }));
       root.dataset.parryGateProgress = `done-${direction}@${Math.round(windowRef.performance.now())}·${exchanges[exchanges.length-1].outcome||'none'}`;
     }
     root.dataset.parryGateProgress = `judged@${Math.round(windowRef.performance.now())}`;
