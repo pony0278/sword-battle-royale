@@ -341,6 +341,11 @@ const directOldB3DiagnosticController = createDirectOldB3DiagnosticController({
 });
 
 const captureBladePolyline = createBladePolylineSampler(THREE, attackerSword);
+// R21A.1: a SECOND sampler for measurement reads. The sampler alternates between two buffers so the
+// frame loop can hold last frame's blade and this frame's at once, and the swept contact probe
+// compares exactly those two - so an extra read from outside the loop does not just return a value,
+// it rotates the buffer the fight is using. Its own instance, its own buffers, nothing shared.
+const readBladePolylineForMeasurement = createBladePolylineSampler(THREE, attackerSword);
 
 // Gathering only, and constructed here because every accessor below reads a `let` this file owns.
 const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporting({
@@ -692,6 +697,11 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     forceOldTwoActorB3,
     resetLane: () => (combat.active || attackRuntime.active ? null : laneController.resetLane()),
     captureBladeGeometry: () => ({ blade: captureBladePolyline(), surface: buckler.getWorldParrySurface() }),
+    // R21A.1: the passive half of the call above, safe to read mid-swing. captureBladePolyline only
+    // refreshes the sword's matrices and reads three world points; it is getWorldParrySurface that
+    // advances anchor matrices outside the frame pipeline and flips outcomes. Measuring where a
+    // blade travels should not need the half that changes the fight.
+    readBladePolyline: () => readBladePolylineForMeasurement().map((point) => ({ x: point.x, y: point.y, z: point.z })),
     setEngagementSeparation: (meters) => {
       // Between exchanges only: moving either actor mid-exchange would move the geometry the
       // swept contact probe is measuring.
