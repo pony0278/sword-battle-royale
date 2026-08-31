@@ -9,12 +9,14 @@ import {
 
 const left = getAttackTimeWarp('left');
 
-test('R20M.1 warps LEFT only, and leaves the other two swings alone', () => {
-  assert.ok(left, 'LEFT is the measured outlier: 3972 deg/s against TOP 1651 and RIGHT 2619');
+test('R21B.1 warps the two swings that were measured too fast, and leaves TOP alone', () => {
+  assert.ok(left, 'LEFT was the first outlier: 3972 deg/s against TOP 1651 and RIGHT 2619');
+  // R21B.1: RIGHT joined it, for a different fault - see the module. TOP is the reference both
+  // stretches were sized against, so warping it would move the yardstick.
+  assert.ok(getAttackTimeWarp('right'), 'RIGHT peaked at 2686 deg/s and could not be parried');
   assert.equal(getAttackTimeWarp('top'), null);
-  assert.equal(getAttackTimeWarp('right'), null);
   assert.equal(getAttackTimeWarp('nonsense'), null);
-  assert.equal(Object.keys(ATTACK_TIME_WARPS).length, 1);
+  assert.equal(Object.keys(ATTACK_TIME_WARPS).length, 2);
   for (const seconds of [0, 0.1, 0.26, 0.5, 1.4]) {
     assert.equal(warpSourceToRuntime(seconds, null), seconds, 'no warp is the identity, in both directions');
     assert.equal(warpRuntimeToSource(seconds, null), seconds);

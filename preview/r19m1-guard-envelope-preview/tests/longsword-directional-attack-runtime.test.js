@@ -12,7 +12,8 @@ import { warpRuntimeToSource } from '../src/combat/attack-time-warp.js';
 
 // R20M.1 (B6h) split two clocks that used to be one number. SOURCE is where the clip is sampled;
 // RUNTIME is what the exchange counts and the player experiences. TOP and RIGHT are unwarped, so
-// for them the two are identical. LEFT's burst is stretched three times - 3972 deg/s inside one
+// R21B.1 warped RIGHT as well - windup and burst together, at 1/1.6 - so TOP is now the only
+// direction whose source and runtime clocks are identical. LEFT's burst is stretched three times - 3972 deg/s inside one
 // 33ms key was the measurement - which leaves the clip untouched at 0.533s/contact 0.26s in source
 // and moves the exchange to 0.80s/contact 0.38s.
 const EXPECTED = Object.freeze({
@@ -21,8 +22,13 @@ const EXPECTED = Object.freeze({
     sourceContactSeconds: 0.43, sourceDurationSeconds: 1.533, warped: false,
   }),
   right: Object.freeze({
-    clipId: 'UAL2/Sword_Regular_A', contactSeconds: 0.23, durationSeconds: 0.433,
-    sourceContactSeconds: 0.23, sourceDurationSeconds: 0.433, warped: false,
+    clipId: 'UAL2/Sword_Regular_A',
+    // R21B.1: the windup and the burst together are source [0, 0.3] at 1/1.6 speed, so contact
+    // 0.23 lands at 0.23 * 1.6 and everything after 0.3 is pushed back by what the stretch cost.
+    // Written out from the design rather than read back from the code, the same way LEFT's is.
+    contactSeconds: 0.23 * 1.6,
+    durationSeconds: 0.433 + 0.3 * 0.6,
+    sourceContactSeconds: 0.23, sourceDurationSeconds: 0.433, warped: true,
   }),
   left: Object.freeze({
     clipId: 'UAL2/Sword_Regular_B',
@@ -151,12 +157,15 @@ test('G4.3B.1 update does not advance the frozen source time after interruption'
     incomingVelocity: { x: 2, y: 0, z: 1 },
   });
 
-  const before = runtime.snapshot.sourceTimeSeconds;
+  // R21B.1: these were one assertion twice while RIGHT was unwarped and its two clocks agreed.
+  // They are different numbers now, and both must hold still - which is what the test is named for.
+  const beforeSource = runtime.snapshot.sourceTimeSeconds;
+  const beforeElapsed = runtime.snapshot.elapsedSeconds;
   const frozen = runtime.update(500);
   assert.equal(frozen.phase, LONGSWORD_ATTACK_PHASES.INTERRUPTED);
   assert.equal(frozen.frozenByInterruption, true);
-  assert.equal(frozen.sourceTimeSeconds, before);
-  assert.equal(frozen.elapsedSeconds, before);
+  assert.equal(frozen.sourceTimeSeconds, beforeSource);
+  assert.equal(frozen.elapsedSeconds, beforeElapsed);
 });
 
 test('G4.3B.1 consumes G4.3A.4 resolution metadata and preserves recoil inputs', () => {
