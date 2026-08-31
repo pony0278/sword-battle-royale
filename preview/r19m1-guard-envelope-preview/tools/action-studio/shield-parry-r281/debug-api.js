@@ -54,6 +54,8 @@ export function createShieldParryDebugApi({
     get opponentDrive() { return runtimes.opponentDriveController?.report ?? null; },
     setOpponentDrive: (on) => runtimes.opponentDriveController?.setEnabled(on) ?? false,
     setOpponentSeed: (seed) => runtimes.opponentDriveController?.reseed(seed) ?? null,
+    // R21F.1: the stance the opponent is holding, if any.
+    get attackTelegraph() { return runtimes.attackTelegraph?.report ?? null; },
     get laneAttackerWalkSample() { return runtimes.laneController?.attackerWalkSample ?? null; },
     get engagementStance() { return runtimes.labScene?.engagementStance ?? null; },
     setDefenderYawOffset: (radians) => runtimes.labScene?.setDefenderYawOffset?.(radians) ?? null, // R19Q.1 facing seam (tests drive it directly)
