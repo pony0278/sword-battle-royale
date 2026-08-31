@@ -28,7 +28,10 @@ const EXPECTED = Object.freeze({
     // what the stretch cost. Written out from the design rather than read back from the code, the
     // same way LEFT's is - which is why this had to be edited by hand for the retime, and should be.
     contactSeconds: 0.23 * 1.87,
-    durationSeconds: 0.433 + 0.3 * 0.87,
+    // R21J.1: the presentation abandons this clip at source 0.31, where its real motion stops, so
+    // the runtime duration is that trimmed point mapped through the warp - not the clip's own
+    // 0.433s, which sourceDurationSeconds below still reports unchanged.
+    durationSeconds: 0.31 + 0.3 * 0.87,
     sourceContactSeconds: 0.23, sourceDurationSeconds: 0.433, warped: true,
   }),
   left: Object.freeze({

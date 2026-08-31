@@ -665,6 +665,13 @@ function frame(timestamp) {
       hasAttackerRecovery: Boolean(attackerRecovery),
       beginAttackRecovery,
     });
+    // R21J.1: a swing that ends without the combat path completing it - the blade missed, or it
+    // landed on a body that never resolved an exchange - got no recovery at all, so the attacker
+    // teleported to idle in a single frame. Measured: the blade tip jumped 2.105m between two
+    // frames, then moved 0.011m in the next. Every other lab in this repo already begins the
+    // recovery on the attack's own completion; only this one relied on the combat path, which is
+    // why the snap appeared exactly when a player FAILED to answer a swing.
+    if (snapshot.completed && !attackerRecovery) beginAttackRecovery(selectedDirection);
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
 
     laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active, // R20W.2: and whether

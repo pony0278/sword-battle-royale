@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   ATTACK_TIME_WARPS,
@@ -11,7 +12,10 @@ import {
 import { LONGSWORD_DIRECTIONAL_ATTACKS } from '../src/combat/longsword-directional-metadata.js';
 import { PREDICTIVE_INTERCEPT_PARRY_PROFILE } from '../src/combat/predictive-intercept-parry.js';
 import { COMMITTED_PARRY_CONTACT_GATE_PROFILE } from '../src/combat/committed-parry-contact-gate.js';
-import { getLongswordDirectionalAttackProfile } from '../src/combat/longsword-directional-attack-runtime.js';
+import {
+  PRESENTATION_END_SOURCE_SECONDS,
+  getLongswordDirectionalAttackProfile,
+} from '../src/combat/longsword-directional-attack-runtime.js';
 
 // R21B.1 - RIGHT could not be parried, and the fix is sized by things already measured.
 //
@@ -135,4 +139,47 @@ test('R21I.1 the re-measurement is compared on its own scale, not against a diff
   assert.ok(Math.abs(predicted - pass.predictedPeakDegreesPerSecond) < 1);
   assert.ok(Math.abs(same.right - pass.predictedPeakDegreesPerSecond) / pass.predictedPeakDegreesPerSecond < 0.05,
     `predicted ${pass.predictedPeakDegreesPerSecond} against measured ${same.right}`);
+});
+
+test('R21J.1 the presentation stops sampling RIGHT where its clip stops moving', () => {
+  const trim = PRESENTATION_END_SOURCE_SECONDS.right;
+  const profile = getLongswordDirectionalAttackProfile('right');
+  assert.equal(trim, 0.31);
+  // The clip's own length is untouched: this says when we stop looking at it, not how long it is.
+  assert.equal(profile.sourceDurationSeconds, 0.433);
+  assert.ok(profile.durationSeconds < warpSourceToRuntime(0.433, getAttackTimeWarp('right')));
+  // And it can never eat anything the exchange is calibrated against.
+  assert.ok(trim > LONGSWORD_DIRECTIONAL_ATTACKS.right.contactSeconds, 'past contact');
+  assert.ok(profile.durationSeconds > profile.activeEndSeconds, 'past the active window');
+  assert.ok(Math.abs(profile.contactSeconds - 0.4301) < 1e-4, 'contact is where R21I.1 put it');
+});
+
+test('R21J.1 only RIGHT is trimmed, and a trim that would reach contact is refused', () => {
+  assert.deepEqual(Object.keys(PRESENTATION_END_SOURCE_SECONDS), ['right']);
+  for (const direction of ['top', 'left']) {
+    const profile = getLongswordDirectionalAttackProfile(direction);
+    const natural = warpSourceToRuntime(profile.sourceDurationSeconds, getAttackTimeWarp(direction));
+    assert.ok(Math.abs(profile.durationSeconds - natural) < 1e-9, `${direction} plays its whole clip`);
+  }
+});
+
+test('R21J.1 a swing that nobody answered still gets a recovery', () => {
+  // Measured before the fix: with the guard down, RIGHT's blade tip jumped 2.105m between two
+  // frames and then moved 0.011m in the next - the attacker teleporting to idle in one frame. With
+  // the guard held, the same swing eased. The difference was that beginAttackRecovery was only
+  // reached through the combat path, so a swing that missed, or landed on a body without resolving
+  // an exchange, got no recovery at all. The snap therefore appeared exactly when a player FAILED
+  // to answer - which is why it read as RIGHT's problem while RIGHT was the one being missed.
+  const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
+  assert.match(entry, /if \(snapshot\.completed && !attackerRecovery\) beginAttackRecovery\(/);
+  // It has to run before the base pose is sampled, or the frame it is created on renders unblended.
+  const begins = entry.indexOf('if (snapshot.completed && !attackerRecovery) beginAttackRecovery(');
+  const samples = entry.indexOf('if (!contactFrame.handledCombat) sampleAttackerBase(');
+  assert.ok(begins > 0 && samples > begins);
+  // Every other lab in the repo already did this; this entry was the outlier.
+  const others = ['two-actor-combat-lab', 'swept-sword-buckler-contact-lab', 'predictive-intercept-parry-lab'];
+  for (const name of others) {
+    const source = readFileSync(new URL(`../tools/action-studio/${name}.js`, import.meta.url), 'utf8');
+    assert.match(source, /snapshot\.completed && !attackerRecovery/, name);
+  }
 });
