@@ -149,7 +149,7 @@ test('R18N.4.3-B.1.3 requires the same armed sequence and releases cleanly', () 
 
 test('R18N.4.3-B.1.3 integration captures anchor only after first actual-target final closure', async () => {
   const [preContact, holdSource] = await Promise.all([
-    readFile(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/combat/parry-top-prep-readability-hold.js', import.meta.url), 'utf8'),
   ]);
 

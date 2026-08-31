@@ -48,7 +48,7 @@ test('R19N.1 doubt resolves to guarding, never to standing still', () => {
 
 test('R19N.1 the gate sits on coverage commitment, and irrelevance is never a contact decision', async () => {
   const controller = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
+    new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
   // The director must see one committed flag that already contains relevance - a second path that
   // tracks anyway would reintroduce the flinch under another name.
   assert.match(controller, /committed: engaged,/);

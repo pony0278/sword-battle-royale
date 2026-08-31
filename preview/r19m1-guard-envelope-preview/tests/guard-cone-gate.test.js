@@ -51,7 +51,7 @@ test('R19Z.1 doubt resolves to guarding, because taking a defence away needs a m
 
 test('R19Z.1 the gate is decided at commitment and stands the whole response down', async () => {
   const controller = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
+    new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
   // Per-exchange, keyed like the close-range posture - never re-decided mid-swing.
   assert.match(controller, /coneGate\?\.sequence !== snapshot\.sequence/);
   assert.match(controller, /facingErrorRadians: defenderFacingErrorRadians/);
@@ -68,7 +68,7 @@ test('R19Z.1 the facing error is the base facing against the bearing, guard turn
   // same number back when facing was only ever derived from the gap. R20V.1 separated them - a
   // fighter can own their facing now - and then the old comparison reported zero exactly when the
   // error mattered. Behavioural, because a source match is the check that missed it.
-  const { createShieldParryLaneController } = await import('../tools/action-studio/shield-parry-r281/lane-controller.js');
+  const { createShieldParryLaneController } = await import('../src/game/lane-controller.js');
   const build = () => createShieldParryLaneController({
     labScene: {
       engagementStance: { separationMeters: 2.4 },

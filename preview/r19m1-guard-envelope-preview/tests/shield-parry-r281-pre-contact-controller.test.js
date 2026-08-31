@@ -1,17 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createShieldParryPreContactController } from '../tools/action-studio/shield-parry-r281/pre-contact-controller.js';
+import { createShieldParryPreContactController } from '../src/game/pre-contact-controller.js';
 
 const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-const controller = await readFile(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
+const controller = await readFile(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
 const lifecycleDirector = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
 const parryInterceptDirectorSource = await readFile(new URL('../src/combat/parry-intercept-director.js', import.meta.url), 'utf8');
-const contactHandoffController = await readFile(new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url), 'utf8');
+const contactHandoffController = await readFile(new URL('../src/game/contact-handoff-controller.js', import.meta.url), 'utf8');
 
 test('R18M.5 entry delegates pre-contact orchestration to one controller', () => {
   assert.equal(typeof createShieldParryPreContactController, 'function');
-  assert.match(entry, /shield-parry-r281\/pre-contact-controller\.js/);
+  assert.match(entry, /src\/game\/pre-contact-controller\.js/);
   assert.match(entry, /const preContactController = createShieldParryPreContactController\(\{/);
   assert.match(entry, /preContactController\.update\(snapshot, currentBlade, deltaSeconds\);/);
   assert.match(contactHandoffController, /preContactController\.recordWhiffProbe\(attackSnapshot, evaluation\)/);

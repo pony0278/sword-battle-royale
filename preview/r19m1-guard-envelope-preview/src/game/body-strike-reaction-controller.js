@@ -1,7 +1,7 @@
 import {
   planBodyStrikeReaction,
   sampleBodyStrikeReaction,
-} from '../../../src/combat/body-strike-reaction.js';
+} from '../combat/body-strike-reaction.js';
 
 // R19K.1 — plays the defender's reaction to a blade that reached them.
 //

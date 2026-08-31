@@ -8,8 +8,8 @@ import {
 } from '../src/combat/predictive-parry-ownership-policy.js';
 
 const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-const preContact = await readFile(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
-const exchangeState = await readFile(new URL('../tools/action-studio/shield-parry-r281/exchange-state.js', import.meta.url), 'utf8');
+const preContact = await readFile(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
+const exchangeState = await readFile(new URL('../src/game/exchange-state.js', import.meta.url), 'utf8');
 const director = await readFile(new URL('../src/combat/parry-intercept-director.js', import.meta.url), 'utf8');
 
 class FakeQuaternion {
@@ -66,7 +66,8 @@ test('R18N.1 keeps manual Parry authority in the entry and only latches intent a
   assert.match(entry, /function driveAcceptedParry\(snapshot\) \{[\s\S]*preContactController\.armActiveIntercept\(snapshot\);/);
   assert.match(entry, /if \(exchangeState\.latestParryInput\.accepted\) \{\s*\n\s*driveAcceptedParry\(snapshot\);/);
   assert.match(entry, /function resetExchange\(\) \{[\s\S]*preContactController\.resetActiveIntercept\(\);/);
-  assert.ok(entry.split('\n').length <= 725, 'R281 entry must stay inside the C6 725-line ceiling');
+  // R20Z.1: the entry's size budget has one owner, shield-parry-r281-thin-entry-audit.test.js.
+  // A copy here meant one added line failed three unrelated suites and told you nothing extra.
   assert.doesNotMatch(exchangeState, /activeParryInterceptIntent|activeInterceptIntent/);
 });
 

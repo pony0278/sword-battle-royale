@@ -11,8 +11,9 @@
 //
 // The combat lab is not touched by anything in this file. Its goldens and probes stay at zero risk
 // while the tuning happens.
-import { createShieldParryLabScene } from './shield-parry-r281/lab-scene.js';
-import { bootstrapShieldParryLabAssets, NEUTRAL_IDLE_CLIP_ID } from './shield-parry-r281/lab-bootstrap.js';
+import { createShieldParryLabScene } from '../../src/game/scene.js';
+import { createFreeInspectionCameraControls } from './free-inspection-camera-controls.js';
+import { bootstrapShieldParryLabAssets, NEUTRAL_IDLE_CLIP_ID } from '../../src/game/bootstrap.js';
 import { createLongswordDirectionalAttackRuntime } from '../../src/combat/longsword-directional-attack-runtime.js';
 import { createEngagementGround } from '../../src/combat/engagement-ground.js';
 import { LANE_LOCOMOTION_PROFILE } from '../../src/combat/lane-locomotion.js';
@@ -163,7 +164,9 @@ const $ = (id) => document.getElementById(id);
 const round = (value, places = 3) => Number(Number(value).toFixed(places));
 
 async function main() {
-  const scene = createShieldParryLabScene({ THREE, separationMeters: state.separationMeters });
+  const scene = createShieldParryLabScene({
+    THREE, separationMeters: state.separationMeters, createInspectionCamera: createFreeInspectionCameraControls,
+  });
   scene.resize();
   window.addEventListener('resize', scene.resize);
 

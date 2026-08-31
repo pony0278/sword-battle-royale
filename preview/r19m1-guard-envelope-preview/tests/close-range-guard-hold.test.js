@@ -76,7 +76,7 @@ test('R19O.1 doubt resolves to the chase, which is the behaviour every band was 
 
 test('R19O.1 hold stands the coverage down through the same commitment flag as relevance', async () => {
   const controller = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
+    new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
   // One committed flag carries both decisions - a second path that still tracks would reintroduce
   // the lunge-away under another name. And the posture is decided per exchange, not per frame.
   assert.match(controller, /closeRangePosture\.plan\.posture !== 'hold-at-neutral'/);

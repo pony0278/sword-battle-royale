@@ -66,7 +66,7 @@ test('R19Q.1 the runtime keys liveness on plan identity, not on anybody remember
 
 test('R19Q.1 orientation is locomotion state and never contact authority', async () => {
   const lane = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/lane-controller.js', import.meta.url), 'utf8');
+    new URL('../src/game/lane-controller.js', import.meta.url), 'utf8');
   // The integrator lives in the lane controller and applies through the scene's single yaw seam,
   // which every stance stamp re-applies - so a lane write cannot erase the turn.
   assert.match(lane, /labScene\.setDefenderYawOffset\(guardFacingTurn\.update\(guardFacingPlan, deltaSeconds\)\)/);

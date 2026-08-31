@@ -6,8 +6,8 @@ const html = readFileSync(new URL('../tools/action-studio/shield-driven-contact-
 const source = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
 const labUiSource = readFileSync(new URL('../tools/action-studio/shield-parry-r281/lab-ui.js', import.meta.url), 'utf8');
 const frameReportingSource = readFileSync(new URL('../tools/action-studio/shield-parry-r281/frame-reporting.js', import.meta.url), 'utf8');
-const preContactSource = readFileSync(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
-const contactHandoffSource = readFileSync(new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url), 'utf8');
+const preContactSource = readFileSync(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
+const contactHandoffSource = readFileSync(new URL('../src/game/contact-handoff-controller.js', import.meta.url), 'utf8');
 
 function functionBody(name, nextName) {
   const start = source.indexOf(`function ${name}(`);
@@ -49,7 +49,7 @@ test('Step 2 exposes one manual Parry and removes Perfect from the Lab', () => {
   assert.match(html, /id="slowReview"[^>]*checked/);
   assert.match(html, />PARRY NOW \(F\)</);
   assert.doesNotMatch(html, /data-mode="perfect"/);
-  assert.match(html, /g43b5r281-fold-the-panels-r20y1/);
+  assert.match(html, /g43b5r281-game-out-of-the-lab-r20z4/);
 });
 
 test('Step 2 does not auto-start Parry from predictive timing', () => {

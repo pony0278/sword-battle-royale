@@ -4,7 +4,7 @@ import {
   solveFreeCameraPose,
   solveLockedCameraPose,
   THIRD_PERSON_CAMERA_PROFILE,
-} from '../../../src/combat/third-person-camera.js';
+} from '../combat/third-person-camera.js';
 
 // R20S.2 — the game's camera, in the combat lab, from the same solver and the same profile the
 // camera lab tuned. Not a second camera: this file decides WHEN to solve, never WHERE to stand.

@@ -9,8 +9,8 @@ import { readFileSync } from 'node:fs';
 // through the real F-key path at 1x).
 
 const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-const handoff = readFileSync(new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url), 'utf8');
-const preContact = readFileSync(new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url), 'utf8');
+const handoff = readFileSync(new URL('../src/game/contact-handoff-controller.js', import.meta.url), 'utf8');
+const preContact = readFileSync(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
 const director = readFileSync(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
 
 test('R20H.1 the guard-raise edge arms the parry gate and drives the accepted arm', () => {
@@ -40,7 +40,7 @@ test('R20H.1 confirmation asks the armed gate, mode cannot veto a Sekiro raise',
 
 test('R20H.1 the page identifies the Sekiro build and documents the windows', () => {
   const html = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab.html', import.meta.url), 'utf8');
-  assert.match(html, /\?v=g43b5r281-fold-the-panels-r20y1/);
+  assert.match(html, /\?v=g43b5r281-game-out-of-the-lab-r20z4/);
   assert.match(html, /B6c2/);
   assert.match(html, /Sekiro/);
 });

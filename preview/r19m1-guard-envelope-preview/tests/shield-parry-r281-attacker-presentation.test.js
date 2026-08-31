@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createAttackerPresentationAdapter } from '../tools/action-studio/shield-parry-r281/attacker-presentation.js';
+import { createAttackerPresentationAdapter } from '../src/game/attacker-presentation.js';
 
 const entrySource = readFileSync(
   new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url),
   'utf8',
 );
 const presentationSource = readFileSync(
-  new URL('../tools/action-studio/shield-parry-r281/attacker-presentation.js', import.meta.url),
+  new URL('../src/game/attacker-presentation.js', import.meta.url),
   'utf8',
 );
 
@@ -90,8 +90,8 @@ test('R18M.C2 presentation module contains no Parry/contact success or release a
     'publishPostCouplingRecoilStaggerHandoff',
     'DEFLECT_IMPULSE',
   ]) assert.ok(!presentationSource.includes(forbidden), forbidden);
-  assert.ok(!presentationSource.includes("from '../../src/combat/"));
-  assert.ok(!presentationSource.includes("from '../../../src/combat/"));
+  assert.ok(!presentationSource.includes("from '../../src/combat"));
+  assert.ok(!presentationSource.includes("from '../../../src/combat"));
   assert.match(presentationSource, /sampleFrozenContactPose/);
   assert.match(presentationSource, /captureCanonicalOldB3Base/);
   assert.match(presentationSource, /sampleBase/);

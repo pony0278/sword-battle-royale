@@ -7,7 +7,7 @@ import {
   SPRINT_SPEED_PROVENANCE,
   planSprint,
 } from '../src/combat/sprint-locomotion.js';
-import { createFreeMovementController } from '../tools/action-studio/shield-parry-r281/free-movement-controller.js';
+import { createFreeMovementController } from '../src/game/free-movement-controller.js';
 import { createEngagementGround } from '../src/combat/engagement-ground.js';
 import { LANE_LOCOMOTION_PROFILE } from '../src/combat/lane-locomotion.js';
 

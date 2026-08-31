@@ -1,5 +1,5 @@
-import { GUARD_STATES } from '../../../src/combat/guard-state-machine.js';
-import { NEUTRAL_IDLE_CLIP_ID } from './lab-bootstrap.js';
+import { GUARD_STATES } from '../combat/guard-state-machine.js';
+import { NEUTRAL_IDLE_CLIP_ID } from './bootstrap.js';
 
 // R19I.1 — what the defender does when nobody has chosen anything yet.
 //

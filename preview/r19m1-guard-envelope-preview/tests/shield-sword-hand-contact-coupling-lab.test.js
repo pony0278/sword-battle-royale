@@ -7,7 +7,7 @@ const source = readFileSync(
   'utf8',
 );
 const preContactSource = readFileSync(
-  new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url),
+  new URL('../src/game/pre-contact-controller.js', import.meta.url),
   'utf8',
 );
 const contactLifecycleDirectorSource = readFileSync(
@@ -23,7 +23,7 @@ const guardCoverageDirectorSource = readFileSync(
   'utf8',
 );
 const contactHandoffSource = readFileSync(
-  new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url),
+  new URL('../src/game/contact-handoff-controller.js', import.meta.url),
   'utf8',
 );
 const labUiSource = readFileSync(
@@ -35,7 +35,7 @@ const frameReportingSource = readFileSync(
   'utf8',
 );
 const playerControllerSource = readFileSync(
-  new URL('../tools/action-studio/shield-parry-r281/player-controller.js', import.meta.url),
+  new URL('../src/game/player-controller.js', import.meta.url),
   'utf8',
 );
 const whiffReporterSource = readFileSync(
@@ -68,11 +68,11 @@ const cameraSource = readFileSync(
   'utf8',
 );
 const sceneCompositionSource = readFileSync(
-  new URL('../tools/action-studio/shield-parry-r281/lab-scene.js', import.meta.url),
+  new URL('../src/game/scene.js', import.meta.url),
   'utf8',
 );
 const attackerPresentationSource = readFileSync(
-  new URL('../tools/action-studio/shield-parry-r281/attacker-presentation.js', import.meta.url),
+  new URL('../src/game/attacker-presentation.js', import.meta.url),
   'utf8',
 );
 const verificationReportSource = readFileSync(
@@ -124,7 +124,12 @@ test('Step 3A exposes an explicit live contact inspection state and markers', ()
 });
 
 test('Step 3A provides a free inspection camera without changing combat time', () => {
-  assert.match(sceneCompositionSource, /createFreeInspectionCameraControls/);
+  // R20Z.4: the scene no longer builds this itself. The observation camera is a lab affordance and
+  // the scene is game code, so it takes a factory and defaults to a null object - the entry, which
+  // is the lab, is what hands the real controls in.
+  assert.match(source, /createInspectionCamera: createFreeInspectionCameraControls/);
+  assert.match(sceneCompositionSource, /createInspectionCamera = null/);
+  assert.match(sceneCompositionSource, /NO_INSPECTION_CAMERA/);
   // R20S.3: the inspection camera is opt-in, and the frame that drives it moved into the player
   // controller alongside the game camera it stands in for - only one of them may own a frame.
   assert.match(playerControllerSource, /if \(inspectionCamera\) \{ freeCamera\?\.update\?\.\(deltaSeconds\); return null; \}/);

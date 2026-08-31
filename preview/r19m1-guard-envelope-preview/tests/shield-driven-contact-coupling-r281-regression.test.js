@@ -15,11 +15,11 @@ const parryInterceptDirectorSource = await readFile(
   'utf8',
 );
 const preContactSource = await readFile(
-  new URL('../tools/action-studio/shield-parry-r281/pre-contact-controller.js', import.meta.url),
+  new URL('../src/game/pre-contact-controller.js', import.meta.url),
   'utf8',
 );
 const contactHandoffSource = await readFile(
-  new URL('../tools/action-studio/shield-parry-r281/contact-handoff-controller.js', import.meta.url),
+  new URL('../src/game/contact-handoff-controller.js', import.meta.url),
   'utf8',
 );
 const verificationReportSource = await readFile(
@@ -58,7 +58,7 @@ function sliceFunction(text, startMarker) {
 test('R18M.1 baseline targets the actual R18I5 R281 browser entry', () => {
   assert.match(
     html,
-    /<script type="module" src="\.\/shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-fold-the-panels-r20y1"><\/script>/,
+    /<script type="module" src="\.\/shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-game-out-of-the-lab-r20z4"><\/script>/,
   );
   assert.match(html, /BUILD R18I5 TOP\/RIGHT/);
   assert.match(html, /LEFT release (?:仍)?(?:暫緩|deferred)/);

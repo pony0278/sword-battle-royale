@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createLabFrameClock } from '../tools/action-studio/shield-parry-r281/frame-clock.js';
+import { createLabFrameClock } from '../src/game/frame-clock.js';
 
 // R20K.1 (B6e) - the golden grid stopped being a safety net because it answered the same question
 // differently on different runs: roughly one flipped cell per eleven-cell pass, wandering between

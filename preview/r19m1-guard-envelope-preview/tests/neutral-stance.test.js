@@ -5,11 +5,11 @@ import { readFile } from 'node:fs/promises';
 import { GUARD_STATES, LONGSWORD_GUARD_PRESENTATION } from '../src/combat/guard-state-machine.js';
 
 const bootstrap = await readFile(
-  new URL('../tools/action-studio/shield-parry-r281/lab-bootstrap.js', import.meta.url),
+  new URL('../src/game/bootstrap.js', import.meta.url),
   'utf8',
 );
 const stance = await readFile(
-  new URL('../tools/action-studio/shield-parry-r281/neutral-stance.js', import.meta.url),
+  new URL('../src/game/neutral-stance.js', import.meta.url),
   'utf8',
 );
 const entry = await readFile(

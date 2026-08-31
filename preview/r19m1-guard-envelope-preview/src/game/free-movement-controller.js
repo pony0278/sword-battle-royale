@@ -1,7 +1,7 @@
-import { createLockOnRuntime } from '../../../src/combat/lock-on.js';
-import { LANE_LOCOMOTION_PROFILE } from '../../../src/combat/lane-locomotion.js';
-import { THIRD_PERSON_CAMERA_PROFILE } from '../../../src/combat/third-person-camera.js';
-import { planSprint } from '../../../src/combat/sprint-locomotion.js';
+import { createLockOnRuntime } from '../combat/lock-on.js';
+import { LANE_LOCOMOTION_PROFILE } from '../combat/lane-locomotion.js';
+import { THIRD_PERSON_CAMERA_PROFILE } from '../combat/third-person-camera.js';
+import { planSprint } from '../combat/sprint-locomotion.js';
 
 export const FREE_MOVEMENT_STAGE = 'R20S.3';
 // The one opponent this lab has. A battle royale will hand a list; the selection rule does not

@@ -17,8 +17,10 @@ if (!executablePath || !baseUrl) {
   process.exit(2);
 }
 
-// PARRY_GATE_PAGE exists for sandboxes whose network policy blocks the CDN the production page
-// loads Three.js from - they substitute a local-module copy of the same page. CI leaves it unset.
+// PARRY_GATE_PAGE names the page to drive. It exists because the published page loads Three.js from
+// a CDN, which a sandbox with no egress cannot reach - and which CI should not depend on either, so
+// build/verify-combat.mjs generates a local-module copy of the same page and points this at it. The
+// default stays the published page for anyone driving this by hand against a live network.
 const pageName = process.env.PARRY_GATE_PAGE || 'shield-driven-contact-coupling-lab.html';
 const GATE_URL = `${baseUrl.replace(/\/$/, '')}/${pageName}?parryGate=1`;
 const GATE_WAIT_MS = 120000;

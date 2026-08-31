@@ -57,7 +57,7 @@ test('R18T.1 nonsense separations are clamped rather than allowed to place a fig
 
 test('R18T.1 the lab places its fighters from the module and can only move them between exchanges', async () => {
   const scene = await readFile(
-    new URL('../tools/action-studio/shield-parry-r281/lab-scene.js', import.meta.url),
+    new URL('../src/game/scene.js', import.meta.url),
     'utf8',
   );
   const entry = await readFile(

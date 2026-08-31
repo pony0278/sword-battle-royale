@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createShieldParryLaneController } from '../tools/action-studio/shield-parry-r281/lane-controller.js';
+import { createShieldParryLaneController } from '../src/game/lane-controller.js';
 import { LANE_LOCOMOTION_PROFILE } from '../src/combat/lane-locomotion.js';
 
 // R20T.3 - the lane controller's feet, driven for real rather than grepped for.
