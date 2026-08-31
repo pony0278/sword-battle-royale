@@ -216,5 +216,6 @@ test('R18N.4.1-B wires taps after existing writers and exposes diagnostics witho
   assert.match(debugApi, /get latestVisualOwnershipBaseline\(\)/);
   assert.match(debugApi, /get visualOwnershipTrace\(\)/);
   assert.doesNotMatch(preContact, /parryGate\.confirm\(|combat\.resolveContact\(|probeSweptSwordBucklerContact\(/);
-  assert.ok(entry.split('\n').length <= 725, 'R18N.4.1-B must not expand the thin R281 entry');
+  // R20Z.1: the entry's size budget has one owner, shield-parry-r281-thin-entry-audit.test.js.
+  // A copy here meant one added line failed three unrelated suites and told you nothing extra.
 });

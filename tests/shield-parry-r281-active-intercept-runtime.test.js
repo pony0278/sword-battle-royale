@@ -66,7 +66,8 @@ test('R18N.1 keeps manual Parry authority in the entry and only latches intent a
   assert.match(entry, /function driveAcceptedParry\(snapshot\) \{[\s\S]*preContactController\.armActiveIntercept\(snapshot\);/);
   assert.match(entry, /if \(exchangeState\.latestParryInput\.accepted\) \{\s*\n\s*driveAcceptedParry\(snapshot\);/);
   assert.match(entry, /function resetExchange\(\) \{[\s\S]*preContactController\.resetActiveIntercept\(\);/);
-  assert.ok(entry.split('\n').length <= 725, 'R281 entry must stay inside the C6 725-line ceiling');
+  // R20Z.1: the entry's size budget has one owner, shield-parry-r281-thin-entry-audit.test.js.
+  // A copy here meant one added line failed three unrelated suites and told you nothing extra.
   assert.doesNotMatch(exchangeState, /activeParryInterceptIntent|activeInterceptIntent/);
 });
 
