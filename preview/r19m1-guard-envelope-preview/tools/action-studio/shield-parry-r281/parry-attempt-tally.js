@@ -89,6 +89,12 @@ function emptyRow() {
     // R21L.1: which way the player pointed when they pointed the wrong way. Kept per swing
     // direction, so the two tables together say "this attack was mistaken for that one".
     wrongAim: Object.create(null),
+    // R21M.1: and whether they pointed anywhere at all. See AIM_MOVEMENT_QUESTION.
+    startAim: null,
+    pressesUnmoved: 0,
+    pressesMoved: 0,
+    misreadUnmoved: 0,
+    misreadMoved: 0,
   };
 }
 
@@ -100,10 +106,12 @@ export function createParryAttemptTally() {
   return Object.freeze({
     // R21G.1: called with every swing as it starts, so the tally knows what was asked of the
     // player and not merely what they answered.
-    recordAttack(direction) {
+    // R21M.1: with where the player was already pointing when it started.
+    recordAttack(direction, aimAtStart = null) {
       const row = rows.get(String(direction || '').toLowerCase());
       if (!row) return null;
       row.thrown += 1;
+      row.startAim = String(aimAtStart || '').toLowerCase() || null;
       return row;
     },
     // R21G.1: switching the self-driving opponent on starts a fresh sample. Recording is NOT
@@ -126,6 +134,13 @@ export function createParryAttemptTally() {
       if (report.sequence != null && report.sequence === lastSequence) return null;
       lastSequence = report.sequence ?? null;
       row.attempts += 1;
+      // R21M.1: a press that never moved the aim is not a misread swing, it is an unanswered one.
+      // A press with no aim at all is neither: it says the player pointed nowhere, which is
+      // already counted as `unaimed`, and counting it as "never moved" would quietly inflate the
+      // very bucket this split exists to size.
+      const pressedAim = String(report.aimedSector || '').toLowerCase() || null;
+      const moved = pressedAim != null && pressedAim !== row.startAim;
+      if (pressedAim != null) { if (moved) row.pressesMoved += 1; else row.pressesUnmoved += 1; }
       // Number(null) is 0, not NaN - so a press the gate could not time (no authored timeline, so
       // inspectCommittedAttackTiming hands back a null TTC) would otherwise be recorded as a press
       // landing exactly on contact, which is a real-looking sample invented out of a missing one.
@@ -136,6 +151,9 @@ export function createParryAttemptTally() {
         row.wrongDirection += 1;
         const aimed = String(report.aimedSector || '').toLowerCase();
         if (aimed) row.wrongAim[aimed] = (row.wrongAim[aimed] || 0) + 1;
+        // Same rule as above: no aim, no verdict about movement. The gate never produces a
+        // wrong-direction miss without a sector, but a caller constructing one by hand can.
+        if (pressedAim != null) { if (moved) row.misreadMoved += 1; else row.misreadUnmoved += 1; }
       }
       else if (report.reason === 'parry-input-unaimed') row.unaimed += 1;
       else if (TOO_EARLY_REASONS.has(report.reason)) row.tooEarly += 1;
@@ -206,6 +224,20 @@ export function createParryAttemptTally() {
           lines.push([thrown, ...DIRECTIONS.map((aimed) => (aimed === thrown ? '—' : confusion[thrown][aimed]))].join('\t'));
         }
       }
+
+      // R21M.1: the fourth table. Printed whenever anything was pressed, because "the aim never
+      // moved" is as informative on a run that went well as on one that did not.
+      const movement = this.aimMovement;
+      const pressed = DIRECTIONS.reduce((sum, d) => sum + movement[d].presses, 0);
+      if (pressed > 0) {
+        lines.push('');
+        lines.push('瞄準有沒有動（攻擊開始 → 按下）');
+        lines.push(['方向', '按壓', '沒動', '移動', '方向錯·沒動', '方向錯·移動'].join('\t'));
+        for (const direction of DIRECTIONS) {
+          const m = movement[direction];
+          lines.push([direction, m.presses, m.unmoved, m.moved, m.misreadUnmoved, m.misreadMoved].join('\t'));
+        }
+      }
       return lines.join('\n');
     },
     // R21G.4: the distribution of presses on the one axis all three directions share. Negative
@@ -241,13 +273,40 @@ export function createParryAttemptTally() {
         Object.fromEntries(DIRECTIONS.map((aimed) => [aimed, rows.get(thrown).wrongAim[aimed] || 0])),
       )]));
     },
+    // R21M.1 - did the player point anywhere, or press with the aim where it already was?
+    //
+    // R21L.1's matrix came back with 15 of 16 misreads aimed at RIGHT - never TOP mistaken for
+    // LEFT or the reverse, which is what a reading failure between those two would look like. The
+    // sector holds indefinitely by design (planGuardSector: a cursor drifting through the middle
+    // has not asked to drop its guard), and RIGHT is the direction being parried 12 times in 13,
+    // so the aim sits there. Two explanations fit the same matrix and want opposite fixes:
+    //
+    //   never moved   the aim was already wrong when the swing began and stayed. Not a reading
+    //                 failure - the player either could not get the cursor there in time, or did
+    //                 not try. The fix is the input.
+    //   moved wrong   they pointed somewhere, and somewhere was wrong. That is reading.
+    //
+    // A matrix cannot separate those; comparing the aim at the swing's start against the aim at
+    // the press can.
+    get aimMovement() {
+      return Object.fromEntries(DIRECTIONS.map((direction) => {
+        const row = rows.get(direction);
+        return [direction, Object.freeze({
+          presses: row.attempts,
+          unmoved: row.pressesUnmoved,
+          moved: row.pressesMoved,
+          misreadUnmoved: row.misreadUnmoved,
+          misreadMoved: row.misreadMoved,
+        })];
+      }));
+    },
     get windowMs() { return Object.freeze({ opensMs: WINDOW_OPENS_MS, closesMs: WINDOW_CLOSES_MS }); },
     get rows() {
       return Object.fromEntries(DIRECTIONS.map((direction) => {
         const row = rows.get(direction);
         // mistimed is kept as the derived total of the two halves, so a reader who only wants
         // "was the timing wrong" still has it without re-adding them.
-        const { ttcMs, wrongAim, ...counts } = row;
+        const { ttcMs, wrongAim, startAim, ...counts } = row;
         return [direction, {
           ...counts, thrown: thrownOf(row), noAnswer: noAnswerOf(row), mistimed: row.tooEarly + row.tooLate,
         }];
