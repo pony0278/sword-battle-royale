@@ -64,6 +64,7 @@ import { createStanceDebugController } from './shield-parry-r281/stance-debug-co
 import { createShieldParryLabUi, bindShieldParryLabUiEvents } from './shield-parry-r281/lab-ui.js';
 import { createGuardSectorIndicator } from './shield-parry-r281/guard-sector-indicator.js';
 import { createParryAttemptTally } from './shield-parry-r281/parry-attempt-tally.js';
+import { createOpponentDriveController } from './shield-parry-r281/opponent-drive-controller.js'; // R21E.1
 import { createGuardSectorRuntime } from '../../src/game/guard-sector-runtime.js';
 import {
   createShieldParryExchangeState,
@@ -211,7 +212,7 @@ const swordGripConstraint = createLiveShieldSwordGripContactRuntime(THREE, {
 });
 
 const uiElements = createShieldParryLabDom(document);
-const { status, reportNode, autoRepeat, slowReview, showSurface } = uiElements;
+const { status, reportNode, autoRepeat, opponentDrive, slowReview, showSurface } = uiElements;
 const stanceDebug = createStanceDebugController({
   documentRef: document,
   windowRef: window,
@@ -386,7 +387,16 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     lockReport: () => playerController.lockReport, // R20S.3
     sprintReport: () => playerController.sprintReport, // R20U.1
     parryTally: () => parryTally.summary, // R21C.2
+    opponent: () => opponentDriveController.summary, // R21E.1
   },
+});
+
+// R21E.1: the opponent places and paces themselves. Input source only - it writes nothing but
+// setAttackerIntent and startAttack, which is what leaves the golden grid and the parry gate (both
+// of which drive attacks by hand at fixed separations) untouched with the toggle off.
+const opponentDriveController = createOpponentDriveController({
+  toggle: opponentDrive, laneController, startAttack,
+  readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !attackerRecovery,
 });
 
 function enterGuard() {
@@ -637,6 +647,7 @@ function frame(timestamp) {
   defenderStance.update({ guardKeyHeld, dodgeRunning: laneController.dodgeReport.dodging, defenceCommitted: defenceCommitted() }); // R20G.1 + R20H.2
   syncGuardToStance(); // a deferred stand-down lands the frame its commitment ends
   playerController.frame(rawDeltaMs / 1000); // R20S.3: lock, then feet, then the camera - in that order
+  opponentDriveController.frame(rawDeltaMs); // R21E.1: before the walk, so its intent is spent this frame
   laneController.walk(rawDeltaMs / 1000, exchangeState.latestGuardFacingPlan); // real seconds; R19Q.1 facing plan rides along
   if (ready) {
     const snapshot = attackRuntime.update(deltaMs);
@@ -685,7 +696,7 @@ function frame(timestamp) {
     if (hudClockMs >= HUD_INTERVAL_MS) { hudClockMs %= HUD_INTERVAL_MS; updateHud(snapshot, combatSnapshot); }
     if (reportClockMs >= REPORT_INTERVAL_MS) { reportClockMs %= REPORT_INTERVAL_MS; buildReport(combatSnapshot); }
 
-    if (!combat.active && !attackRuntime.active && !attackerRecovery && (guardMachine.state === GUARD_STATES.HOLD || selectedMode === 'block') && autoRepeat.checked) {
+    if (!combat.active && !attackRuntime.active && !attackerRecovery && (guardMachine.state === GUARD_STATES.HOLD || selectedMode === 'block') && autoRepeat.checked && !opponentDrive?.checked) { // R21E.1: the drive owns the cadence when it is on
       repeatCooldownMs += deltaMs;
       if (repeatCooldownMs >= 700) startAttack(selectedDirection);
     }
@@ -748,6 +759,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     labScene,
     guardSector,
     parryTally,
+    opponentDriveController,
   },
   debugMode: DEBUG_MODE,
   getDebugStanceProfile: () => debugStanceProfile,
