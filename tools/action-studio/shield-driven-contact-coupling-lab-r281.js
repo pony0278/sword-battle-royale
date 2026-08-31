@@ -527,7 +527,9 @@ function startAttack(direction = selectedDirection) {
   const started = combat.startAttack(direction);
   if (!started.accepted) return false;
   laneController.startAttack(direction, attackRuntime.snapshot?.action?.runtime?.contactSeconds);
-  parryTally.recordAttack(direction); // R21G.1: the denominator is the swing, not the press
+  // R21G.1: the denominator is the swing, not the press. R21M.1: with where the player was
+  // already pointing when it began, so a press that never moved can be told from a misread one.
+  parryTally.recordAttack(direction, guardSector.sector);
   status.textContent = `ATTACK ${direction.toUpperCase()} · wait for committed YES, then press PARRY NOW or F`;
   status.className = 'warn';
   document.querySelectorAll('[data-attack]').forEach((button) => button.classList.toggle('active', button.dataset.attack === direction));
