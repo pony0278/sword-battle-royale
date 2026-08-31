@@ -50,6 +50,10 @@ export function createShieldParryDebugApi({
     get guardSector() { return runtimes.guardSector?.report ?? null; },
     // R21C.2: attempts per direction, split by why they missed.
     get parryTally() { return runtimes.parryTally?.rows ?? null; },
+    // R21E.1: where the self-driving opponent thinks it is and what it will throw next.
+    get opponentDrive() { return runtimes.opponentDriveController?.report ?? null; },
+    setOpponentDrive: (on) => runtimes.opponentDriveController?.setEnabled(on) ?? false,
+    setOpponentSeed: (seed) => runtimes.opponentDriveController?.reseed(seed) ?? null,
     get laneAttackerWalkSample() { return runtimes.laneController?.attackerWalkSample ?? null; },
     get engagementStance() { return runtimes.labScene?.engagementStance ?? null; },
     setDefenderYawOffset: (radians) => runtimes.labScene?.setDefenderYawOffset?.(radians) ?? null, // R19Q.1 facing seam (tests drive it directly)
