@@ -46,6 +46,8 @@ export function createShieldParryDebugApi({
     get laneDefenderWalkOverlay() { return runtimes.laneController?.defenderWalkOverlay ?? null; },
     // R20X.1: which way the body is travelling in its own frame, and how far the stride is turned.
     get laneDefenderTravelPlan() { return runtimes.laneController?.defenderTravelPlan ?? null; },
+    // R21A.2: where the player is pointing. Read-only, and nothing consults it to decide anything.
+    get guardSector() { return runtimes.guardSector?.report ?? null; },
     get laneAttackerWalkSample() { return runtimes.laneController?.attackerWalkSample ?? null; },
     get engagementStance() { return runtimes.labScene?.engagementStance ?? null; },
     setDefenderYawOffset: (radians) => runtimes.labScene?.setDefenderYawOffset?.(radians) ?? null, // R19Q.1 facing seam (tests drive it directly)
