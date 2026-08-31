@@ -9,7 +9,29 @@
 // That split is the whole point. "Wrong direction" says the player could not read the swing, and
 // the answer would be a more legible windup. "Wrong moment" says the window is too tight, and the
 // answer would be timing. Without the split a failure rate says only that it is hard.
+import { COMMITTED_PARRY_CONTACT_GATE_PROFILE } from '../../../src/combat/committed-parry-contact-gate.js';
+
 export const PARRY_ATTEMPT_TALLY_STAGE = 'R21C.2';
+
+// R21G.4: where the presses actually land, not just which side of the window they missed.
+//
+// A 78-swing sample came back 64% too late, and "too late" cannot say whether the presses are
+// clustered 40ms past the closing edge - which a small retime would recover - or 300ms past it,
+// which no window change reaches. Those are different problems and the tally could not tell them
+// apart, so the pacing target would have had to be guessed.
+//
+// Time-to-contact is the right axis for this because the window is the SAME band of TTC for every
+// direction (0.18s to 0.06s), even though the three attacks contact at different times. Measured
+// in TTC, all three directions land on one comparable scale.
+const WINDOW_OPENS_MS = COMMITTED_PARRY_CONTACT_GATE_PROFILE.earliestInputTtcSeconds * 1000;
+const WINDOW_CLOSES_MS = COMMITTED_PARRY_CONTACT_GATE_PROFILE.latestInputTtcSeconds * 1000;
+
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+}
 
 const DIRECTIONS = Object.freeze(['top', 'right', 'left']);
 
@@ -59,7 +81,9 @@ function noAnswerOf(row) {
 // noAnswer is derived rather than counted - it is simply the swings that no press ever claimed -
 // which is what keeps that identity true by construction instead of by bookkeeping.
 function emptyRow() {
-  return { thrown: 0, attempts: 0, armed: 0, wrongDirection: 0, unaimed: 0, tooEarly: 0, tooLate: 0, other: 0 };
+  // ttcMs holds one entry per press, so the distribution survives rather than a running mean -
+  // a mean over a bimodal set of presses describes neither of its halves.
+  return { thrown: 0, attempts: 0, armed: 0, wrongDirection: 0, unaimed: 0, tooEarly: 0, tooLate: 0, other: 0, ttcMs: [] };
 }
 
 export function createParryAttemptTally() {
@@ -96,6 +120,11 @@ export function createParryAttemptTally() {
       if (report.sequence != null && report.sequence === lastSequence) return null;
       lastSequence = report.sequence ?? null;
       row.attempts += 1;
+      // Number(null) is 0, not NaN - so a press the gate could not time (no authored timeline, so
+      // inspectCommittedAttackTiming hands back a null TTC) would otherwise be recorded as a press
+      // landing exactly on contact, which is a real-looking sample invented out of a missing one.
+      const ttc = report.timeToContactSeconds == null ? null : Number(report.timeToContactSeconds);
+      if (ttc != null && Number.isFinite(ttc)) row.ttcMs.push(Math.round(ttc * 1000));
       if (report.accepted) row.armed += 1;
       else if (report.reason === 'parry-input-wrong-direction') row.wrongDirection += 1;
       else if (report.reason === 'parry-input-unaimed') row.unaimed += 1;
@@ -141,15 +170,49 @@ export function createParryAttemptTally() {
         lines.push([direction, ...values].join('\t'));
       }
       lines.push(['總計', ...cols.map((c) => total[c])].join('\t'));
+
+      // The second table is the one a pacing decision is read off. TTC, so all three directions
+      // sit on the same scale despite contacting at different times.
+      const timing = this.timing;
+      lines.push('');
+      lines.push(`按下時距接觸多久（ms）· 窗口 = ${WINDOW_OPENS_MS}→${WINDOW_CLOSES_MS}ms`);
+      lines.push(['方向', '按壓', '最早', '中位', '最晚', '窗口內', '過關中位', '過關最差'].join('\t'));
+      for (const direction of DIRECTIONS) {
+        const t = timing[direction];
+        const show = (value) => (value == null ? '—' : String(value));
+        lines.push([direction, t.presses, show(t.earliestMs), show(t.medianMs), show(t.latestMs),
+          t.insideWindow, show(t.medianMsPastClose), show(t.worstMsPastClose)].join('\t'));
+      }
       return lines.join('\n');
     },
+    // R21G.4: the distribution of presses on the one axis all three directions share. Negative
+    // TTC means the press came after the blade had already arrived.
+    get timing() {
+      return Object.fromEntries(DIRECTIONS.map((direction) => {
+        const samples = rows.get(direction).ttcMs;
+        const late = samples.filter((ms) => ms < WINDOW_CLOSES_MS);
+        return [direction, Object.freeze({
+          presses: samples.length,
+          earliestMs: samples.length ? Math.max(...samples) : null, // largest TTC = pressed soonest
+          medianMs: median(samples),
+          latestMs: samples.length ? Math.min(...samples) : null,
+          insideWindow: samples.filter((ms) => ms <= WINDOW_OPENS_MS && ms >= WINDOW_CLOSES_MS).length,
+          // How far past the closing edge the late half sat. This is the number a retime target is
+          // read off: a median of 40 is a window problem, a median of 300 is a pacing problem.
+          medianMsPastClose: late.length ? median(late.map((ms) => WINDOW_CLOSES_MS - ms)) : null,
+          worstMsPastClose: late.length ? Math.round(WINDOW_CLOSES_MS - Math.min(...late)) : null,
+        })];
+      }));
+    },
+    get windowMs() { return Object.freeze({ opensMs: WINDOW_OPENS_MS, closesMs: WINDOW_CLOSES_MS }); },
     get rows() {
       return Object.fromEntries(DIRECTIONS.map((direction) => {
         const row = rows.get(direction);
         // mistimed is kept as the derived total of the two halves, so a reader who only wants
         // "was the timing wrong" still has it without re-adding them.
+        const { ttcMs, ...counts } = row;
         return [direction, {
-          ...row, thrown: thrownOf(row), noAnswer: noAnswerOf(row), mistimed: row.tooEarly + row.tooLate,
+          ...counts, thrown: thrownOf(row), noAnswer: noAnswerOf(row), mistimed: row.tooEarly + row.tooLate,
         }];
       }));
     },
