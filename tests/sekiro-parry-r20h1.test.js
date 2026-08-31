@@ -16,7 +16,9 @@ const director = readFileSync(new URL('../src/combat/contact-lifecycle-director.
 test('R20H.1 the guard-raise edge arms the parry gate and drives the accepted arm', () => {
   // The arm happens on the stance edge, from the live snapshot, only before first contact.
   assert.match(entry, /if \(stanceEdge\.justRaisedGuard && attackRuntime\.snapshot\?\.action && !exchangeState\.firstContact\) \{/);
-  assert.match(entry, /parryGate\.arm\(\{ attackSnapshot: attackRuntime\.snapshot, manual: true, source: 'guard-raise' \}\)/);
+  // R21C.1: the raise edge carries where the player was pointing, because a parry is answered by
+  // direction now. Both doors into the gate must carry it or the other one is a way in without aim.
+  assert.match(entry, /parryGate\.arm\(\{ attackSnapshot: attackRuntime\.snapshot, manual: true,\s*\n\s*source: 'guard-raise', aimedSector: guardSector\.sector \}\)/);
   // An accepted raise gets the same intercept drive as parry mode's manual trigger - without it
   // every in-window LEFT raise still lands on the body (measured; the window sits past the B6b
   // raise-conversion cliff).
@@ -40,7 +42,7 @@ test('R20H.1 confirmation asks the armed gate, mode cannot veto a Sekiro raise',
 
 test('R20H.1 the page identifies the Sekiro build and documents the windows', () => {
   const html = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab.html', import.meta.url), 'utf8');
-  assert.match(html, /\?v=g43b5r281-right-can-be-parried-r21b1/);
+  assert.match(html, /\?v=g43b5r281-let-the-guard-fall-r21d1/);
   assert.match(html, /B6c2/);
   assert.match(html, /Sekiro/);
 });

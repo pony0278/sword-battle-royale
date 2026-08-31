@@ -15,6 +15,8 @@ function attack(elapsedSeconds, overrides = {}) {
     elapsedSeconds,
     interrupted: false,
     action: {
+      // R21C.1: the gate reads the attack's direction to compare against where the player pointed.
+      direction: overrides.direction ?? 'right',
       runtime: {
         movementStartSeconds: overrides.movementStartSeconds ?? 0.12,
         contactSeconds: overrides.contactSeconds ?? 0.23,
@@ -22,6 +24,10 @@ function attack(elapsedSeconds, overrides = {}) {
     },
   };
 }
+
+// R21C.1: these tests are about timing and geometry, so they all point correctly and let the
+// direction gate stand aside. The direction gate has its own test file.
+const AIMED = 'right';
 
 function predictive(overrides = {}) {
   const requiredDistance = overrides.requiredDistance ?? 0.08;
@@ -36,6 +42,7 @@ function predictive(overrides = {}) {
 
 test('manual Parry rejects input before the authored attack commitment marker', () => {
   const report = evaluateCommittedParryInput({
+    aimedSector: AIMED,
     attackSnapshot: attack(0.08),
     predictiveAnalysis: predictive(),
   });
@@ -46,14 +53,17 @@ test('manual Parry rejects input before the authored attack commitment marker', 
 
 test('manual Parry uses a 60–180ms TTC window after commitment', () => {
   const tooEarly = evaluateCommittedParryInput({
+    aimedSector: AIMED,
     attackSnapshot: attack(0.20, { movementStartSeconds: 0.10, contactSeconds: 0.50 }),
     predictiveAnalysis: predictive(),
   });
   const valid = evaluateCommittedParryInput({
+    aimedSector: AIMED,
     attackSnapshot: attack(0.12),
     predictiveAnalysis: predictive(),
   });
   const tooLate = evaluateCommittedParryInput({
+    aimedSector: AIMED,
     attackSnapshot: attack(0.19),
     predictiveAnalysis: predictive(),
   });
@@ -66,10 +76,12 @@ test('manual Parry uses a 60–180ms TTC window after commitment', () => {
 
 test('predictive geometry guides clamped shield tracking but cannot veto valid manual Parry timing', () => {
   const outOfReach = evaluateCommittedParryInput({
+    aimedSector: AIMED,
     attackSnapshot: attack(0.12),
     predictiveAnalysis: predictive({ requiredDistance: PARRY_LUNGE_TRAVEL_BUDGET_METERS + 0.001 }),
   });
   const outsidePlane = evaluateCommittedParryInput({
+    aimedSector: AIMED,
     attackSnapshot: attack(0.12),
     predictiveAnalysis: predictive({ signedDistance: 0.056 }),
   });
@@ -86,6 +98,7 @@ test('predictive geometry guides clamped shield tracking but cannot veto valid m
 
 test('temporarily missing predictive geometry cannot veto valid manual Parry timing', () => {
   const report = evaluateCommittedParryInput({
+    aimedSector: AIMED,
     attackSnapshot: attack(0.12),
     predictiveAnalysis: null,
   });
@@ -97,6 +110,7 @@ test('temporarily missing predictive geometry cannot veto valid manual Parry tim
 
 test('armed Parry is confirmed only by eligible real swept contact in attack_active', () => {
   const armed = evaluateCommittedParryInput({
+    aimedSector: AIMED,
     attackSnapshot: attack(0.12),
     predictiveAnalysis: predictive(),
   });
@@ -120,7 +134,7 @@ test('armed Parry is confirmed only by eligible real swept contact in attack_act
 
 test('one manual Parry attempt is allowed per attack sequence', () => {
   const gate = createCommittedParryContactGate();
-  const input = { attackSnapshot: attack(0.12), predictiveAnalysis: predictive() };
+  const input = { aimedSector: AIMED, attackSnapshot: attack(0.12), predictiveAnalysis: predictive() };
   assert.equal(gate.arm(input).accepted, true);
   const duplicate = gate.arm(input);
   assert.equal(duplicate.accepted, false);

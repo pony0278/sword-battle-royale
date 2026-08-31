@@ -13,7 +13,7 @@ import {
 export function createShieldParryLabUi(elements) {
   const {
     hudAttack, hudInput, parryCue, parryCueMain, parryCueDetail, hudContact, hudCoupling,
-    hudShield, hudWeapon, hudSeparation, hudLineClearance, hudRecoil, hudDiagnostic,
+    hudShield, hudWeapon, hudSeparation, hudLineClearance, hudRecoil, hudDiagnostic, hudParryTally,
     parryNow, retryAttack,
   } = elements;
 
@@ -216,6 +216,9 @@ export function createShieldParryLabUi(elements) {
         : ` · FREE · Tab 鎖定${lockReport.reason === 'nobody-inside-the-frontal-view' ? '(對手不在正面視野)' : lockReport.reason === 'nobody-within-lock-range' ? '(超出 3.5m 鎖定距離)' : ''}`
       : '';
     hudCoupling.textContent = `Parry gate: ${inputStatus}${lockStatus}${sprintStatus}`;
+    // R21C.2: what the attempts actually did, split by why they failed - a wrong direction says the
+    // swing was unreadable, a wrong moment says the window is tight, and they want opposite fixes.
+    if (hudParryTally && model.parryTally) hudParryTally.textContent = `Parry 命中: ${model.parryTally}`;
     const interceptRequired = latestFinePlan?.requiredDistance;
     const interceptApplied = latestFinePlan?.appliedDistance;
     const originalPrediction = latestReachableInterceptTarget?.predictedRequiredDistanceMeters;

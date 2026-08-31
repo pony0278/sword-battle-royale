@@ -63,6 +63,7 @@ import { createShieldParryLabDom } from './shield-parry-r281/lab-dom.js';
 import { createStanceDebugController } from './shield-parry-r281/stance-debug-controls.js';
 import { createShieldParryLabUi, bindShieldParryLabUiEvents } from './shield-parry-r281/lab-ui.js';
 import { createGuardSectorIndicator } from './shield-parry-r281/guard-sector-indicator.js';
+import { createParryAttemptTally } from './shield-parry-r281/parry-attempt-tally.js';
 import { createGuardSectorRuntime } from '../../src/game/guard-sector-runtime.js';
 import {
   createShieldParryExchangeState,
@@ -158,7 +159,9 @@ function setGuardHeld(held) {
   // silent - the shield still rose, and that is already the answer the player asked for.
   if (stanceEdge.justRaisedGuard && attackRuntime.snapshot?.action && !exchangeState.firstContact) {
     lateGuardRaise = true; // R20J.1: raised into a live swing, whatever the gate makes of the timing
-    exchangeState.latestParryInput = parryGate.arm({ attackSnapshot: attackRuntime.snapshot, manual: true, source: 'guard-raise' });
+    exchangeState.latestParryInput = parryGate.arm({ attackSnapshot: attackRuntime.snapshot, manual: true,
+      source: 'guard-raise', aimedSector: guardSector.sector }); // R21C.1: point, then press
+    parryTally.record(exchangeState.latestParryInput);
     if (exchangeState.latestParryInput.accepted) driveAcceptedParry(attackRuntime.snapshot);
   }
   return guardKeyHeld;
@@ -227,6 +230,8 @@ const labUi = createShieldParryLabUi(uiElements);
 // whether it is readable in time before any rule is written against it.
 const guardSector = createGuardSectorRuntime();
 const guardSectorIndicator = createGuardSectorIndicator(document.getElementById('guardSector'));
+// R21C.2: counts what the attempts did, so a play test produces numbers rather than impressions.
+const parryTally = createParryAttemptTally();
 const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
 let ready = false;
@@ -380,6 +385,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     parryReviewActive: (snapshot) => isParryPreContactReviewActive(snapshot),
     lockReport: () => playerController.lockReport, // R20S.3
     sprintReport: () => playerController.sprintReport, // R20U.1
+    parryTally: () => parryTally.summary, // R21C.2
   },
 });
 
@@ -458,7 +464,9 @@ function triggerParryNow(source = 'button') {
     predictiveAnalysis: exchangeState.latestPredictiveAnalysis,
     manual: true,
     source,
+    aimedSector: guardSector.sector, // R21C.1: the other door into the same gate
   });
+  parryTally.record(exchangeState.latestParryInput);
 
   if (exchangeState.latestParryInput.accepted) {
     driveAcceptedParry(snapshot);
@@ -666,6 +674,10 @@ function frame(timestamp) {
       resolveContact(snapshot, currentBlade, deltaSeconds);
       previousBlade = currentBlade;
     }
+    // R21D.1: after contact resolution, so a confirmation landing this frame still wins. An
+    // accepted attempt whose attack has ended can never be confirmed - letting it stay armed
+    // held the guard up forever through a released key.
+    parryGate.lapse({ attackSnapshot: snapshot, attackActive: attackRuntime.active });
     updateParryCue(snapshot);
 
     const combatSnapshot = combat.snapshot;
@@ -678,8 +690,7 @@ function frame(timestamp) {
       if (repeatCooldownMs >= 700) startAttack(selectedDirection);
     }
   }
-  guardSectorIndicator.update({ sector: guardSector.sector, // R21A.2: aim, and what is being thrown
-    threatDirection: attackRuntime.snapshot?.action ? selectedDirection : null });
+  guardSectorIndicator.update({ sector: guardSector.sector }); // R21C.2: the player's aim, only
   defender.update(0, camera); attacker.update(0, camera); // R20W.2: rebuild the skeleton lines from
   renderer.render(scene, camera); // the bones AFTER every pose writer, or they draw a stale pose
   requestAnimationFrame(frame);
@@ -736,6 +747,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     swordGripConstraint,
     labScene,
     guardSector,
+    parryTally,
   },
   debugMode: DEBUG_MODE,
   getDebugStanceProfile: () => debugStanceProfile,

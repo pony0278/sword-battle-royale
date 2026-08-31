@@ -23,7 +23,7 @@ test('R21A.2 the runtime holds an aim between frames', () => {
   assert.equal(runtime.reset().sector, null);
 });
 
-test('R21A.2 the indicator writes only its own element, and only on a change', () => {
+test('R21C.2 the indicator shows one thing: where the player is pointing', () => {
   const cells = ['top', 'right', 'left'].map((sector) => ({
     dataset: { sector },
     classList: { toggles: [], toggle(name, on) { this.toggles.push(`${name}:${on}`); } },
@@ -33,13 +33,17 @@ test('R21A.2 the indicator writes only its own element, and only on a change', (
     querySelectorAll: () => cells,
   };
   const indicator = createGuardSectorIndicator(root);
-  assert.equal(indicator.update({ sector: 'top', threatDirection: null }), true);
-  assert.equal(indicator.update({ sector: 'top', threatDirection: null }), false, 'no change, no writes');
-  assert.equal(indicator.update({ sector: 'top', threatDirection: 'left' }), true);
+  assert.equal(indicator.update({ sector: 'top' }), true);
+  assert.equal(indicator.update({ sector: 'top' }), false, 'no change, no writes');
+  assert.equal(indicator.update({ sector: 'left' }), true);
   const top = cells.find((cell) => cell.dataset.sector === 'top');
   assert.ok(top.classList.toggles.includes('aimed:true'));
-  const left = cells.find((cell) => cell.dataset.sector === 'left');
-  assert.ok(left.classList.toggles.includes('threat:true'));
+  assert.ok(top.classList.toggles.includes('aimed:false'), 'and gives the cell back when the aim moves');
+  // R21C.2: the attacker's direction is not drawn here any more. Two independent variables sharing
+  // three cells made "my aim matches the attack" a third colour to learn, and it flashed at the
+  // bottom of the screen exactly when the player should have been watching the opponent.
+  const toggled = cells.flatMap((cell) => cell.classList.toggles);
+  assert.ok(!toggled.some((entry) => entry.startsWith('threat:')), 'no threat channel remains');
   // A missing element is a lab without the widget, not a crash.
   assert.doesNotThrow(() => createGuardSectorIndicator(null).update({ sector: 'top' }));
 });

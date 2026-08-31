@@ -1,30 +1,33 @@
-// R21A.2: the three-sector guard indicator, and the direction being thrown at you.
+// R21C.2: where the player is pointing, and nothing else.
 //
-// Two things a player cannot otherwise know. Their own sector is invisible because the guard is a
-// shield in front of a body the camera crops; the attacker's committed direction is invisible
-// because R21A.1 measured that the three windups are told apart by the tip's vertical velocity -
-// +4.45 m/s rising for TOP, -1.79 level for RIGHT, -7.01 falling for LEFT - inside 167 to 333ms.
-// That is not something eyes read off a blocky silhouette, which is why every game with directional
-// defence draws it rather than hoping.
+// This drew two things at once - the player's sector and the attacker's committed direction - as
+// two colours on the same three cells, which meant the most important state of all, "my aim matches
+// the attack", was a third colour a player had to learn. Two independent variables sharing one
+// visual channel.
 //
-// It writes only to its own element, and only when a value actually changed: this runs every frame.
+// The threat half is gone rather than moved. A game that asks you to watch your opponent should not
+// flash a light at the bottom of the screen at the exact moment you most need to be watching them:
+// the amber pulled the eye down during the windup, which is the read it was supposedly helping.
+// What it bought is measured and real - R21A.1 put it at 67ms, the gap between the attacker
+// committing and the animation separating - and the cost of doing without is that a player reads
+// the swing itself. The tells are measurable and sayable: TOP rises at +4.45 m/s, LEFT falls from
+// 2.19m at -7.01, RIGHT stays level at -1.79.
+//
+// The aim half stays because it cannot be read anywhere else. The mouse is absolute and there is no
+// pointer lock, so without this the player has no way to know which sector they are in.
+//
+// It writes only to its own element, and only when the value changed: this runs every frame.
 export function createGuardSectorIndicator(root) {
   if (!root) return Object.freeze({ update() {}, get element() { return null; } });
   const cells = new Map();
   root.querySelectorAll('[data-sector]').forEach((cell) => cells.set(cell.dataset.sector, cell));
   let lastSector = Symbol('unset');
-  let lastThreat = Symbol('unset');
 
   return Object.freeze({
-    update({ sector = null, threatDirection = null } = {}) {
-      if (sector === lastSector && threatDirection === lastThreat) return false;
+    update({ sector = null } = {}) {
+      if (sector === lastSector) return false;
       lastSector = sector;
-      lastThreat = threatDirection;
-      for (const [name, cell] of cells) {
-        cell.classList.toggle('aimed', name === sector);
-        cell.classList.toggle('threat', name === threatDirection);
-      }
-      root.classList.toggle('has-threat', threatDirection != null);
+      for (const [name, cell] of cells) cell.classList.toggle('aimed', name === sector);
       return true;
     },
     get element() { return root; },

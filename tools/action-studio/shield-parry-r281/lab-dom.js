@@ -14,6 +14,7 @@ const REQUIRED_IDS = Object.freeze([
   'hudLineClearance',
   'hudRecoil',
   'hudDiagnostic',
+  'hudParryTally',
   'status',
   'report',
   'autoRepeat',
