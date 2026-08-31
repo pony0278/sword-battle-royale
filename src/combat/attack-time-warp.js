@@ -1,3 +1,5 @@
+import { clampAttackTempoScale, DEFAULT_ATTACK_TEMPO_SCALE } from './attack-tempo.js';
+
 export const ATTACK_TIME_WARP_STAGE = 'R21B.1';
 
 // R20M.1 (B6h) - a swing may be fast, but it may not disappear.
@@ -234,20 +236,26 @@ function normalize(warp) {
 
 // Source -> runtime. Used to restate every authored source time (contact, the active window, the
 // trail, the commitment marker, the clip's own length) in the clock the exchange counts in.
-export function warpSourceToRuntime(sourceSeconds, warp) {
+export function warpSourceToRuntime(sourceSeconds, warp, tempoScale = DEFAULT_ATTACK_TEMPO_SCALE) {
+  // R21O.1: the tempo is applied AFTER the warp, not folded into its stretch. The warp fixes one
+  // direction's burst against its own windup - a shape - and the tempo says how long that whole
+  // shape takes. Multiplying the stretch instead would stretch the burst a second time and pull
+  // the three directions apart from each other, which is the thing being tested.
+  const scale = clampAttackTempoScale(tempoScale);
   const w = normalize(warp);
   const t = finite(sourceSeconds, 0);
-  if (!w) return t;
-  if (t <= w.start) return t;
-  if (t >= w.end) return t + w.span * (w.stretch - 1);
-  return w.start + (t - w.start) * w.stretch;
+  if (!w) return t * scale;
+  if (t <= w.start) return t * scale;
+  if (t >= w.end) return (t + w.span * (w.stretch - 1)) * scale;
+  return (w.start + (t - w.start) * w.stretch) * scale;
 }
 
 // Runtime -> source. The animation sampler's direction: given how long the exchange says the
 // swing has been running, which pose is it standing in?
-export function warpRuntimeToSource(runtimeSeconds, warp) {
+export function warpRuntimeToSource(runtimeSeconds, warp, tempoScale = DEFAULT_ATTACK_TEMPO_SCALE) {
   const w = normalize(warp);
-  const t = finite(runtimeSeconds, 0);
+  // Undo the tempo first, so what is left is the same runtime clock the warp was authored against.
+  const t = finite(runtimeSeconds, 0) / clampAttackTempoScale(tempoScale);
   if (!w) return t;
   const stretchedEnd = w.start + w.span * w.stretch;
   if (t <= w.start) return t;

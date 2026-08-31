@@ -98,7 +98,21 @@ function emptyRow() {
   };
 }
 
-export function createParryAttemptTally() {
+// R21O.1: a run that cannot say what it was measured under is not evidence. Two whole playtests
+// were read as findings about the fight before the numbers turned out to be about the lab's own
+// 0.12x review aid, so the conditions now travel with the table rather than with anyone's memory.
+// Spelled out rather than abbreviated: the reader of a pasted table is deciding whether to trust
+// it, and "1.0x" beside "慢動作" says more than a pair of booleans would.
+function conditionLine(conditions) {
+  if (!conditions) return null;
+  const tempo = Number(conditions.tempoScale);
+  const tempoText = Number.isFinite(tempo) ? `${tempo.toFixed(2).replace(/0$/, '')}×` : '?';
+  const review = conditions.slowReview === true ? '慢動作輔助 0.12× + 凍結 1.5s' : '無慢動作輔助';
+  return `條件: 攻擊節奏 ${tempoText} · ${review}`;
+}
+
+export function createParryAttemptTally(options = {}) {
+  const readConditions = typeof options.conditions === 'function' ? options.conditions : () => null;
   const rows = new Map(DIRECTIONS.map((direction) => [direction, emptyRow()]));
   let lastSequence = null;
   let sessionActive = false;
@@ -184,7 +198,7 @@ export function createParryAttemptTally() {
       const cols = ['thrown', 'armed', 'wrongDirection', 'tooEarly', 'tooLate', 'unaimed', 'other', 'noAnswer'];
       const head = ['方向', '揮出', '成功', '方向錯', '太早', '太晚', '沒瞄', '其他', '沒答'];
       const total = Object.fromEntries(cols.map((c) => [c, 0]));
-      const lines = [head.join('\t')];
+      const lines = [conditionLine(readConditions()), head.join('\t')].filter(Boolean);
       for (const direction of DIRECTIONS) {
         const row = rows.get(direction);
         // thrown and noAnswer are both derived rather than stored, so neither can be read off the
