@@ -113,7 +113,7 @@ A run has no legs-only reading, so `planWalkOverlay` refuses to lend one to a ra
 than letting it take the torso. Sprinting already requires the guard down, so the two rules never
 actually meet — saying so is what stops the next caller from finding out by accident.
 
-## R20X.1 — the sidestep, and why it is a hip and not a clip (EXPERIMENT, awaiting a verdict)
+## R20X.1 — the sidestep, and why it is a hip and not a clip (ACCEPTED on playtest)
 
 Investigated first. Across all eight KayKit packs there are exactly two lateral locomotion cycles,
 `Running_Strafe_Left` and `Running_Strafe_Right`, re-measured along their own axis at ±3.04 m/s,
@@ -155,10 +155,10 @@ Measured in the lab: sidestep ±90° at the hip on `Walking_B` at 0.71× with th
 reaching the gait, guarded or not; diagonal 0.88 m/s at −37°; backpedal 0° on `Walking_Backwards`;
 straight ahead 0°.
 
-**Nothing measured says whether 90° of hip yaw reads as a side-step or as a broken hip.** That is a
+**Nothing measured said whether 90° of hip yaw reads as a side-step or as a broken hip.** That was a
 question for eyes, and this lab's over-the-shoulder camera sits too close to answer it in a
-screenshot. It ships to the preview for a playtest verdict, the same way R20V.2 did — and it touches
-two bones, so backing it out is clean.
+screenshot, so it shipped to the preview for a playtest verdict the same way R20V.2 did. Unlike
+R20V.2 it came back accepted, including the 108° worst case behind square.
 
 ## Still open
 
