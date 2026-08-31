@@ -65,7 +65,6 @@ import { createShieldParryLabUi, bindShieldParryLabUiEvents } from './shield-par
 import { createGuardSectorIndicator } from './shield-parry-r281/guard-sector-indicator.js';
 import { createParryAttemptTally } from './shield-parry-r281/parry-attempt-tally.js';
 import { createOpponentDriveController } from './shield-parry-r281/opponent-drive-controller.js'; // R21E.1
-import { createAttackTelegraphRuntime } from '../../src/game/attack-telegraph-runtime.js'; // R21F.1
 import { createGuardSectorRuntime } from '../../src/game/guard-sector-runtime.js';
 import {
   createShieldParryExchangeState,
@@ -395,14 +394,8 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
 // R21E.1: the opponent places and paces themselves. Input source only - it writes nothing but
 // setAttackerIntent and startAttack, which is what leaves the golden grid and the parry gate (both
 // of which drive attacks by hand at fixed separations) untouched with the toggle off.
-// R21F.1: the stance the opponent takes before swinging. Presentation only - it mixes one frame
-// of the attack's own clip over the idle pose and reports when it is done; the drive below is what
-// decides to hold it, and startAttack is still the only thing that begins an attack.
-const attackTelegraph = createAttackTelegraphRuntime({
-  attacker, camera, services: { captureRigPose, applyRigPose, blendRecoveryPose },
-});
 const opponentDriveController = createOpponentDriveController({
-  toggle: opponentDrive, laneController, startAttack, telegraph: attackTelegraph,
+  toggle: opponentDrive, laneController, startAttack,
   readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !attackerRecovery,
 });
 
@@ -671,7 +664,6 @@ function frame(timestamp) {
       beginAttackRecovery,
     });
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
-    attackTelegraph.sample(rawDeltaMs); // R21F.1: mixes OVER the idle pose, so it writes last
 
     laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active, // R20W.2: and whether
       selectedMode !== 'block' || defenderStance.report.guardActive === true); // the guard owns the torso
@@ -768,7 +760,6 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     guardSector,
     parryTally,
     opponentDriveController,
-    attackTelegraph,
   },
   debugMode: DEBUG_MODE,
   getDebugStanceProfile: () => debugStanceProfile,

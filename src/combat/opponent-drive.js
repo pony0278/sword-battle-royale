@@ -190,7 +190,6 @@ export function planOpponentDrive(input = {}) {
     reason,
     inBand,
     repositioning,
-    attackAvailableNow: attackAvailable,
     separationMeters,
     offsetMeters,
     restedMs,
