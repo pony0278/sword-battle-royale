@@ -46,7 +46,13 @@ export function createOpponentDriveController({
     // One HUD line: the seed a tester quotes in a bug report, what is coming, and why it is or is
     // not swinging right now.
     get summary() {
-      if (!enabled()) return '手動';
+      // R21G.2: a run that has been switched off still names its seed. A tester switches the
+      // opponent off before reading the numbers, and a sample whose seed is gone cannot be replayed
+      // - which was the whole reason for seeding it.
+      if (!enabled()) {
+        const last = runtime.report;
+        return last.attacksServed > 0 ? `手動（上一輪 seed ${last.seed} · 已出 ${last.attacksServed}）` : '手動';
+      }
       const report = runtime.report;
       const gap = report.offsetMeters == null
         ? '—'

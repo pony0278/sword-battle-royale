@@ -48,6 +48,11 @@ export function createShieldParryFrameReporting({
       lockReport: read.lockReport?.() ?? null, // R20S.3
       sprintReport: read.sprintReport?.() ?? null, // R20U.1
       parryTally: read.parryTally?.() ?? null, // R21C.2
+      // R21G.2: both of these were added to the HUD's source list but never forwarded here, so the
+      // 對手 line has not updated once since R21E.1 shipped - the drive was only ever verified
+      // through the debug API, which reads the runtime rather than the screen.
+      opponent: read.opponent?.() ?? null, // R21E.1
+      parryTallyReport: read.parryTallyReport?.() ?? null, // R21G.2
       swingInnerReach: exchangeState.latestSwingInnerReach, // R20T.2
       selectedMode: read.selectedMode(),
       step3AContactTransfer: exchangeState.step3AContactTransfer,
@@ -75,6 +80,11 @@ export function createShieldParryFrameReporting({
       lockReport: read.lockReport?.() ?? null, // R20S.3
       sprintReport: read.sprintReport?.() ?? null, // R20U.1
       parryTally: read.parryTally?.() ?? null, // R21C.2
+      // R21G.2: both of these were added to the HUD's source list but never forwarded here, so the
+      // 對手 line has not updated once since R21E.1 shipped - the drive was only ever verified
+      // through the debug API, which reads the runtime rather than the screen.
+      opponent: read.opponent?.() ?? null, // R21E.1
+      parryTallyReport: read.parryTallyReport?.() ?? null, // R21G.2
       swingInnerReach: exchangeState.latestSwingInnerReach, // R20T.2
       selectedMode: read.selectedMode(),
       requestedOutcome: read.selectedMode(),
@@ -119,6 +129,11 @@ export function createShieldParryFrameReporting({
       lockReport: read.lockReport?.() ?? null, // R20S.3
       sprintReport: read.sprintReport?.() ?? null, // R20U.1
       parryTally: read.parryTally?.() ?? null, // R21C.2
+      // R21G.2: both of these were added to the HUD's source list but never forwarded here, so the
+      // 對手 line has not updated once since R21E.1 shipped - the drive was only ever verified
+      // through the debug API, which reads the runtime rather than the screen.
+      opponent: read.opponent?.() ?? null, // R21E.1
+      parryTallyReport: read.parryTallyReport?.() ?? null, // R21G.2
       swingInnerReach: exchangeState.latestSwingInnerReach, // R20T.2
       selectedMode: read.selectedMode(),
       parryProfile: parryGate.profile,

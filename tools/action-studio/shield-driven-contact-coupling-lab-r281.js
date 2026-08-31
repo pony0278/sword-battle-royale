@@ -388,6 +388,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     sprintReport: () => playerController.sprintReport, // R20U.1
     parryTally: () => parryTally.summary, // R21C.2
     opponent: () => opponentDriveController.summary, // R21E.1
+    parryTallyReport: () => parryTally.reportText, // R21G.2: the whole run, pasteable
   },
 });
 
