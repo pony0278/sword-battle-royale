@@ -15,6 +15,23 @@ export const GUARD_SECTOR_STAGE = 'R21A.2';
 //   RIGHT stays level at -1.79, LEFT falls from 2.19m at -7.01 - and it is identical at 1.4m,
 //   1.8m and 2.4m.
 //
+// R21F.1 measured the same question over TIME rather than at a frame, and the answer is worse
+// than "no mirror". Sampled from a common 2.396m stance, the distance between the three blade tips
+// in the plane the camera looks across:
+//
+//   102ms 0.453m    119ms 0.279m    153ms 0.401m    170ms 0.481m    238ms 0.913m
+//
+// The parry windows run 148-410ms. The three attacks are at their most ALIKE right as the windows
+// open and have barely separated through the first stretch of them, so a player asked for the
+// direction inside the window has nothing on screen to answer from - they are reading a derivative
+// or they are guessing. This is recorded here, next to the convention it undermines, because it is
+// a fact about the attack set and outlives whatever is or is not built against it.
+//
+// A telegraphed stance was built against exactly these numbers (R21F.1) and reverted the same day:
+// the poses measured well - the three holds sat 0.84m clear of each other and 0.89m clear of idle,
+// against the 0.279m blur above - and still read as unnatural in play. So the measurement stands
+// and the remedy does not; whatever is tried next has this bar to clear and this way to check it.
+//
 // So there is no mirror to get right and no "side the blow comes from" to match. The mapping is
 // chosen to be learnable rather than derived: screen up is TOP, screen right is RIGHT, screen left
 // is LEFT, which agrees with the lab's own direction buttons and with what players arrive expecting.

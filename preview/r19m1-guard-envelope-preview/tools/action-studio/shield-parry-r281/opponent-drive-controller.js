@@ -12,7 +12,6 @@ export function createOpponentDriveController({
   startAttack,
   readAttackAvailable,
   runtime = createOpponentDriveRuntime(),
-  telegraph = null, // R21F.1: optional, so a drive without a stance still works exactly as before
 }) {
   if (!laneController || typeof startAttack !== 'function' || typeof readAttackAvailable !== 'function') {
     throw new Error('R21E.1 opponent drive needs the lane, the attack verb and the availability read');
@@ -33,32 +32,11 @@ export function createOpponentDriveController({
         attackAvailable: readAttackAvailable() === true,
       });
       laneController.setAttackerIntent(plan.intent);
-      // R21F.1: the stance stands between deciding to swing and swinging. The drive holds the
-      // direction it chose across the stance rather than re-asking the bag, or the pose the player
-      // just read would be a promise about a different attack.
-      if (!telegraph) {
-        if (plan.attack && startAttack(plan.attack)) runtime.commit(plan.attack);
-        return plan;
-      }
-      if (telegraph.active) {
-        // A stance is only worth holding while the swing it announces can still happen. If the
-        // spacing or the gate went away underneath it, drop it rather than lie to the player.
-        if (!plan.attackAvailableNow || !plan.inBand) { telegraph.clear(); return plan; }
-        if (telegraph.released && startAttack(telegraph.report.direction)) {
-          runtime.commit(telegraph.report.direction);
-          telegraph.clear();
-        }
-        return plan;
-      }
-      if (plan.attack) telegraph.begin(plan.attack);
+      if (plan.attack && startAttack(plan.attack)) runtime.commit(plan.attack);
       return plan;
     },
-    setEnabled(on) {
-      if (toggle) toggle.checked = on === true;
-      if (!enabled()) telegraph?.clear(); // switching off must not leave a stance frozen on screen
-      return enabled();
-    },
-    reseed: (seed) => { telegraph?.clear(); return runtime.reseed(seed); },
+    setEnabled(on) { if (toggle) toggle.checked = on === true; return enabled(); },
+    reseed: (seed) => runtime.reseed(seed),
     get enabled() { return enabled(); },
     get report() { return enabled() ? runtime.report : null; },
     // One HUD line: the seed a tester quotes in a bug report, what is coming, and why it is or is
@@ -69,8 +47,7 @@ export function createOpponentDriveController({
       const gap = report.offsetMeters == null
         ? '—'
         : `${report.offsetMeters >= 0 ? '+' : ''}${report.offsetMeters.toFixed(2)}m`;
-      const stance = telegraph?.active ? ` · 架式 ${String(telegraph.report.direction).toUpperCase()} ${telegraph.report.phase}` : '';
-      return `seed ${report.seed} · 下一刀 ${String(report.upcoming).toUpperCase()} · ${report.reason}${stance} · 距離差 ${gap} · 已出 ${report.attacksServed}`;
+      return `seed ${report.seed} · 下一刀 ${String(report.upcoming).toUpperCase()} · ${report.reason} · 距離差 ${gap} · 已出 ${report.attacksServed}`;
     },
   });
 }
