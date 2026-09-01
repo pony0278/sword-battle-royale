@@ -6,9 +6,10 @@ export const LAB_EXPERIMENT_PARAMETERS_STAGE = 'R21V.1';
 
 // R21V.1 - the lab's playtest dials, in one place.
 //
-// Three things about a run are chosen by the person doing the running rather than by the build:
-// how long a swing takes (?tempo=, R21O.1), how fast a sprint travels (?sprint=, this stage) and
-// which run clip lends the sprint its arms (?runclip=, R21Y.1).
+// Four things about a run are chosen by the person doing the running rather than by the build:
+// how long a swing takes (?tempo=, R21O.1), how fast a sprint travels (?sprint=, this stage),
+// which run clip lends the sprint its arms (?runclip=, R21Y.1) and whether the legs wear that clip
+// too instead of borrowing from it (?wholebody=1, R22E.1).
 // They were going to be two consts and two imports in the entry, which sits one code line under the
 // budget that shield-parry-r281-thin-entry-audit.test.js keeps - and that test says in as many
 // words that the next thing to hit it should move code out rather than move the number. So this is
@@ -26,6 +27,11 @@ export function readLabExperimentParameters(query) {
   // taken on trust - a clip with no measured foot contact has no phase offset, and an unaligned
   // overlay swings the arms against the feet.
   const arms = resolveSprintArmClip(read('runclip'));
+  // R22E.1: hands the LEGS to the run above the measured transition, which is what R20W.2 did and
+  // R21U.1 undid. Off unless asked for, and asked for only to be looked at: at the shipped 1.5 m/s
+  // the run's stride gives it 0.52 steps per second against a walking person's two, so it plays at
+  // a fifth speed. The switch exists because that is easier to believe once seen.
+  const wholeBodyRun = read('wholebody') === '1';
   return Object.freeze({
     stage: LAB_EXPERIMENT_PARAMETERS_STAGE,
     tempoScale: clampAttackTempoScale(read('tempo')),
@@ -39,6 +45,7 @@ export function readLabExperimentParameters(query) {
     sprintArmClipId: arms.clipId,
     sprintArmClipReason: arms.reason,
     sprintArmPhaseOffset: arms.phaseOffset,
+    wholeBodyRun,
     authority: 'playtest-parameters-only-no-contact-authority',
   });
 }
