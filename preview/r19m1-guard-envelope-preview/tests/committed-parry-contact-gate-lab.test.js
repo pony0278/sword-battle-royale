@@ -46,10 +46,15 @@ function preContactFunctionBody(name, nextName) {
 
 test('Step 2 exposes one manual Parry and removes Perfect from the Lab', () => {
   assert.match(html, /id="parryNow"/);
-  assert.match(html, /id="slowReview"[^>]*checked/);
+  // R21P.1: the review aid still exists and is still wired; it simply no longer defaults on. It
+  // rescales the pre-contact phase to 0.12x and freezes the sim for 1.5s exactly when the parry
+  // window opens - the thing every measurement here is timing - and it reset to checked on every
+  // reload, so three whole playtests were recorded through it before anyone noticed.
+  assert.match(html, /id="slowReview"/);
+  assert.doesNotMatch(html, /id="slowReview"[^>]*checked/);
   assert.match(html, />PARRY NOW \(F\)</);
   assert.doesNotMatch(html, /data-mode="perfect"/);
-  assert.match(html, /g43b5r281-left-arrives-late-r21o3/);
+  assert.match(html, /g43b5r281-was-the-press-defended-r21p1/);
 });
 
 test('Step 2 does not auto-start Parry from predictive timing', () => {

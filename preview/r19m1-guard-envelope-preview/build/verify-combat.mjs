@@ -59,6 +59,8 @@ try {
   const env = { PARRY_GATE_PAGE: 'probe.lab.html' };
   results.push(await run('golden grid', 'tools/action-studio/b1-golden/verify-golden-grid.mjs', [browser, base], env));
   results.push(await run('parry gate', 'tools/action-studio/verify-shield-parry-gate.mjs', [browser, base], env));
+  // R21P.1: the third question - not "did the parry compose" but "was a legal press defended".
+  results.push(await run('defence matrix', 'tools/action-studio/verify-defence-matrix.mjs', [browser, base], env));
 } finally {
   await served.close();
 }
