@@ -19,7 +19,7 @@ if (!executablePath || !baseUrl) {
 // a fraction means something different in a clip whose toe rises 0.16m and one that rises 0.29m.
 const GROUND_HEIGHT_METERS = 0.04;
 const SPEED_TOLERANCE = 0.5;
-const AUTHORED_SPEED_MPS = { Walking_B: 1.053, Running_A: 3.268, Walking_A: 0.643, Walking_Backwards: -0.623 };
+const AUTHORED_SPEED_MPS = { Walking_B: 1.053, Running_A: 3.268, Running_B: 7.2, Walking_A: 0.643, Walking_Backwards: -0.623 };
 
 const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
 try {
@@ -82,6 +82,41 @@ try {
     console.log(`\nRunning_A needs +${(offset * 100).toFixed(1)}% of phase to strike with Walking_B`
       + ` (${(offset * run.cycleSeconds * 1000).toFixed(0)}ms of its own cycle)`);
   }
+  // R21Y.1: how different the upper body actually is, per candidate run clip. R21T.2 computed this
+  // once by hand for Running_A and the script was not kept - the same mistake R21T.1's header
+  // complains about - so it lives here now. Compared at the ALIGNED phase, because two clips
+  // sampled at the same raw phase are in different parts of their stride and would report a
+  // divergence that is mostly just being out of step.
+  const walkSeries = captured.Walking_B?.samples;
+  for (const runId of ['Running_A', 'Running_B']) {
+    const runSeries = captured[runId]?.samples;
+    const run = contacts[runId];
+    if (!walkSeries || !runSeries || !walk?.left || !run?.left) continue;
+    let offset = walk.left.strike - run.left.strike;
+    if (offset < 0) offset += 1;
+    console.log(`\n=== ${runId} vs Walking_B, aligned by +${(offset * 100).toFixed(1)}% of phase`);
+    const bones = Object.keys(walkSeries[0].upper).filter((id) => walkSeries[0].upper[id] && runSeries[0].upper[id]);
+    const rows = [];
+    for (const id of bones) {
+      let peak = 0;
+      let total = 0;
+      for (let i = 0; i < walkSeries.length; i += 1) {
+        const a = walkSeries[i].upper[id];
+        const j = Math.round(((i / walkSeries.length + offset) % 1) * runSeries.length) % runSeries.length;
+        const b = runSeries[j].upper[id];
+        // The angle between two rotations: 2*acos(|dot|), which is sign-independent, so a pair on
+        // opposite sides of the hypersphere does not read as a half-turn apart.
+        const dot = Math.min(1, Math.abs(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w));
+        const degrees = 2 * Math.acos(dot) * 180 / Math.PI;
+        total += degrees;
+        if (degrees > peak) peak = degrees;
+      }
+      rows.push({ id, mean: total / walkSeries.length, peak });
+    }
+    rows.sort((a, b) => b.mean - a.mean);
+    for (const row of rows) console.log(`  ${row.id.padEnd(12)} mean ${row.mean.toFixed(1)}°  peak ${row.peak.toFixed(1)}°`);
+  }
+
   if (pageErrors.length > 0) console.error(`page errors: ${pageErrors.join(' | ')}`);
 } finally {
   await browser.close();
