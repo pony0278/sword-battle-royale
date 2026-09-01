@@ -7,6 +7,7 @@
 import { chromium } from 'playwright-core';
 import { readFileSync } from 'node:fs';
 import { runExchange } from './capture-golden-grid.mjs';
+import { compareGoldenCell, describeCell, describeTightestMargin, tightestMargin } from './golden-grid-diff.mjs';
 
 const [executablePath, baseUrl] = process.argv.slice(2);
 if (!executablePath || !baseUrl) {
@@ -14,27 +15,48 @@ if (!executablePath || !baseUrl) {
   process.exit(2);
 }
 const golden = JSON.parse(readFileSync(new URL('./golden-grid.json', import.meta.url), 'utf8'));
+
+// R21W.1: the judgement - which fields must match, at what tolerance, and what a failure prints -
+// lives in golden-grid-diff.mjs, where a test can hold it without launching a browser. This file
+// stays what it was: the driver.
 const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
 const failures = [];
+const allMargins = [];
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   for (const cell of golden.cells) {
-    const r = await runExchange(page, cell);
-    const bad = [];
-    if (r.blocked !== cell.blocked) bad.push(`blocked ${r.blocked}!=${cell.blocked}`);
-    if (r.clang !== cell.clang) bad.push(`clang ${r.clang}!=${cell.clang}`);
-    if (r.body !== cell.body) bad.push(`body ${r.body}!=${cell.body}`);
-    if (r.posture !== cell.posture) bad.push(`posture ${r.posture}!=${cell.posture}`);
-    if (r.relevance !== cell.relevance) bad.push(`relevance ${r.relevance}!=${cell.relevance}`);
-    if (Math.abs((r.startSep ?? 0) - (cell.startSep ?? 0)) > 1e-6) bad.push(`startSep ${r.startSep}!=${cell.startSep}`);
-    if (cell.settledSep != null && Math.abs((r.settledSep ?? 0) - cell.settledSep) > 0.05) bad.push(`settledSep ${r.settledSep}!~${cell.settledSep}`);
-    if (Math.abs(r.settledYawDeg) > 0.5) bad.push(`settled yaw ${r.settledYawDeg} != 0`);
-    const tag = bad.length ? `FAIL ${bad.join(' | ')}` : 'ok';
-    console.error(`${cell.dir}@${cell.stance}: ${tag}`);
-    if (bad.length) failures.push(`${cell.dir}@${cell.stance}: ${bad.join(' | ')}`);
+    const name = `${cell.dir}@${cell.stance}`;
+    let r = null;
+    let thrown = null;
+    // A cell that times out or loses the page is this cell's failure, not the run's. Before this
+    // it threw out of the loop, so the remaining cells went unmeasured and the log ended on a
+    // stack trace - the one shape of red that leaves nothing to read.
+    try { r = await runExchange(page, cell); } catch (error) { thrown = error; }
+    if (thrown) {
+      console.error(`${name}: FAIL threw · ${thrown.message.split('\n')[0]}`);
+      failures.push(`${name}: threw · ${thrown.message}\n    golden: ${describeCell(cell)}`);
+      continue;
+    }
+    const { bad, margins } = compareGoldenCell(cell, r);
+    allMargins.push(...margins.map((margin) => ({ ...margin, name })));
+    console.error(`${name}: ${bad.length ? `FAIL ${bad.join(' | ')}` : 'ok'}`);
+    if (bad.length) {
+      failures.push([
+        `${name}: ${bad.join(' | ')}`,
+        `    golden:   ${describeCell(cell)}`,
+        `    measured: ${describeCell(r)}`,
+      ].join('\n'));
+    }
   }
 } finally {
   await browser.close();
 }
-if (failures.length) { console.log(`GOLDEN GRID FAILED\n${failures.join('\n')}`); process.exit(1); }
+if (failures.length) {
+  // Printed to stdout so verify-combat.mjs captures it and can repeat it beside the FAIL line.
+  console.log(`GOLDEN GRID FAILED\n${failures.join('\n')}`);
+  process.exit(1);
+}
 console.log(`golden grid reproduced: ${golden.cells.length} cells`);
+// Printed on a GREEN run too: a cell clearing by a hair today is the one that goes red tomorrow.
+const margin = describeTightestMargin(tightestMargin(allMargins));
+if (margin) console.log(margin);
