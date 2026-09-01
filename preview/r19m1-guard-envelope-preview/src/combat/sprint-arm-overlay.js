@@ -1,4 +1,10 @@
-import { RUNNING_A_PHASE_OFFSET_TO_WALKING_B, alignedRunPhase } from './locomotion-phase-alignment.js';
+import {
+  DEFAULT_RUN_CLIP_ID,
+  MEASURED_UPPER_BODY_DIVERGENCE_BY_RUN_CLIP,
+  PHASE_OFFSET_TO_WALKING_B,
+  RUNNING_A_PHASE_OFFSET_TO_WALKING_B,
+  alignedRunPhase,
+} from './locomotion-phase-alignment.js';
 import { WALK_TO_RUN_TRANSITION } from './locomotion-clip-measurements.js';
 import { SPRINT_SPEED_MPS } from './sprint-locomotion.js';
 
@@ -59,10 +65,37 @@ export function sprintArmWeight(speedMetersPerSecond) {
   return (speed - begin) / (full - begin);
 }
 
+// R21Y.1 - which run the arms are borrowed FROM.
+//
+// The pack has two, and they are different animals rather than two speeds of one: Running_B gives
+// more shoulder and half again as much elbow, less hand, and it leans. Both are measured, both are
+// phase-aligned to Walking_B from their own contacts, so either can be worn - and which reads
+// better is an eye's call, so the lab takes ?runclip= and the default stays where it was until
+// somebody has looked.
+export const SPRINT_ARM_CLIP_CANDIDATES = Object.freeze(Object.keys(PHASE_OFFSET_TO_WALKING_B));
+export const DEFAULT_SPRINT_ARM_CLIP_ID = DEFAULT_RUN_CLIP_ID;
+
+// Refuses anything unmeasured rather than falling through to it. A clip with no measured contact
+// has no offset, and an unaligned overlay swings the arms against the feet - which R21T.1 measured
+// as reading worse than not borrowing at all. So an unknown name is the default, not a gamble.
+export function resolveSprintArmClip(value) {
+  const requested = typeof value === 'string' ? value.trim() : '';
+  const known = SPRINT_ARM_CLIP_CANDIDATES.includes(requested);
+  return Object.freeze({
+    clipId: known ? requested : DEFAULT_SPRINT_ARM_CLIP_ID,
+    requested: requested || null,
+    reason: known ? (requested === DEFAULT_SPRINT_ARM_CLIP_ID ? 'default' : 'override')
+      : requested ? 'unmeasured-clip-has-no-phase-offset' : 'default',
+    phaseOffset: PHASE_OFFSET_TO_WALKING_B[known ? requested : DEFAULT_SPRINT_ARM_CLIP_ID],
+    divergenceDegrees: MEASURED_UPPER_BODY_DIVERGENCE_BY_RUN_CLIP[known ? requested : DEFAULT_SPRINT_ARM_CLIP_ID],
+  });
+}
+
 // The run must be sampled where it strikes with the walk, or the arms swing against the feet -
-// arm swing is coupled to the opposite leg. R21T.1 measured the offset at +20.7% of a cycle.
-export function sprintArmSamplePhase(walkPhase) {
-  return alignedRunPhase(walkPhase);
+// arm swing is coupled to the opposite leg. R21T.1 measured the offset at +20.7% of a cycle for
+// Running_A; R21Y.1 at +12.7% for Running_B, from that clip's own contacts.
+export function sprintArmSamplePhase(walkPhase, runClipId = DEFAULT_SPRINT_ARM_CLIP_ID) {
+  return alignedRunPhase(walkPhase, runClipId);
 }
 
 function slerp(a, b, t) {

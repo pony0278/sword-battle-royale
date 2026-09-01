@@ -91,13 +91,14 @@ test('R21U.1 the legs no longer change clip, so there is no cut left to smooth',
   assert.ok(e.walkStepsPerSecondAtSprint > e.aWalkingPersonStepsPerSecond);
 });
 
-test('R21U.1 the lane controller samples the run before the walk and reports the weight', () => {
-  // Sampled first so the rig is left holding the walk; blended before the filter so a guarding
-  // fighter's arms are dropped with the rest of the upper body.
-  const runIndex = laneController.indexOf('sprintArmSamplePhase(gaitReport.phase)');
-  const walkIndex = laneController.indexOf('defender.sampleAnimation(sample.clipId');
-  assert.ok(runIndex !== -1 && walkIndex !== -1);
-  assert.ok(runIndex < walkIndex, 'the run must be sampled before the walk');
+test('R21U.1 the lane controller blends before it filters, and reports a weight not a switch', () => {
+  // The ordering claim this used to make - the run sampled before the walk - moved to
+  // sprint-arms-survive-the-guard-scope-r21x1.test.js, where a harness watches the sampler being
+  // called instead of matching the literal call text. It broke on R21Y.1 giving that call a second
+  // argument while the ordering had not moved at all, which is the whole case against the form.
+  //
+  // What is left here is genuinely about the source: the blend must happen INSIDE the filter call,
+  // and a reordering that filtered first would still pass any behavioural test at whole-body scope.
   assert.match(laneController, /blendSprintArms\(walkPose, runArmPose, armWeight\),\s*gate\.scope/);
   // A number, not a boolean, because the whole point is that there is no switch any more.
   assert.match(laneController, /get defenderSprintArmWeight\(\) \{ return lastSprintArmWeight; \}/);

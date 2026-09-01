@@ -94,7 +94,7 @@ try {
     if (!walkSeries || !runSeries || !walk?.left || !run?.left) continue;
     let offset = walk.left.strike - run.left.strike;
     if (offset < 0) offset += 1;
-    console.log(`\n=== ${runId} vs Walking_B, aligned by +${(offset * 100).toFixed(1)}% of phase`);
+    console.log(`\n=== ${runId} vs Walking_B, sampled at walkPhase - ${(offset * 100).toFixed(1)}%`);
     const bones = Object.keys(walkSeries[0].upper).filter((id) => walkSeries[0].upper[id] && runSeries[0].upper[id]);
     const rows = [];
     for (const id of bones) {
@@ -102,7 +102,12 @@ try {
       let total = 0;
       for (let i = 0; i < walkSeries.length; i += 1) {
         const a = walkSeries[i].upper[id];
-        const j = Math.round(((i / walkSeries.length + offset) % 1) * runSeries.length) % runSeries.length;
+        // MINUS, matching alignedRunPhase(): the run needs +offset to reach the walk's phase, so
+        // the run sample that belongs to this walk frame sits offset EARLIER in its own cycle.
+        // Added instead of subtracted, this reads 50.3 degrees at hand.r where the committed
+        // R21T.2 figure is 40.9 - the two clips compared while out of step by twice the offset.
+        const shifted = ((i / walkSeries.length - offset) % 1 + 1) % 1;
+        const j = Math.round(shifted * runSeries.length) % runSeries.length;
         const b = runSeries[j].upper[id];
         // The angle between two rotations: 2*acos(|dot|), which is sign-independent, so a pair on
         // opposite sides of the hypersphere does not read as a half-turn apart.

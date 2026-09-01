@@ -9,6 +9,7 @@ import { loadSkyrimConvertedAnimationLibrary } from '../animation/skyrim-convert
 import { loadKayKitAnimationLibrary } from '../animation/kaykit-animation-library.js';
 import { composeSkyrimWeaponMountCalibration } from '../animation/skyrim-weapon-bind-calibration.js';
 import { LANE_WALK_CLIPS } from '../combat/lane-walk-cycle.js';
+import { SPRINT_ARM_CLIP_CANDIDATES } from '../combat/sprint-arm-overlay.js';
 
 // R19I.1: the clip both fighters stand in when nobody has chosen anything yet. The attacker
 // already idled on it out of combat; the defender now shares it so "no state" is one pose for
@@ -59,8 +60,13 @@ export async function bootstrapShieldParryLabAssets({ THREE, attacker, defender,
   const defenderIdleDuration = defender.getAnimationDuration(NEUTRAL_IDLE_CLIP_ID) || 1;
   // R20W.2: measured off the registered clips rather than restated, and keyed by clip id because
   // the gait picks between three of them now - walk, backwards walk and run.
+  // R21Y.1: and every clip the sprint's arms may be borrowed from, not just the one LANE_WALK_CLIPS
+  // names. Missing, a candidate falls back to a 1-second duration here and is then sampled 25% off
+  // its own 0.8s cycle - the arms would swing against the feet, which is the exact failure the
+  // phase alignment exists to prevent, arriving through a lookup rather than through the maths.
   const locomotionClipDurations = Object.freeze(Object.fromEntries(
-    [...new Set(Object.values(LANE_WALK_CLIPS))].map((clipId) => [clipId, attacker.getAnimationDuration(clipId) || 1]),
+    [...new Set([...Object.values(LANE_WALK_CLIPS), ...SPRINT_ARM_CLIP_CANDIDATES])]
+      .map((clipId) => [clipId, attacker.getAnimationDuration(clipId) || 1]),
   ));
   return Object.freeze({
     attackerIdleDuration, defenderIdleDuration, locomotionClipDurations, defenderSword,

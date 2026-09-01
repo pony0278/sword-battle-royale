@@ -1,12 +1,14 @@
 import { clampAttackTempoScale } from '../../../src/combat/attack-tempo.js';
 import { SPRINT_SPEED_BRACKET_MPS, resolveSprintSpeed } from '../../../src/combat/sprint-locomotion.js';
+import { resolveSprintArmClip } from '../../../src/combat/sprint-arm-overlay.js';
 
 export const LAB_EXPERIMENT_PARAMETERS_STAGE = 'R21V.1';
 
 // R21V.1 - the lab's playtest dials, in one place.
 //
-// Two things about a run are chosen by the person doing the running rather than by the build:
-// how long a swing takes (?tempo=, R21O.1) and how fast a sprint travels (?sprint=, this stage).
+// Three things about a run are chosen by the person doing the running rather than by the build:
+// how long a swing takes (?tempo=, R21O.1), how fast a sprint travels (?sprint=, this stage) and
+// which run clip lends the sprint its arms (?runclip=, R21Y.1).
 // They were going to be two consts and two imports in the entry, which sits one code line under the
 // budget that shield-parry-r281-thin-entry-audit.test.js keeps - and that test says in as many
 // words that the next thing to hit it should move code out rather than move the number. So this is
@@ -20,6 +22,10 @@ export const LAB_EXPERIMENT_PARAMETERS_STAGE = 'R21V.1';
 export function readLabExperimentParameters(query) {
   const read = (key) => (typeof query?.get === 'function' ? query.get(key) : null);
   const sprint = resolveSprintSpeed(read('sprint'));
+  // R21Y.1: Running_A or Running_B. An unmeasured name resolves to the default rather than being
+  // taken on trust - a clip with no measured foot contact has no phase offset, and an unaligned
+  // overlay swings the arms against the feet.
+  const arms = resolveSprintArmClip(read('runclip'));
   return Object.freeze({
     stage: LAB_EXPERIMENT_PARAMETERS_STAGE,
     tempoScale: clampAttackTempoScale(read('tempo')),
@@ -30,6 +36,9 @@ export function readLabExperimentParameters(query) {
     sprintInsideBracket: sprint.insideBracket,
     sprintReason: sprint.reason,
     sprintBracketMps: SPRINT_SPEED_BRACKET_MPS,
+    sprintArmClipId: arms.clipId,
+    sprintArmClipReason: arms.reason,
+    sprintArmPhaseOffset: arms.phaseOffset,
     authority: 'playtest-parameters-only-no-contact-authority',
   });
 }
