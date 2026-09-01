@@ -60,11 +60,15 @@ test('R20W.2 the run takes over where this body stops walking, not where a key i
   assert.equal(walking.clipId, LANE_WALK_CLIPS.forward);
   assert.equal(walking.wholeBodyOnly, false);
 
+  // R21U.1: the threshold still means what it meant - the body is running above it - but the legs
+  // no longer change clip there. Running_A's 2.614m stride gives 1.15 steps/second at the sprint's
+  // 1.5 m/s, fewer than a walking person's two; Walking_B gives 2.67, which is a running cadence.
+  // The legs keep the clip whose timing is right and sprint-arm-overlay borrows the run's arms.
   const running = cycle.advance({ travelledMeters: (threshold + 0.1) * 0.1, deltaSeconds: 0.1 });
-  assert.equal(running.clipId, LANE_WALK_CLIPS.run);
-  assert.equal(running.cycleMeters, MEASURED_LOCOMOTION_CLIPS[LANE_WALK_CLIPS.run].strideMeters);
-  // A run is its own gait through the whole body, so it cannot be lent to a guard's legs alone.
-  assert.equal(running.wholeBodyOnly, true);
+  assert.equal(running.clipId, LANE_WALK_CLIPS.forward);
+  assert.equal(running.cycleMeters, MEASURED_LOCOMOTION_CLIPS[LANE_WALK_CLIPS.forward].strideMeters);
+  // Nothing the legs wear is whole-body-only now, because the run is not worn.
+  assert.equal(running.wholeBodyOnly, false);
 
   // Backing away has no run clip at any speed - KayKit ships none, and a locked retreat is a walk.
   const backingHard = cycle.advance({ travelledMeters: -3 * 0.1, deltaSeconds: 0.1 });
@@ -85,11 +89,12 @@ test('R20W.1 the gait names the clip it advanced against, and how hard it is bei
   assert.equal(walking.clipId, LANE_WALK_CLIPS.forward);
   assert.ok(Math.abs(walking.playbackRate - 1) < 0.06, `walking should run near as drawn, got ${walking.playbackRate}`);
 
-  // Sprint crosses into the run clip, and the stretch it costs is reported rather than hidden:
-  // Running_A is drawn for 3.27 m/s, so at 1.5 it plays at less than half speed.
+  // R21U.1: sprinting stays on the walk clip and the stretch it costs is still reported rather
+  // than hidden - 1.5 against Walking_B's authored 1.053 is 1.42x. That is the smaller distortion:
+  // the run at the same speed played at 0.46x, and a gait too slow reads far worse than one hurried.
   const sprinting = cycle.advance({ travelledMeters: SPRINT_SPEED_MPS * 0.1, deltaSeconds: 0.1 });
-  assert.equal(sprinting.clipId, LANE_WALK_CLIPS.run);
-  assert.ok(sprinting.playbackRate > 0.4 && sprinting.playbackRate < 0.5, `sprint runs at ${sprinting.playbackRate}`);
+  assert.equal(sprinting.clipId, LANE_WALK_CLIPS.forward);
+  assert.ok(sprinting.playbackRate > 1.35 && sprinting.playbackRate < 1.5, `sprint runs at ${sprinting.playbackRate}`);
 
   const standing = cycle.settle();
   assert.equal(standing.clipId, null, 'standing names no clip, which is the caller cue to idle');
