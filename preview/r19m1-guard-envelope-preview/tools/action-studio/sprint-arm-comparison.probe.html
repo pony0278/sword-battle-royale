@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Sprint arm comparison · R22A.1</title>
+<script src="/node_modules/three/build/three.min.js"></script>
+<script src="/node_modules/three/examples/js/loaders/GLTFLoader.js"></script>
+<style>body{margin:0;background:#090e16}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="canvas" width="420" height="560"></canvas>
+<div id="status" style="color:#9fb;font:12px monospace"></div>
+<script type="module">
+// R22A.1 - what the sprint's arms ACTUALLY are, rendered from one camera.
+//
+// Play report: "?runclip=Running_B does not look like KayKit's Running_B". That can mean two very
+// different things and arguing about it settles neither, so this renders the candidates from an
+// identical camera and pose-samples them the way the game does:
+//
+//   walk       Walking_B alone - what the legs and torso are, always
+//   run        the run clip alone, at the phase the overlay samples it
+//   blended    what the game puts on the rig: the walk, with six arm bones from the run
+//
+// If `blended` has `run`'s arms and `walk`'s everything-else, the overlay is doing exactly what it
+// says and the report is about the SCOPE (six bones) rather than about the clip.
+import { createProceduralKayKitCharacter } from '/src/character/procedural-kaykit-character.js';
+import { loadKayKitAnimationLibrary } from '/src/animation/kaykit-animation-library.js';
+import { blendSprintArms, sprintArmSamplePhase } from '/src/combat/sprint-arm-overlay.js';
+import { captureRigPose, applyRigPose } from '/src/combat/guard-recovery-bridge.js';
+
+const WALK = 'Walking_B';
+const params = new URLSearchParams(location.search);
+const RUN = params.get('runclip') || 'Running_A';
+const MODE = params.get('mode') || 'blended'; // walk | run | blended
+const PHASE = Number(params.get('phase') ?? 0.315); // the walk's left strike by default
+
+async function main() {
+  const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+  renderer.setPixelRatio(1);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x090e16);
+  // Straight from the side: arm swing is a sagittal motion, and a three-quarter view foreshortens
+  // exactly the thing being compared. Framed from the rig's own bounds AFTER posing, so every
+  // image in a comparison set is the same size and the same crop - a camera guessed once and left
+  // there put the first attempt half off the canvas.
+  const camera = new THREE.PerspectiveCamera(32, 420 / 560, 0.05, 100);
+  scene.add(new THREE.HemisphereLight(0xddeaff, 0x202738, 1.25));
+  const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(4, 7, 3); scene.add(key);
+  const rim = new THREE.DirectionalLight(0x7fe2cf, 0.55); rim.position.set(-4, 3, -4); scene.add(rim);
+  scene.add(new THREE.GridHelper(6, 12, 0x33445f, 0x202a3b));
+
+  const character = createProceduralKayKitCharacter(THREE, {});
+  scene.add(character.root ?? character.rig.root);
+  const library = await loadKayKitAnimationLibrary(new THREE.GLTFLoader(), { packIds: ['basic', 'advanced', 'general'] });
+  character.registerAnimations(library);
+
+  const walkDuration = character.getAnimationDuration(WALK);
+  const runDuration = character.getAnimationDuration(RUN);
+  if (!runDuration) throw new Error(`no such clip: ${RUN}`);
+
+  const sample = (clipId, seconds) => {
+    character.sampleAnimation(clipId, seconds, { loop: true, inPlace: true, rootRotationPolicy: 'lock' });
+    character.update(0, camera);
+    return captureRigPose(character.rig);
+  };
+
+  const runPhase = sprintArmSamplePhase(PHASE, RUN);
+  const runPose = sample(RUN, runPhase * runDuration);
+  const walkPose = sample(WALK, PHASE * walkDuration);
+  if (MODE === 'run') applyRigPose(character.rig, runPose);
+  else if (MODE === 'blended') applyRigPose(character.rig, blendSprintArms(walkPose, runPose, 1));
+  character.update(0, camera);
+
+  // Framed on the FIXED reference pose, not on this image's pose, so a wider arm swing does not
+  // quietly zoom the picture out and make two images incomparable.
+  const bounds = new THREE.Box3().setFromObject(character.root ?? character.rig.root);
+  const centre = bounds.getCenter(new THREE.Vector3());
+  const height = Math.max(bounds.max.y - bounds.min.y, 1.2);
+  const distance = (height * 1.35) / (2 * Math.tan((camera.fov * Math.PI / 180) / 2));
+  camera.position.set(centre.x + distance, centre.y, centre.z);
+  camera.lookAt(centre.x, centre.y, centre.z);
+  camera.updateMatrixWorld(true);
+  renderer.render(scene, camera);
+
+  // The numeric half: which source each bone's final rotation came from.
+  const finalPose = captureRigPose(character.rig);
+  const same = (a, b) => a && b && ['x', 'y', 'z', 'w'].every((k) => Math.abs(a.quaternion[k] - b.quaternion[k]) < 1e-6);
+  const provenance = {};
+  for (const bone of Object.keys(walkPose)) {
+    const isWalk = same(finalPose[bone], walkPose[bone]);
+    const isRun = same(finalPose[bone], runPose[bone]);
+    provenance[bone] = isWalk && isRun ? 'identical-in-both' : isRun ? RUN : isWalk ? WALK : 'neither';
+  }
+  // The arm's path over a whole cycle, in the sagittal plane, relative to the chest - because the
+  // question "is this the run's arm swing" is about the PATH, and a single frame cannot show it.
+  // Chest-relative so the trace is the arm's own motion rather than the body's travel.
+  const bone = (id) => character.rig.bones?.[id] || character.rig.root.getObjectByName(id);
+  const worldOf = (id) => {
+    character.rig.root.updateMatrixWorld(true);
+    const node = bone(id);
+    return node ? new THREE.Vector3().setFromMatrixPosition(node.matrixWorld) : null;
+  };
+  function blendAt(phase, alsoTake) {
+    character.sampleAnimation(RUN, sprintArmSamplePhase(phase, RUN) * runDuration, { loop: true, inPlace: true, rootRotationPolicy: 'lock' });
+    character.update(0, camera);
+    const rp = captureRigPose(character.rig);
+    character.sampleAnimation(WALK, phase * walkDuration, { loop: true, inPlace: true, rootRotationPolicy: 'lock' });
+    character.update(0, camera);
+    const blended = { ...blendSprintArms(captureRigPose(character.rig), rp, 1) };
+    for (const id of alsoTake) if (rp[id]) blended[id] = rp[id];
+    applyRigPose(character.rig, blended);
+  }
+
+  function tracePose(poseFor) {
+    const trace = [];
+    for (let i = 0; i < 72; i += 1) {
+      const phase = i / 72;
+      poseFor(phase);
+      character.update(0, camera);
+      const chest = worldOf('chest');
+      const out = { phase };
+      for (const id of ['upperarm.r', 'lowerarm.r', 'hand.r']) {
+        const p = worldOf(id);
+        out[id] = p && chest ? { forward: +(p.z - chest.z).toFixed(4), up: +(p.y - chest.y).toFixed(4) } : null;
+      }
+      trace.push(out);
+    }
+    return trace;
+  }
+  const traces = {
+    [WALK]: tracePose((phase) => character.sampleAnimation(WALK, phase * walkDuration, { loop: true, inPlace: true, rootRotationPolicy: 'lock' })),
+    [RUN]: tracePose((phase) => character.sampleAnimation(RUN, sprintArmSamplePhase(phase, RUN) * runDuration, { loop: true, inPlace: true, rootRotationPolicy: 'lock' })),
+    blended: tracePose((phase) => blendAt(phase, [])),
+    // R22A.1: the same blend, but also taking the torso the overlay currently excludes. The arm
+    // bones carry LOCAL rotations, so the hand's world path is the run's rotations hung on
+    // whatever spine and chest are underneath - and those stay the walk's. This measures how much
+    // of the run's actual arm path that costs.
+    blendedWithTorso: tracePose((phase) => blendAt(phase, ['spine', 'chest', 'head'])),
+  };
+  window.__SPRINT_ARM_COMPARISON__ = { mode: MODE, runClip: RUN, walkPhase: PHASE, runPhase, runDuration, walkDuration, provenance, traces };
+  document.getElementById('status').textContent = `${MODE} · ${RUN} @${runPhase.toFixed(3)}`;
+  document.documentElement.dataset.sprintArmComparison = 'done';
+}
+main().catch((error) => {
+  document.getElementById('status').textContent = `error: ${error?.message || error}`;
+  document.documentElement.dataset.sprintArmComparison = 'error';
+  window.__SPRINT_ARM_COMPARISON_ERROR__ = String(error?.stack || error);
+});
+</script>
+</body>
+</html>
