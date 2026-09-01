@@ -25,17 +25,29 @@ const NO_INSPECTION_CAMERA = Object.freeze({
   target: Object.freeze({ x: 0, y: 0, z: 0 }),
 });
 
-export function createShieldParryLabScene({
+// R22I.1 renamed this from createShieldParryLabScene.
+//
+// "Lab" named the caller, not the thing. This builds a renderer, a scene, a camera, three lights,
+// two fighters and the measured stance between them - that is the game's scene by any reading, and
+// the only reason it carried "Lab" is that the lab is the only entry that exists yet. Investigated
+// before renaming: nothing in src/ imports src/game at all, which is not evidence that this layer
+// is lab-only but that it sits on top of combat, character and animation - where a composition
+// layer belongs. The lab entry imports twelve modules from it; moving one to tools/ would have
+// left the other eleven behind.
+//
+// R20Z.4 had already removed the one real edge from the game into the lab by injecting the
+// inspection camera. This is the name that was left over from before that.
+export function createCombatScene({
   THREE,
   documentRef = document,
   windowRef = window,
   separationMeters = CALIBRATED_ENGAGEMENT_SEPARATION_METERS,
   createInspectionCamera = null,
 } = {}) {
-  if (!THREE?.WebGLRenderer) throw new Error('createShieldParryLabScene requires Three.js WebGLRenderer');
+  if (!THREE?.WebGLRenderer) throw new Error('createCombatScene requires Three.js WebGLRenderer');
 
   const canvas = documentRef.getElementById('canvas');
-  if (!canvas) throw new Error('Shield Parry Lab requires #canvas');
+  if (!canvas) throw new Error('createCombatScene requires a #canvas element');
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(windowRef.devicePixelRatio || 1, 1.5));

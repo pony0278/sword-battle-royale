@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createLabFrameClock } from '../src/game/frame-clock.js';
+import { createFrameClock } from '../src/game/frame-clock.js';
 
 // R20K.1 (B6e) - the golden grid stopped being a safety net because it answered the same question
 // differently on different runs: roughly one flipped cell per eleven-cell pass, wandering between
@@ -12,7 +12,7 @@ import { createLabFrameClock } from '../src/game/frame-clock.js';
 // under synthetic main-thread load that misses the block 4 times in 5 on the wall clock.
 
 test('R20K.1 the wall clock clamps a dropped frame instead of teleporting the sim', () => {
-  const clock = createLabFrameClock({ now: () => 0 });
+  const clock = createFrameClock({ now: () => 0 });
   assert.equal(clock.tick(16), 16);
   assert.equal(clock.tick(32), 16);
   assert.equal(clock.tick(500), 50, 'a long frame is worth at most the clamp');
@@ -23,7 +23,7 @@ test('R20K.1 the wall clock clamps a dropped frame instead of teleporting the si
 });
 
 test('R20K.1 a pinned step is worth the same sim time whatever the browser delivers', () => {
-  const clock = createLabFrameClock({ now: () => 0 });
+  const clock = createFrameClock({ now: () => 0 });
   clock.setFixedStep(1000 / 60);
   for (const timestamp of [16, 33, 900, 901, 5000]) {
     assert.equal(clock.tick(timestamp), 1000 / 60, 'a pinned frame ignores the wall entirely');
@@ -33,7 +33,7 @@ test('R20K.1 a pinned step is worth the same sim time whatever the browser deliv
 });
 
 test('R20K.1 hands the clock back to the wall on any non-positive pin', () => {
-  const clock = createLabFrameClock({ now: () => 0 });
+  const clock = createFrameClock({ now: () => 0 });
   clock.setFixedStep(20);
   assert.equal(clock.tick(1000), 20);
   for (const bad of [null, 0, -5, Number.NaN, undefined, 'fast']) {
@@ -45,7 +45,7 @@ test('R20K.1 hands the clock back to the wall on any non-positive pin', () => {
 
 test('R20K.1 keeps play on the wall clock and lets only a harness pin it', () => {
   const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-  assert.match(entry, /const frameClock = createLabFrameClock\(\);/);
+  assert.match(entry, /const frameClock = createFrameClock\(\);/);
   assert.match(entry, /const rawDeltaMs = frameClock\.tick\(timestamp\);/);
   // The entry may not keep its own timestamp any more, or the two clocks would drift apart.
   assert.doesNotMatch(entry, /\blet lastTimestamp\b/);
