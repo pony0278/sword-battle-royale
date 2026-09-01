@@ -126,6 +126,23 @@ export function maybeStartParryGateProbe({ api, windowRef, documentRef }) {
   // marginal (TOP connects ~50%, RIGHT's release occasionally degenerates) - a real finding, but
   // full-speed parry timing is a gameplay design decision, not something a CI gate should decide
   // by silently testing a condition nobody plays in yet.
+  // R23B.1: pin the step, the third and last of these probes to get it. R20K.1 wrote down why for
+  // the golden grid and R21Z.1 repeated it for the defence matrix; this one was noted as unpinned
+  // at the time and left, because it presses at the game's OWN prompt rather than at a named TTC
+  // and so is far less sensitive. Less is not none: its reported contact points wander run to run
+  // (top 0.93 to 0.94, left 0.10 to 0.17 across three consecutive runs of identical code), and it
+  // failed once here with top resolving to nothing at all - then passed twice on the same commit.
+  //
+  // A gate that answers the same question two ways is not a gate, and this one is about to become
+  // load-bearing for a mirror duel. Pinned, every wait below is still wall-clock - rAF fires in
+  // real time - but the SIM advances exactly 1/60 per frame, so the swing is sampled at the same
+  // phase every run.
+  if (typeof api.setFixedStepMs !== 'function') {
+    root.dataset.parryGate = 'fail';
+    root.dataset.parryGateFailures = 'R23B.1: lab has no pinned frame step; the gate would be unreproducible';
+    return true;
+  }
+  api.setFixedStepMs(1000 / 60);
   (async () => {
     const startedAt = windowRef.performance.now();
     root.dataset.parryGateT0 = String(Math.round(startedAt));
