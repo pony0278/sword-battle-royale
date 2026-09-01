@@ -86,7 +86,7 @@ import { createAttackerPresentationAdapter } from '../../src/game/attacker-prese
 import { createDirectOldB3DiagnosticController } from './shield-parry-r281/direct-old-b3-diagnostic.js';
 import { LANE_WALK_CLIPS, bootstrapShieldParryLabAssets } from '../../src/game/bootstrap.js';
 import { createNeutralStanceController } from '../../src/game/neutral-stance.js';
-import { createBodyStrikeReactionController } from '../../src/game/body-strike-reaction-controller.js';
+import { createFighter } from '../../src/game/fighter.js'; // R23A.1
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
 import { createFrameClock } from '../../src/game/frame-clock.js';
 import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-reporter.js';
@@ -125,15 +125,15 @@ let defenderSword = null;
 // carries the choice rather than the parsing, and so the tally can stamp both into its conditions.
 const EXPERIMENT = readLabExperimentParameters(DEBUG_QUERY);
 const attackRuntime = createLongswordDirectionalAttackRuntime({ tempoScale: EXPERIMENT.tempoScale });
-const guardMachine = createGuardStateMachine();
-const guardRuntime = createGuardPresentationRuntime(THREE, { machine: guardMachine, character: defender });
-const bracingRuntime = createArticulatedImpactBracingRuntime(THREE, { rig: defender.rig, buckler });
-const fineTrackingRuntime = createGuardThreatTrackingRuntime(THREE, { rig: defender.rig, buckler });
-const residualBodyReachRuntime = createGuardResidualBodyReachRuntime(THREE, { rig: defender.rig, buckler });
-const residualStanceReachRuntime = createGuardResidualStanceReachRuntime(THREE, { rig: defender.rig, buckler });
-const predictivePresentation = createPredictiveInterceptParryPresentationRuntime(THREE, { character: defender });
-const activeParryInterceptIntent = createActiveParryInterceptIntent();
-const parryGate = createCommittedParryContactGate();
+// R23A.1: one fighter, assembled in src/game rather than twelve consts here. Destructured so every
+// reader below is unchanged - this stage moves the assembly and must move nothing else, and the
+// golden grid is what says so. The second fighter is now one more call, not another twelve lines.
+const defenderFighter = createFighter(THREE, { character: defender, buckler, camera });
+const {
+  guardMachine, guardRuntime, bracingRuntime, fineTrackingRuntime, residualBodyReachRuntime,
+  residualStanceReachRuntime, predictivePresentation, activeParryInterceptIntent, parryGate,
+  stance: defenderStance, guardSector, neutralStance, bodyStrikeReaction,
+} = defenderFighter;
 const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
   // R21Y.1: which run lends the sprint its arms; ?runclip=, Running_A unless somebody says otherwise.
   labScene, walkClips: LANE_WALK_CLIPS, services: { captureRigPose, applyRigPose }, sprintArmClipId: EXPERIMENT.sprintArmClipId, wholeBodyRun: EXPERIMENT.wholeBodyRun, runPlaybackAuthored: EXPERIMENT.runPlaybackAuthored });
@@ -144,7 +144,6 @@ const playerController = createShieldParryPlayerController({ // R20S.3: feet, lo
 const exchangeState = createShieldParryExchangeState();
 // R20G.1 (B6c): defence is a choice - in block mode the guard (and the whole measured defence
 // behind it) exists only while the key is held; the machine follows this input, never auto-raises.
-const defenderStance = createDefenderStanceRuntime();
 let guardKeyHeld = false; let lateGuardRaise = false; // R20J.1 (B6d): raised before the swing, or into it?
 // R20H.2: an armed attempt still awaiting its contact, or the live deflect itself - what a released
 // key may not interrupt. Both end on their own; the deferred stand-down lands the frame after. The
@@ -181,10 +180,6 @@ function requestDodge(direction) {
   if (!defenderStance.mayDodge()) return Object.freeze({ accepted: false, reason: 'guard-refuses-the-dodge' });
   return laneController.tryDodge(direction);
 }
-const neutralStance = createNeutralStanceController({
-  defender, camera, readGuardState: () => guardMachine.state,
-});
-const bodyStrikeReaction = createBodyStrikeReactionController({ defender, camera }); // R19K.1
 
 const attackerPresentation = createAttackerPresentationAdapter({
   THREE,
@@ -238,7 +233,6 @@ const labUi = createShieldParryLabUi(uiElements);
 // R21A.2: the player's aim, and the widget that draws it. Nothing reads the sector to decide an
 // outcome yet - step one is that the direction exists and is visible, so a person can answer
 // whether it is readable in time before any rule is written against it.
-const guardSector = createGuardSectorRuntime();
 const guardSectorIndicator = createGuardSectorIndicator(document.getElementById('guardSector'));
 // R21C.2: counts what the attempts did, so a play test produces numbers rather than impressions.
 const parryTally = createParryAttemptTally({ conditions: () => ({ tempoScale: EXPERIMENT.tempoScale, slowReview: slowReview.checked, sprint: EXPERIMENT }) });
