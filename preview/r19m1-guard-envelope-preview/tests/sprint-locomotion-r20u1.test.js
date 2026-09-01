@@ -52,6 +52,19 @@ test('R22G.1 the bracket floor still binds; its ceiling was overturned on purpos
   assert.match(SPRINT_SPEED_PROVENANCE, /play/);
 });
 
+test('R22H.1 the deficit is answered four times harder, and that was played not derived', () => {
+  const d = MEASURED_DISENGAGE_DEFICIT;
+  // Moving the sprint 1.5 -> 3.0 took the runner's gain on a walking follower from 0.5 to 2.0.
+  assert.equal(d.sprintMetersPerSecondBeforeR22G1, 0.5);
+  assert.ok(Math.abs(d.sprintMetersPerSecond - 2.0) < 1e-9);
+  assert.ok(d.sprintMetersPerSecond / d.sprintMetersPerSecondBeforeR22G1 > 3.9);
+  // Nothing in this file justifies that ratio. What justifies it is that the fight was played at
+  // it - and the record says so, because R22G.1's own caveat said the opposite and went stale
+  // within a day. A caveat nobody retires sends the next reader hunting a risk that is gone.
+  assert.equal(d.playtested.locomotion, true);
+  assert.equal(d.playtested.combat, true);
+});
+
 test('R20U.1 it answers the deficit that justified it', () => {
   // Walking away loses ground and back-dodging loses more; running is the first verb that gains.
   assert.ok(MEASURED_DISENGAGE_DEFICIT.walkingBackwardMetersPerSecond < 0);
