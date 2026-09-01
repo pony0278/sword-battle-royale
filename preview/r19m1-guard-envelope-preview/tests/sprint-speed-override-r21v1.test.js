@@ -31,6 +31,9 @@ test('R21V.1 no override at all is the shipped seed, and absent is not zero', ()
     const resolved = resolveSprintSpeed(absent);
     assert.equal(resolved.speedMps, SPRINT_SPEED_MPS, `${JSON.stringify(absent)} must resolve to the seed`);
     assert.equal(resolved.reason, 'seed');
+    // R22G.1: and the bracket verdict is computed from the value rather than assumed true, which
+    // it was until the shipped speed moved past the ceiling.
+    assert.equal(resolved.insideBracket, SPRINT_SPEED_MPS <= SPRINT_SPEED_BRACKET_MPS.ceiling);
   }
   assert.equal(readLabExperimentParameters(new URLSearchParams('')).sprintSpeedMps, SPRINT_SPEED_MPS);
   assert.equal(readLabExperimentParameters(new URLSearchParams('sprint=')).sprintSpeedMps, SPRINT_SPEED_MPS);
@@ -75,7 +78,10 @@ test('R21V.1 the entry reads both dials from one module, and neither defaults to
   const plain = readLabExperimentParameters(new URLSearchParams(''));
   assert.equal(plain.tempoScale, 1, 'a plain URL is the exchange the golden grid recorded');
   assert.equal(plain.sprintSpeedMps, SPRINT_SPEED_MPS);
-  assert.equal(plain.sprintInsideBracket, true);
+  // R22G.1: a plain URL is the build, and the build's sprint is deliberately past the bracket's
+  // ceiling now - so "inside the bracket" is no longer the same statement as "not an experiment".
+  assert.equal(plain.sprintInsideBracket, SPRINT_SPEED_MPS <= SPRINT_SPEED_BRACKET_MPS.ceiling);
+  assert.equal(plain.sprintReason, 'seed', 'THIS is what says it is not an experiment');
   assert.match(plain.authority, /no-contact-authority/);
 
   const experiment = readLabExperimentParameters(new URLSearchParams('tempo=2&sprint=2.4'));
@@ -92,14 +98,14 @@ test('R21V.1 a tally taken under an override says so in its own header', () => {
     conditions: () => ({ tempoScale: 1, slowReview: false, sprint: readLabExperimentParameters(new URLSearchParams('')) }),
   });
   seed.record('top', { armed: true, directionMatched: true, withinWindow: true, sequence: 1 });
-  assert.match(seed.reportText, /^條件: 攻擊節奏 1\.0× · 無慢動作輔助 · 衝刺 1\.50 m\/s$/m);
-  assert.ok(!seed.reportText.includes('已超出量測區間'), 'the seed is not an override');
+  assert.match(seed.reportText, new RegExp(`^條件: 攻擊節奏 1\\.0× · 無慢動作輔助 · 衝刺 ${SPRINT_SPEED_MPS.toFixed(2)} m/s$`, 'm'));
+  assert.ok(!seed.reportText.includes('非預設'), 'the seed is not an override');
 
   const overridden = createParryAttemptTally({
     conditions: () => ({ tempoScale: 2, slowReview: false, sprint: readLabExperimentParameters(new URLSearchParams('sprint=2.4')) }),
   });
   overridden.record('top', { armed: true, directionMatched: true, withinWindow: true, sequence: 1 });
-  assert.match(overridden.reportText, /衝刺 2\.40 m\/s（已超出量測區間）/);
+  assert.match(overridden.reportText, /衝刺 2\.40 m\/s（非預設）/);
 });
 
 // The same harness R20U.1 runs its sprint against, so this measures ground covered rather than a

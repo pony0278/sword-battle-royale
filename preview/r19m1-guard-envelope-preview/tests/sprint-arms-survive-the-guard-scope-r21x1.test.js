@@ -41,7 +41,7 @@ const cameFrom = (entry) => {
   return 'blended-or-unknown';
 };
 
-function harness() {
+function harness(options = {}) {
   const applied = [];
   const bones = {};
   // A rig whose bones are named exactly as the two overlays name them, and whose "pose" is just
@@ -66,6 +66,10 @@ function harness() {
   const laneController = createShieldParryLaneController({
     labScene,
     walkClips: LANE_WALK_CLIPS,
+    // R22G.1: the arm overlay is the ?wholebody=0 path now. Its scope question is unchanged and
+    // still worth holding - a fighter who turns the whole-body run off must still get the arms.
+    wholeBodyRun: false,
+    ...options,
     services: {
       // Each clip stamps its own rotation on every bone, so which half of a blended pose came from
       // the run is readable off the quaternion. blendSprintUpperBody replaces ONLY the rotation - the
@@ -194,4 +198,30 @@ test('R22D.1 the pelvis lends its lean but never its bounce', () => {
   assert.deepEqual(blended.hips.scale, walk.hips.scale);
   assert.ok(Math.abs(blended.hips.quaternion.x - Math.SQRT1_2) < 1e-9, 'the lean is the run\'s');
   assert.ok(SPRINT_TORSO_OVERLAY_BONES.includes('hips'));
+});
+
+test('R22G.1 a whole-body run reaches the screen in parry mode too', () => {
+  // The R21X.1 bug from the other direction, and it shipped for a few minutes. That stage demoted
+  // "the guard owns the upper body" whenever the ARM WEIGHT was above zero, which was a sound
+  // proxy for "this body is running" while the overlay was the only way to run. Once R22G.1 gave
+  // the legs the run clip itself the weight is zero, the demotion stopped firing, and
+  // planWalkOverlay refused a whole-body clip outright: scope 'none', the sprint invisible in the
+  // mode the game is played in.
+  //
+  // Caught by the browser probe rather than by a test, which is the point of that probe - and this
+  // is the test that would have caught it.
+  const { laneController, applied } = harness({ wholeBodyRun: true, runPlaybackAuthored: true });
+  const step = SPRINT_SPEED_MPS / 60;
+  for (let i = 0; i < 20; i += 1) {
+    laneController.moveDefenderWorld(0, -step);
+    laneController.walk(1 / 60, null);
+  }
+  // guardOwnsUpperBody true is what parry mode passes on every frame.
+  const gate = laneController.sampleDefenderWalk(true, true);
+  assert.equal(laneController.defenderGait.wholeBodyOnly, true, 'the legs are wearing the run');
+  assert.equal(laneController.defenderSprintArmWeight, 0, 'so the overlay correctly borrows nothing');
+  assert.equal(gate.allowed, true, 'and the pose still has to reach the rig');
+  assert.equal(gate.scope, WALK_OVERLAY_SCOPES.WHOLE_BODY);
+  laneController.overlayDefenderWalkLegs();
+  assert.ok(applied.at(-1), 'a pose was applied at all');
 });

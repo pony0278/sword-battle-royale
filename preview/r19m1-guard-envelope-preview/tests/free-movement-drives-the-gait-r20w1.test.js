@@ -16,7 +16,8 @@ import { SPRINT_SPEED_MPS } from '../src/combat/sprint-locomotion.js';
 //
 // So these assert the join: the ground the ledger actually granted has to arrive at the feet.
 
-function harness(separationMeters = 2.4) {
+function harness(options = {}) {
+  const separationMeters = typeof options === 'number' ? options : (options.separationMeters ?? 2.4);
   const labScene = {
     engagementStance: { separationMeters },
     setLanePositions: () => {},
@@ -28,6 +29,7 @@ function harness(separationMeters = 2.4) {
     labScene,
     walkClips: LANE_WALK_CLIPS,
     services: { captureRigPose: () => null, applyRigPose: () => {} },
+    ...(typeof options === 'object' ? options : {}),
   });
   return laneController;
 }
@@ -59,20 +61,31 @@ test('R20W.1 the clip it plays is the one for the direction the body is travelli
   assert.equal(laneController.defenderGait.direction, -1);
 });
 
-test('R21U.1 sprinting keeps the walk clip, and its stride still comes with it', () => {
-  // This asserted the opposite until R21U.1: sprinting used to cross into Running_A. It came back
-  // at 1.15 steps per second - fewer than a WALKING person's two - because that clip's stride is
-  // 2.614m and no speed inside this game's ceiling of 1.62 m/s redeems it.
-  const laneController = harness();
+test('R22G.1 sprinting wears the run, and R21U.1 without it the walk keeps its stride', () => {
+  // R21U.1 took the legs off the run because at 1.5 m/s it came back at 1.15 steps per second,
+  // fewer than a WALKING person's two. R22G.1 put them back, having moved the speed that made that
+  // true: at 3.0 m/s, played at the rate it was drawn at, the run reads as running. Both halves are
+  // still here because both are still reachable, and the second is what the first is measured
+  // against.
+  const running = harness();
   const step = SPRINT_SPEED_MPS / 60;
-  for (let i = 0; i < 30; i += 1) frame(laneController, { dz: -step });
-  const gait = laneController.defenderGait;
+  for (let i = 0; i < 30; i += 1) frame(running, { dz: -step });
+  const sprint = running.defenderGait;
+  assert.equal(sprint.clipId, LANE_WALK_CLIPS.run);
+  assert.equal(sprint.playbackRate, 1, 'the run plays as drawn - that is what shipping R22F.1 means');
+  assert.ok(sprint.footSlideMetersPerSecond > 0, 'and the feet slide, which is the price');
+
+  // ?wholebody=0: the pre-R22E.1 gait, exactly. Fifteen frames, not thirty: at 3.0 m/s thirty
+  // would cover 1.5m and run the defender into the 0.9m contact floor, and ground the ledger
+  // refuses is ground the feet correctly do not get - which would make this a test of the clamp.
+  const walking = harness({ wholeBodyRun: false });
+  for (let i = 0; i < 15; i += 1) frame(walking, { dz: -step });
+  const gait = walking.defenderGait;
   assert.equal(gait.clipId, LANE_WALK_CLIPS.forward);
-  assert.ok(gait.playbackRate > 1.35 && gait.playbackRate < 1.5, `sprint plays at ${gait.playbackRate}`);
-  // Distance-driven, so the stride still lands where the ground did: no slide at any speed.
-  const cycles = gait.phase;
-  const travelled = (SPRINT_SPEED_MPS / 60) * 30;
-  assert.ok(Math.abs(cycles - travelled / gait.cycleMeters) < 1e-6, 'phase is the ground, divided by the stride');
+  assert.equal(gait.footSlideMetersPerSecond, 0, 'distance-driven, so no slide at any speed');
+  // Phase is the ground divided by the stride, which is what "the foot stays put" means.
+  const travelled = step * 15;
+  assert.ok(Math.abs(gait.phase - travelled / gait.cycleMeters) < 1e-6, 'phase is the ground, divided by the stride');
 });
 
 test('R20X.1 a sidestep turns the stride instead of sliding or standing still', () => {

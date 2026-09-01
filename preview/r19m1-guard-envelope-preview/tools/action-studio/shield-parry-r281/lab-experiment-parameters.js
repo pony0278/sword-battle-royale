@@ -33,12 +33,14 @@ export function readLabExperimentParameters(query) {
   // R21U.1 undid. Off unless asked for, and asked for only to be looked at: at the shipped 1.5 m/s
   // the run's stride gives it 0.52 steps per second against a walking person's two, so it plays at
   // a fifth speed. The switch exists because that is easier to believe once seen.
-  const wholeBodyRun = read('wholebody') === '1';
+  // R22G.1: these ship on now, so the switch reads the other way - ?wholebody=0 and ?footslide=0
+  // restore the pre-R22E.1 gait exactly. Anything else, including absent, is the build.
+  const wholeBodyRun = read('wholebody') !== '0';
   // R22F.1: play the run at the rate it was DRAWN at instead of driving it by distance, so the
   // pose and cadence are exactly the clip's - and the feet slide by the difference between the
   // clip's authored speed and the game's. Only meaningful with ?wholebody=1, since without it the
   // legs are not wearing the run at all.
-  const runPlaybackAuthored = wholeBodyRun && read('footslide') === '1';
+  const runPlaybackAuthored = wholeBodyRun && read('footslide') !== '0';
   return Object.freeze({
     stage: LAB_EXPERIMENT_PARAMETERS_STAGE,
     tempoScale: clampAttackTempoScale(read('tempo')),

@@ -62,9 +62,13 @@ test('R21U.1 the weight ramps instead of switching', () => {
   assert.equal(SPRINT_ARM_RAMP_MPS.full, SPRINT_SPEED_MPS);
   assert.equal(sprintArmWeight(LANE_LOCOMOTION_PROFILE.forwardSpeedMps), 0, 'a walk borrows nothing');
   assert.equal(sprintArmWeight(SPRINT_SPEED_MPS), 1, 'a sprint borrows all of it');
-  assert.ok(sprintArmWeight(1.43) > 0.4 && sprintArmWeight(1.43) < 0.6, 'and half way is half way');
+  // Half way between the two ends, whatever the sprint speed happens to be - computed rather than
+  // written down, so R22G.1 moving the sprint from 1.5 to 3.0 moves this with it instead of
+  // breaking it. (It broke it: the literal 1.43 was the midpoint of the old ramp.)
+  const midpoint = (SPRINT_ARM_RAMP_MPS.begin + SPRINT_ARM_RAMP_MPS.full) / 2;
+  assert.ok(sprintArmWeight(midpoint) > 0.45 && sprintArmWeight(midpoint) < 0.55, 'and half way is half way');
   // Past the sprint it saturates rather than overshooting into an extrapolated pose.
-  assert.equal(sprintArmWeight(3), 1);
+  assert.equal(sprintArmWeight(SPRINT_SPEED_MPS * 2), 1);
   assert.equal(sprintArmWeight('nonsense'), 0);
 });
 
@@ -103,8 +107,10 @@ test('R21U.1 blending is rotation only, and takes the short way round', () => {
   assert.ok(blendSprintUpperBody(walk, flipped, 0.5)['upperarm.l'].quaternion.y > 0);
 });
 
-test('R21U.1 the legs no longer change clip, so there is no cut left to smooth', () => {
-  const cycle = createLaneWalkCycle();
+test('R21U.1 with the whole-body run off, the legs never change clip', () => {
+  // R22G.1 ships the legs wearing the run again, so this is now a claim about ?wholebody=0 - the
+  // path the arm overlay exists for, and the one this stage built.
+  const cycle = createLaneWalkCycle({ wholeBodyRun: false });
   const sprinting = cycle.advance({ travelledMeters: SPRINT_SPEED_MPS * 0.1, deltaSeconds: 0.1 });
   assert.equal(sprinting.clipId, LANE_WALK_CLIPS.forward, 'the walk keeps the legs at any forward speed');
   assert.equal(sprinting.wholeBodyOnly, false);

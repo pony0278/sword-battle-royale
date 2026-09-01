@@ -60,15 +60,22 @@ test('R20W.2 the run takes over where this body stops walking, not where a key i
   assert.equal(walking.clipId, LANE_WALK_CLIPS.forward);
   assert.equal(walking.wholeBodyOnly, false);
 
-  // R21U.1: the threshold still means what it meant - the body is running above it - but the legs
-  // no longer change clip there. Running_A's 2.614m stride gives 1.15 steps/second at the sprint's
-  // 1.5 m/s, fewer than a walking person's two; Walking_B gives 2.67, which is a running cadence.
-  // The legs keep the clip whose timing is right and sprint-arm-overlay borrows the run's arms.
+  // R22G.1: above the threshold the legs take the run again, as R20W.2 had it. R21U.1 had taken
+  // them off because at the then-sprint of 1.5 m/s the run came back at 1.15 steps/second - fewer
+  // than a walking person's two - and what changed is not that argument but the speed underneath
+  // it: 3.0 m/s, played at the rate the clip was drawn at.
   const running = cycle.advance({ travelledMeters: (threshold + 0.1) * 0.1, deltaSeconds: 0.1 });
-  assert.equal(running.clipId, LANE_WALK_CLIPS.forward);
-  assert.equal(running.cycleMeters, MEASURED_LOCOMOTION_CLIPS[LANE_WALK_CLIPS.forward].strideMeters);
-  // Nothing the legs wear is whole-body-only now, because the run is not worn.
-  assert.equal(running.wholeBodyOnly, false);
+  assert.equal(running.clipId, LANE_WALK_CLIPS.run);
+  assert.equal(running.cycleMeters, MEASURED_LOCOMOTION_CLIPS[LANE_WALK_CLIPS.run].strideMeters);
+  // A run is a whole-body clip and the gait says so, which is what stops it being lent to a
+  // guarding fighter's legs.
+  assert.equal(running.wholeBodyOnly, true);
+
+  // R21U.1's world is still one switch away, and the threshold means the same thing in it.
+  const overlayOnly = createLaneWalkCycle({ wholeBodyRun: false });
+  const stillWalking = overlayOnly.advance({ travelledMeters: (threshold + 0.1) * 0.1, deltaSeconds: 0.1 });
+  assert.equal(stillWalking.clipId, LANE_WALK_CLIPS.forward);
+  assert.equal(stillWalking.wholeBodyOnly, false);
 
   // Backing away has no run clip at any speed - KayKit ships none, and a locked retreat is a walk.
   const backingHard = cycle.advance({ travelledMeters: -3 * 0.1, deltaSeconds: 0.1 });
@@ -89,12 +96,20 @@ test('R20W.1 the gait names the clip it advanced against, and how hard it is bei
   assert.equal(walking.clipId, LANE_WALK_CLIPS.forward);
   assert.ok(Math.abs(walking.playbackRate - 1) < 0.06, `walking should run near as drawn, got ${walking.playbackRate}`);
 
-  // R21U.1: sprinting stays on the walk clip and the stretch it costs is still reported rather
-  // than hidden - 1.5 against Walking_B's authored 1.053 is 1.42x. That is the smaller distortion:
-  // the run at the same speed played at 0.46x, and a gait too slow reads far worse than one hurried.
+  // R22G.1: sprinting wears the run at the rate it was drawn at, so the stretch is 1.00 by
+  // construction and what is reported instead is the foot slide it costs.
   const sprinting = cycle.advance({ travelledMeters: SPRINT_SPEED_MPS * 0.1, deltaSeconds: 0.1 });
-  assert.equal(sprinting.clipId, LANE_WALK_CLIPS.forward);
-  assert.ok(sprinting.playbackRate > 1.35 && sprinting.playbackRate < 1.5, `sprint runs at ${sprinting.playbackRate}`);
+  assert.equal(sprinting.clipId, LANE_WALK_CLIPS.run);
+  assert.equal(sprinting.playbackRate, 1);
+  assert.ok(sprinting.footSlideMetersPerSecond > 1, `the price is ${sprinting.footSlideMetersPerSecond} m/s`);
+
+  // Without the switch, the walk keeps the legs and reports its own stretch instead - 3.0 against
+  // Walking_B's authored 1.053. Reported rather than hidden, exactly as R20W.1 wrote it.
+  const overlayOnly = createLaneWalkCycle({ wholeBodyRun: false });
+  const stretched = overlayOnly.advance({ travelledMeters: SPRINT_SPEED_MPS * 0.1, deltaSeconds: 0.1 });
+  assert.equal(stretched.clipId, LANE_WALK_CLIPS.forward);
+  assert.ok(stretched.playbackRate > 2.5, `the walk would have to run at ${stretched.playbackRate.toFixed(2)}x`);
+  assert.equal(stretched.footSlideMetersPerSecond, 0);
 
   const standing = cycle.settle();
   assert.equal(standing.clipId, null, 'standing names no clip, which is the caller cue to idle');

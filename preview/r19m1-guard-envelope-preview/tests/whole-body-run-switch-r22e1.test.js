@@ -18,17 +18,27 @@ import { readLabExperimentParameters } from '../tools/action-studio/shield-parry
 
 const cadenceAt = (clipId, speed) => (speed / Math.abs(MEASURED_LOCOMOTION_CLIPS[clipId].strideMeters)) * 2;
 
-test('R22E.1 off by default, and off is exactly what shipped', () => {
+test('R22G.1 ON by default now, and ?wholebody=0 restores the old gait exactly', () => {
+  // R22E.1 built this as an experiment switch, default off, and said "nothing ships with this on".
+  // The experiment came back and it ships. The switch reversed rather than disappeared, so the
+  // gait R21U.1 argued for is still one parameter away and still tested.
   const cycle = createLaneWalkCycle();
   const sprinting = cycle.advance({ travelledMeters: SPRINT_SPEED_MPS * 0.1, deltaSeconds: 0.1 });
-  assert.equal(sprinting.clipId, LANE_WALK_CLIPS.forward);
-  assert.equal(sprinting.wholeBodyOnly, false);
-  assert.equal(readLabExperimentParameters(new URLSearchParams('')).wholeBodyRun, false);
-  // Only the exact string turns it on - a stray ?wholebody=0 or ?wholebody must not.
-  for (const q of ['wholebody=0', 'wholebody', 'wholebody=true', 'wholebody=yes']) {
-    assert.equal(readLabExperimentParameters(new URLSearchParams(q)).wholeBodyRun, false, q);
+  assert.equal(sprinting.clipId, LANE_WALK_CLIPS.run);
+  assert.equal(sprinting.wholeBodyOnly, true);
+  assert.equal(readLabExperimentParameters(new URLSearchParams('')).wholeBodyRun, true);
+
+  const off = createLaneWalkCycle({ wholeBodyRun: false });
+  const walking = off.advance({ travelledMeters: SPRINT_SPEED_MPS * 0.1, deltaSeconds: 0.1 });
+  assert.equal(walking.clipId, LANE_WALK_CLIPS.forward);
+  assert.equal(walking.wholeBodyOnly, false);
+
+  // Only the exact string turns it OFF, which is the same discipline the other way round: a
+  // mistyped parameter must not silently give somebody a different build than they think.
+  assert.equal(readLabExperimentParameters(new URLSearchParams('wholebody=0')).wholeBodyRun, false);
+  for (const q of ['wholebody=1', 'wholebody', 'wholebody=false', 'wholebody=no']) {
+    assert.equal(readLabExperimentParameters(new URLSearchParams(q)).wholeBodyRun, true, q);
   }
-  assert.equal(readLabExperimentParameters(new URLSearchParams('wholebody=1')).wholeBodyRun, true);
 });
 
 test('R22E.1 on, the legs take the run above the measured transition and nowhere below it', () => {
@@ -48,16 +58,17 @@ test('R22E.1 on, the legs take the run above the measured transition and nowhere
   assert.equal(cycle.advance({ travelledMeters: -3 * 0.1, deltaSeconds: 0.1 }).clipId, LANE_WALK_CLIPS.backward);
 });
 
-test('R22E.1 what the switch actually shows: the cadence it is turned on to look at', () => {
-  // The answer to "why not", as the number the eye will see. Distance-driven, so this is forced by
-  // the stride and no code choice can move it - only the ground speed can.
-  const cycle = createLaneWalkCycle({ wholeBodyRun: true });
+test('R22E.1 what distance-driving the run costs, which is why the clock drives it instead', () => {
+  // The answer to "why not just wear it", as the number the eye saw. Distance-driven, the stride
+  // forces the cadence and no code choice can move it - only the ground speed can, and not enough.
+  const cycle = createLaneWalkCycle({ wholeBodyRun: true, runPlaybackAuthored: false });
   const sprinting = cycle.advance({ travelledMeters: SPRINT_SPEED_MPS * 0.1, deltaSeconds: 0.1 });
-  assert.ok(sprinting.playbackRate < 0.25, `the run plays at ${sprinting.playbackRate.toFixed(2)}x at the sprint`);
-  assert.ok(cadenceAt(LANE_WALK_CLIPS.run, SPRINT_SPEED_MPS) < 1, 'under one step per second');
-  // The walk, at the same speed, is a running cadence. That is the whole reason R21U.1 kept it.
-  assert.ok(cadenceAt(LANE_WALK_CLIPS.forward, SPRINT_SPEED_MPS) > 2.5);
-  // And there is no speed inside the sprint dial that redeems it.
+  assert.ok(sprinting.playbackRate < 0.5, `the run would play at ${sprinting.playbackRate.toFixed(2)}x`);
+  assert.ok(cadenceAt(LANE_WALK_CLIPS.run, SPRINT_SPEED_MPS) < 1.1, 'barely one step per second');
+  // The walk, at the same speed, is well past a running cadence - which is why R21U.1 kept it, and
+  // also why keeping it meant a 2.85x stretch once the speed moved.
+  assert.ok(cadenceAt(LANE_WALK_CLIPS.forward, SPRINT_SPEED_MPS) > 4);
+  // No speed the dial reaches redeems the run under distance-driving. Hence R22F.1.
   assert.ok(cadenceAt(LANE_WALK_CLIPS.run, 3) < 1.1, 'not even at the dial ceiling');
 });
 
@@ -86,27 +97,40 @@ test('R22F.1 the authored rate is exactly the clip, and the slide is the differe
   assert.ok(cycle.phase !== before);
 });
 
-test('R22F.1 walking never takes it, and neither does the shipped build', () => {
-  const cycle = createLaneWalkCycle({ wholeBodyRun: true, runPlaybackAuthored: true });
-  const walking = cycle.advance({ travelledMeters: LANE_LOCOMOTION_PROFILE.forwardSpeedMps * 0.1, deltaSeconds: 0.1 });
-  assert.equal(walking.clipId, LANE_WALK_CLIPS.forward);
-  assert.equal(walking.footSlideMetersPerSecond, 0, 'a walk is distance-driven at every speed');
-  assert.ok(Math.abs(walking.playbackRate - 1.42) > 0.3, 'and keeps its own stretch, not a forced 1.0');
+test('R22F.1 walking never takes it, at any speed and in any configuration', () => {
+  // The slide is the run's alone. A walk stays distance-driven, so the foot a walking fighter
+  // plants stays planted - which every coverage band in this project was measured on.
+  for (const opts of [{}, { wholeBodyRun: false }, { wholeBodyRun: true, runPlaybackAuthored: false }]) {
+    const cycle = createLaneWalkCycle(opts);
+    const walking = cycle.advance({ travelledMeters: LANE_LOCOMOTION_PROFILE.forwardSpeedMps * 0.1, deltaSeconds: 0.1 });
+    assert.equal(walking.clipId, LANE_WALK_CLIPS.forward, JSON.stringify(opts));
+    assert.equal(walking.footSlideMetersPerSecond, 0, 'a walk is distance-driven at every speed');
+    assert.ok(Math.abs(walking.playbackRate - 1) < 0.06, 'and plays about as drawn, since it is at its own speed');
+  }
 
-  // Every shipping configuration slides zero, and that is asserted rather than assumed.
-  for (const opts of [{}, { wholeBodyRun: true }]) {
-    const shipped = createLaneWalkCycle(opts);
-    const sprinting = shipped.advance({ travelledMeters: SPRINT_SPEED_MPS * 0.1, deltaSeconds: 0.1 });
-    assert.equal(sprinting.footSlideMetersPerSecond, 0);
+  // R22G.1: the shipped sprint DOES slide, deliberately, and that is asserted rather than left to
+  // be discovered - it is the trade the whole stage is.
+  const shipped = createLaneWalkCycle();
+  const sprinting = shipped.advance({ travelledMeters: SPRINT_SPEED_MPS * 0.1, deltaSeconds: 0.1 });
+  assert.ok(sprinting.footSlideMetersPerSecond > 1, `the shipped sprint slides ${sprinting.footSlideMetersPerSecond}`);
+  // Turning either switch off takes the slide back to zero.
+  for (const opts of [{ wholeBodyRun: false }, { runPlaybackAuthored: false }]) {
+    const locked = createLaneWalkCycle(opts);
+    assert.equal(locked.advance({ travelledMeters: SPRINT_SPEED_MPS * 0.1, deltaSeconds: 0.1 }).footSlideMetersPerSecond, 0);
   }
 });
 
-test('R22F.1 it needs BOTH switches, so a stray one cannot quietly unlock the feet', () => {
-  // ?footslide= alone means nothing: without ?wholebody=1 the legs are not wearing the run at all.
-  assert.equal(readLabExperimentParameters(new URLSearchParams('footslide=1')).runPlaybackAuthored, false);
-  assert.equal(readLabExperimentParameters(new URLSearchParams('wholebody=1')).runPlaybackAuthored, false);
-  assert.equal(readLabExperimentParameters(new URLSearchParams('wholebody=1&footslide=1')).runPlaybackAuthored, true);
-  for (const q of ['wholebody=1&footslide=0', 'wholebody=1&footslide', 'wholebody=1&footslide=true']) {
-    assert.equal(readLabExperimentParameters(new URLSearchParams(q)).runPlaybackAuthored, false, q);
+test('R22G.1 either switch alone locks the feet again, and both directions are exact', () => {
+  // Shipped: both on.
+  assert.equal(readLabExperimentParameters(new URLSearchParams('')).runPlaybackAuthored, true);
+  // ?footslide=0 locks the feet but keeps the run on the legs - the R22E.1 configuration.
+  assert.equal(readLabExperimentParameters(new URLSearchParams('footslide=0')).runPlaybackAuthored, false);
+  assert.equal(readLabExperimentParameters(new URLSearchParams('footslide=0')).wholeBodyRun, true);
+  // ?wholebody=0 takes the run off the legs entirely, so the playback question is moot and false.
+  assert.equal(readLabExperimentParameters(new URLSearchParams('wholebody=0')).runPlaybackAuthored, false);
+  // Anything that is not exactly '0' leaves the build alone, so a typo cannot hand somebody a
+  // different gait than the one they think they are looking at.
+  for (const q of ['footslide=1', 'footslide', 'footslide=false', 'footslide=no']) {
+    assert.equal(readLabExperimentParameters(new URLSearchParams(q)).runPlaybackAuthored, true, q);
   }
 });

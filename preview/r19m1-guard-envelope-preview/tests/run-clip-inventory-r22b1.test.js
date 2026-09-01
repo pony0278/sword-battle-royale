@@ -26,26 +26,36 @@ test('R22B.1 the pack holds no jog: every forward run is drawn for 3 m/s or more
   assert.ok(Math.abs(MEASURED_LOCOMOTION_CLIPS.Walking_B.authoredSpeedMps) < 1.1, 'and the walk is a walk');
 });
 
-test('R22B.1 at the shipped sprint speed a whole run clip is slower than walking', () => {
-  // This is the slow motion, and it is arithmetic rather than taste: the stride sets the cadence.
-  assert.ok(cadence('Running_A', SPRINT_SPEED_MPS) < A_WALKING_PERSON,
-    `Running_A manages ${cadence('Running_A', SPRINT_SPEED_MPS).toFixed(2)} steps/s at the sprint`);
-  assert.ok(cadence('Running_B', SPRINT_SPEED_MPS) < cadence('Running_A', SPRINT_SPEED_MPS),
+const OLD_SPRINT_MPS = 1.5; // what shipped before R22G.1, and what this arithmetic was taken at
+
+test('R22B.1 at 1.5 m/s a DISTANCE-DRIVEN run clip is slower than walking', () => {
+  // The slow motion, and arithmetic rather than taste: driven by distance, the stride sets the
+  // cadence. This is what made R21U.1 take the legs off the run, and it is still true at 1.5 -
+  // R22G.1 did not refute it, it moved the speed and stopped driving the run by distance.
+  assert.ok(cadence('Running_A', OLD_SPRINT_MPS) < A_WALKING_PERSON,
+    `Running_A manages ${cadence('Running_A', OLD_SPRINT_MPS).toFixed(2)} steps/s at 1.5`);
+  assert.ok(cadence('Running_B', OLD_SPRINT_MPS) < cadence('Running_A', OLD_SPRINT_MPS),
     'and the longer stride is worse, not better');
-  // Which is why the legs keep the walk: at the same speed it is a running cadence.
-  assert.ok(cadence('Walking_B', SPRINT_SPEED_MPS) > A_WALKING_PERSON * 1.3);
+  // Which is why the legs kept the walk at that speed: it is a running cadence there.
+  assert.ok(cadence('Walking_B', OLD_SPRINT_MPS) > A_WALKING_PERSON * 1.3);
+
+  // R22G.1 ships neither of those two ways out. The run is driven by the CLOCK now, so its cadence
+  // is the clip's own 2.5 steps/s at any ground speed, and what varies instead is the foot slide.
+  assert.ok(Math.abs(2 / MEASURED_LOCOMOTION_CLIPS.Running_B.durationSeconds - 2.5) < 0.01);
 });
 
-test('R22B.1 Running_A becomes honest inside the dial; Running_B does not', () => {
-  // The one combination in this pack that is both a real run animation and slide-free.
+test('R22B.1 driven by distance, only Running_A ever becomes honest inside the dial', () => {
+  // The alternative R22G.1 did not take: keep the feet locked and raise the speed until the clip
+  // is honest. Running_A gets there at the dial's ceiling; Running_B never does, which is why
+  // shipping Running_B meant unlocking the feet rather than raising the speed further.
   const top = SPRINT_SPEED_OVERRIDE_RANGE_MPS.maximum;
   assert.ok(cadence('Running_A', top) > A_WALKING_PERSON,
     `Running_A at the dial's ceiling gives ${cadence('Running_A', top).toFixed(2)} steps/s`);
   assert.ok(cadence('Running_B', top) < A_WALKING_PERSON,
     'Running_B needs a speed no dial here reaches');
-  // Its authored speed is 4.8x the sprint's even on the disputed low fit.
+  // Its authored speed is more than twice the shipped sprint even on the disputed low fit.
   const low = MEASURED_LOCOMOTION_CLIPS.Running_B.disputedSecondFitMps;
-  assert.ok(low / SPRINT_SPEED_MPS > 3);
+  assert.ok(low / SPRINT_SPEED_MPS > 1.5);
 });
 
 test('R22B.1 Running_B authored speed is the one disputed number, and says so', () => {

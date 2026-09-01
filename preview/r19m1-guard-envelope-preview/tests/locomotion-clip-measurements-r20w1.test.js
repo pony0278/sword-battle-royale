@@ -45,27 +45,38 @@ test('R20W.1 the assumption it replaced is kept as the size of the error', () =>
   assert.ok(REPLACED_STRIDE_ASSUMPTION.measuredStepPerLegLengthWalkingB > 1.4);
 });
 
-test('R20W.1 sprint sits above the walk-to-run transition and below the clip crossover', () => {
-  // Both numbers are derived, not chosen. The first is where this body stops walking (Froude 0.5
-  // on its own leg); the second is where the run clip becomes less stretched than the walk clip.
+test('R22G.1 sprint now sits above BOTH derived speeds, which is why the run took the legs back', () => {
+  // Both numbers are derived, not chosen, and neither moved. The first is where this body stops
+  // walking (Froude 0.5 on its own leg); the second is where the run clip becomes less stretched
+  // than the walk clip - the geometric mean of what the two were authored for.
   assert.ok(Math.abs(WALK_TO_RUN_TRANSITION.biomechanicalTransitionMps - 1.359) < 0.01);
   assert.ok(Math.abs(WALK_TO_RUN_TRANSITION.leastStretchCrossoverMps - 1.855) < 0.01);
   assert.ok(SPRINT_SPEED_MPS > WALK_TO_RUN_TRANSITION.biomechanicalTransitionMps,
     'at sprint speed this body is running');
-  assert.ok(SPRINT_SPEED_MPS < WALK_TO_RUN_TRANSITION.leastStretchCrossoverMps,
-    'and the run clip is still the worse of the two to play');
+  // This assertion was the other way round until R22G.1, and the flip is the whole story: at
+  // 1.5 m/s the sprint sat BELOW the crossover, so R20W.2 kept the walk clip. At 3.0 it is above
+  // it, so wearing the run is this same measurement read at the new speed - not a rule set aside.
+  assert.ok(SPRINT_SPEED_MPS > WALK_TO_RUN_TRANSITION.leastStretchCrossoverMps,
+    'and the run clip is now the better of the two to play');
   assert.equal(WALK_TO_RUN_TRANSITION.sprintSpeedMps, SPRINT_SPEED_MPS);
+  assert.match(WALK_TO_RUN_TRANSITION.decision, /wears-the-run-clip/);
+  // The superseded decision is kept with the speed that made it true, not deleted.
+  assert.equal(WALK_TO_RUN_TRANSITION.supersededDecision.atSprintMps, 1.5);
+  assert.match(WALK_TO_RUN_TRANSITION.supersededDecision.was, /keeps-the-walk-clip/);
 });
 
-test('R20W.1 what each speed costs the clip that plays it', () => {
+test('R22G.1 what each speed costs the clip that plays it, and which is cheaper now', () => {
   const walk = clipPlaybackRate('Walking_B', LANE_LOCOMOTION_PROFILE.forwardSpeedMps);
   const sprintOnWalk = clipPlaybackRate('Walking_B', SPRINT_SPEED_MPS);
   const sprintOnRun = clipPlaybackRate('Running_A', SPRINT_SPEED_MPS);
   assert.ok(Math.abs(walk - 1) < 0.06, `walking runs at ${walk.toFixed(2)}x`);
-  assert.ok(sprintOnWalk > 1.4 && sprintOnWalk < 1.45, `sprint on the walk clip runs at ${sprintOnWalk.toFixed(2)}x`);
-  assert.ok(sprintOnRun < 0.5, `sprint on the run clip would run at ${sprintOnRun.toFixed(2)}x`);
-  // The choice, stated as the comparison that made it: the walk is stretched less than the run.
-  assert.ok(Math.abs(sprintOnWalk - 1) < Math.abs(sprintOnRun - 1));
+  // At 1.5 these read 1.42x and 0.46x and the walk won. At 3.0 they are 2.85x and 0.92x.
+  assert.ok(sprintOnWalk > 2.8, `sprint on the walk clip would run at ${sprintOnWalk.toFixed(2)}x`);
+  assert.ok(sprintOnRun > 0.85 && sprintOnRun < 1.05, `sprint on the run clip runs at ${sprintOnRun.toFixed(2)}x`);
+  // The comparison that made the old choice, taken again at the new speed and coming out the other
+  // way. Nothing about the method changed; the speed under it did.
+  assert.ok(Math.abs(sprintOnRun - 1) < Math.abs(sprintOnWalk - 1),
+    'the run is now the less distorted clip, which is the whole basis for wearing it');
 });
 
 test('R20W.1 the sidestep has no clip at any speed, and the numbers say why', () => {
