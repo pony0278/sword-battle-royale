@@ -80,7 +80,13 @@ function census() {
 // that drift apart is a fairness bug no eye would catch. There is no behavioural version - the
 // scene needs a WebGL canvas. A raise with its reason attached is what this ratchet is for; a raise
 // without one is the thing it exists to stop.
-const BASELINE = Object.freeze({ total: 1164, srcText: 360, toolsText: 639, html: 157, absence: 144 });
+// R23C.1 lowered srcText by 8 and total by 8, which is the direction this ratchet wants. Two
+// tests went red for a refactor that moved no behaviour - a facing freeze gained a subject, a feet
+// gate gained a second reason to hold - and both were rewritten to DRIVE the claim instead of
+// grepping for it: the freeze is now shown by a facing that refuses to chase while the other one
+// chases, and "a dodge owns the feet" by a held walk key taking a zero step. Both were checked
+// against a deliberately broken lane controller first, so they bite.
+const BASELINE = Object.freeze({ total: 1156, srcText: 352, toolsText: 639, html: 157, absence: 144 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

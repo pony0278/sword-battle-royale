@@ -83,8 +83,23 @@ export function createShieldParryLaneController({
   // moved the attacker 1.56m instead of 0.70m, and repeated lunges walked him clean through the
   // defender past the minimum separation.
   let exchangeSettled = false;
+  // R23C.1: which of the two is swinging. One exchange runs at a time - there is still exactly one
+  // advance runtime, one live flag and one settled flag - but the exchange is no longer assumed to
+  // belong to the attacker slot. Everything below that used to say "the attacker" because that was
+  // the only fighter who could swing now says "the swinger" and looks this up. Nothing passes
+  // 'defender' yet, so every path the golden grid measures resolves to 'attacker' and runs the
+  // arithmetic it always ran.
+  let swingingSlot = 'attacker';
+  const baseFacingFor = (slot) => (slot === 'defender' ? defenderBaseFacing : attackerBaseFacing);
+  // R19B.1 generalised: the step into the blow owns its owner's movement for those frames, and
+  // letting the feet drive as well would double the distance every measured coverage band was
+  // taken against. That rule was never a fact about the attacker - it is a fact about the swing -
+  // so it asks whose swing this is before it locks anybody.
+  function feetLockedFor(slot) {
+    return swingLive && swingingSlot === slot && advance.report?.complete !== true;
+  }
   function attackerFeetLocked() {
-    return swingLive && advance.report?.complete !== true;
+    return feetLockedFor('attacker');
   }
 
   function walkSampleFor(gait) {
@@ -125,7 +140,10 @@ export function createShieldParryLaneController({
   }
 
   return Object.freeze({
-    startAttack(direction, contactSeconds) {
+    // R23C.1: the swinger is told, not assumed. Omitting it keeps the attacker, which is what
+    // every caller in the lab does today and what the golden replay is measured against.
+    startAttack(direction, contactSeconds, { swinger = 'attacker' } = {}) {
+      swingingSlot = swinger;
       exchangeSettled = false;
       return advance.start({ direction, contactSeconds, startSeconds: 0 });
     },
@@ -139,8 +157,8 @@ export function createShieldParryLaneController({
       // R19U.1: the swing spends its metres along the attacker's frozen facing - the same value
       // the R19T freeze holds for the length of the commitment. On the lane that facing is zero
       // and the ledger's exact legacy path runs.
-      ground.setAttackerSwing(advance.update(elapsedSeconds)?.advanceMeters ?? 0,
-        attackerBaseFacing.facingRadians);
+      ground.setSwing(advance.update(elapsedSeconds)?.advanceMeters ?? 0,
+        baseFacingFor(swingingSlot).facingRadians, { swinger: swingingSlot });
       return apply();
     },
     // Feet run every frame, attack or no attack, which is the point: standing still is a choice
@@ -190,12 +208,18 @@ export function createShieldParryLaneController({
       // R20B.1: track-then-freeze. The windup chases the bearing at the measured 45 deg/s, the
       // active window and everything after stay frozen - the release point a future dodge verb
       // will be timed against. On the line the bearing never moves and tracking is inert.
+      // R23C.1: the freeze belongs to whoever committed the swing. The other one keeps chasing
+      // the bearing, which is what an uncommitted fighter does and what the defender has always
+      // done here - so with the attacker swinging these two lines are the two that were here.
       const facingPolicy = planSwingFacingPolicy({ swingLive, phase: swingPhase });
-      attackerBaseFacing.update(bearings.attackerFacingRadians, deltaSeconds, {
+      const swingerFrozen = {
         frozen: facingPolicy.mode === 'frozen',
         rateRadiansPerSecond: facingPolicy.rateRadiansPerSecond,
-      });
-      defenderBaseFacing.update(bearings.defenderFacingRadians, deltaSeconds);
+      };
+      attackerBaseFacing.update(bearings.attackerFacingRadians, deltaSeconds,
+        swingingSlot === 'attacker' ? swingerFrozen : undefined);
+      defenderBaseFacing.update(bearings.defenderFacingRadians, deltaSeconds,
+        swingingSlot === 'defender' ? swingerFrozen : undefined);
       // R20F.1: a running dodge owns the defender's movement outright - held walk keys wait.
       // The authored travel goes into the ledger through the same verbs the feet use, so every
       // clamp the ground enforces on walking holds for dodging too.
@@ -205,7 +229,10 @@ export function createShieldParryLaneController({
       else if (dodgeStep.direction === 'right') ground.moveDefenderLateral(dodgeStep.displacementMeters);
       else if (dodgeStep.direction === 'left') ground.moveDefenderLateral(-dodgeStep.displacementMeters);
       const dodging = Boolean(dodgeStep.direction);
-      const defenderStep = dodging
+      // R23C.1: and the swinger's feet are held, whichever fighter that is. A dodge already owned
+      // these frames; a swing of their own now does too, on the same rule the attacker has always
+      // been held by. Nothing swings from this slot yet, so this reads `dodging` alone today.
+      const defenderStep = dodging || feetLockedFor('defender')
         ? Object.freeze({ meters: 0 })
         : defenderFeet.update({ deltaSeconds, separationMeters: ground.separationMeters });
       if (defenderStep.meters !== 0) ground.moveDefender(defenderStep.meters);
@@ -216,7 +243,9 @@ export function createShieldParryLaneController({
       // arrow keys walked the wrong way exactly like WASD did.
       // Presentation debt accepted knowingly: KayKit ships no strafe clip, so a sidestep slides on
       // planted legs in the lab.
-      const lateralStep = planLateralStep({ intent: dodging ? 0 : defenderLateralIntent, deltaSeconds });
+      const lateralStep = planLateralStep({
+        intent: dodging || feetLockedFor('defender') ? 0 : defenderLateralIntent, deltaSeconds,
+      });
       if (lateralStep.meters !== 0) ground.moveDefenderLateral(lateralStep.meters);
       // R19B.1: the attacker's feet stop while a swing is still travelling. The step into the blow
       // owns their movement for those frames, and letting both drive at once would double the
@@ -226,7 +255,7 @@ export function createShieldParryLaneController({
       // the next exchange resets it, so gating on that alone locked the attacker's feet from the
       // first swing of the session onwards. The step is spent at contact, and from that frame the
       // attacker owns their own feet again.
-      const attackerStep = attackerFeetLocked()
+      const attackerStep = feetLockedFor('attacker')
         ? null
         : attackerFeet.update({ deltaSeconds, separationMeters: ground.separationMeters });
       if (attackerStep && attackerStep.meters !== 0) ground.moveAttacker(attackerStep.meters);
@@ -260,6 +289,10 @@ export function createShieldParryLaneController({
     get defenderLateralIntent() { return defenderLateralIntent; },
     get attackerIntent() { return attackerFeet.intent; },
     get attackerFeetLocked() { return attackerFeetLocked(); },
+    get defenderFeetLocked() { return feetLockedFor('defender'); },
+    // Who the live exchange belongs to. Readable so a HUD or a probe can say whose swing it is
+    // rather than inferring it from an animation.
+    get swingingSlot() { return swingingSlot; },
     get attackerGait() { return attackerGait.report; },
     setWalkDurations(durations) {
       clipDurations = { ...(durations || {}) };
@@ -386,7 +419,7 @@ export function createShieldParryLaneController({
     // A landed blow is the only thing that banks ground. The outcome decides which way it moves:
     // blocking costs the defender more than the attacker, a parry costs the attacker far more.
     settle(outcome) {
-      const settled = ground.settleImpact(outcome);
+      const settled = ground.settleImpact(outcome, { swinger: swingingSlot });
       if (settled) { exchangeSettled = true; apply(); }
       return settled;
     },
@@ -398,8 +431,9 @@ export function createShieldParryLaneController({
       swingPhase = null;
       advance.reset();
       // A settled exchange already banked its step; only an unresolved one still has travel to keep.
-      if (!exchangeSettled) ground.settleWhiff();
+      if (!exchangeSettled) ground.settleWhiff({ swinger: swingingSlot });
       exchangeSettled = false;
+      swingingSlot = 'attacker';
       return apply();
     },
     // R19D.1: back to the scene's calibrated stance, forgetting the ground the fight moved. Two
@@ -441,6 +475,7 @@ export function createShieldParryLaneController({
       swingLive = false;
       swingPhase = null;
       exchangeSettled = false;
+      swingingSlot = 'attacker';
       advance.reset();
       ground.rebase(labScene.engagementStance.separationMeters);
       return apply();

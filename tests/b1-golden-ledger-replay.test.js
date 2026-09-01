@@ -72,10 +72,13 @@ test('B1 golden: lane steps, clamps, and both ground transfers', () => {
   const c = planLaneStep({ intent: 1, deltaSeconds: 0.25, separationMeters: 1.2 });
   close(c.meters, 0.1875, 0); assert.equal(c.clamped, false);
 
+  // R23C.1: the TRANSFER is named by role now (the swinger is thrown, the one who answered gives
+  // ground). The ledger's own report keeps attackerMeters/defenderMeters above, because those are
+  // POSITIONS - which fighter stands where - and a position does not change hands mid-exchange.
   const block = resolveGroundTransfer('block');
-  close(block.attackerMeters, -0.07, 0); close(block.defenderMeters, 0.09, 0);
+  close(block.swingerMeters, -0.07, 0); close(block.receiverMeters, 0.09, 0);
   const parry = resolveGroundTransfer('parry');
-  close(parry.attackerMeters, -0.16, 0); close(parry.defenderMeters, 0.05, 0);
+  close(parry.swingerMeters, -0.16, 0); close(parry.receiverMeters, 0.05, 0);
 });
 
 test('B1 golden: the authored advance curve samples where it always has', () => {

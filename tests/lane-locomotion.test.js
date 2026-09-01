@@ -24,8 +24,8 @@ test('R19A.1 stays under the fastest travel the character was actually authored 
 test('R19A.1 a defender can outpace the ground a blocked exchange costs them', () => {
   // The requirement this speed exists to meet. A blocked exchange closes the gap by the attacker's
   // step minus what the impact gives back; the defender has to find that back with their feet.
-  const givenBack = ENGAGEMENT_GROUND_TRANSFERS.block.defenderMeters
-    - ENGAGEMENT_GROUND_TRANSFERS.block.attackerMeters;
+  const givenBack = ENGAGEMENT_GROUND_TRANSFERS.block.receiverMeters
+    - ENGAGEMENT_GROUND_TRANSFERS.block.swingerMeters;
   const worstDebt = Math.max(...Object.values(ATTACK_ADVANCE_PROFILES).map((p) => p.metersByContact)) - givenBack;
   const recoveredPerSecond = LANE_LOCOMOTION_PROFILE.backwardSpeedMps;
   assert.ok(

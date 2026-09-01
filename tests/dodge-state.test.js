@@ -12,6 +12,24 @@ import {
   createDodgeStateRuntime,
 } from '../src/combat/dodge-state.js';
 import { LONGSWORD_DIRECTIONAL_ATTACKS } from '../src/combat/longsword-directional-metadata.js';
+import { createShieldParryLaneController } from '../src/game/lane-controller.js';
+
+function laneHarness(separationMeters = 2.4) {
+  const labScene = {
+    engagementStance: { separationMeters },
+    setLanePositions: () => {},
+    setDefenderYawOffset: () => {},
+    defender: null,
+    camera: null,
+  };
+  return {
+    laneController: createShieldParryLaneController({
+      labScene,
+      walkClips: { forward: 'Walking_A', backward: 'Walking_Backwards' },
+      services: { captureRigPose: () => null, applyRigPose: () => {} },
+    }),
+  };
+}
 
 test('R20F.1 the dodge is the authored 0.4s, and its window sits where the timing game needs it', () => {
   assert.equal(DODGE_STATE_STAGE, 'R20F.1');
@@ -81,8 +99,21 @@ test('R20F.1 the i-frame veto lets the whole exchange pass, after every question
 test('R20F.1 the lane owns the state, the guard pays the cost, the input only asks', async () => {
   const lane = await readFile(
     new URL('../src/game/lane-controller.js', import.meta.url), 'utf8');
-  assert.match(lane, /const dodgeStep = dodge\.advance\(deltaSeconds\)/);
-  assert.match(lane, /dodging\n?\s*\? Object\.freeze\(\{ meters: 0 \}\)/, 'a dodge owns the feet');
+  // R23C.1: "a dodge owns the feet" is behaviour, so it is driven rather than grepped. The old
+  // pair of regexes went red for a change that moved nothing - the feet gate gained a second
+  // reason to hold, the dodge one unaltered - which is exactly the failure mode R22J.1 names.
+  const { laneController } = laneHarness();
+  laneController.setDefenderIntent(-1); // walking forward, and held throughout
+  const walking = laneController.walk(1 / 60, null);
+  assert.notEqual(walking.defenderStep.meters, 0, 'the held key walks when nothing owns the feet');
+  assert.equal(laneController.tryDodge('back').accepted, true);
+  const dodgingFrame = laneController.walk(1 / 60, null);
+  assert.equal(dodgingFrame.defenderStep.meters, 0, 'a dodge owns the feet, so the held key waits');
+  assert.equal(laneController.dodgeReport.dodging, true);
+  // And the intent survives: the key was never released, so the walk resumes on its own.
+  for (let i = 0; i < Math.ceil(DODGE_DURATION_SECONDS * 60) + 2; i += 1) laneController.walk(1 / 60, null);
+  assert.notEqual(laneController.walk(1 / 60, null).defenderStep.meters, 0,
+    'once the burst is spent the held key walks again without being pressed a second time');
   assert.match(lane, /overlayDefenderDodge\(\)/);
   const preContact = await readFile(
     new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
