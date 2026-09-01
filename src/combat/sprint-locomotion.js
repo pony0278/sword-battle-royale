@@ -128,11 +128,17 @@ export const MEASURED_DISENGAGE_DEFICIT = Object.freeze({
   sprintMetersPerSecond: SPRINT_SPEED_MPS - LANE_LOCOMOTION_PROFILE.forwardSpeedMps,
   // R22G.1: what moving the sprint from 1.5 to 3.0 did to the thing this verb exists for. A runner
   // used to gain half a metre per second on a walking follower and now gains two, so disengaging is
-  // four times easier. Both fighters can run, so it is symmetric - but it is a change to the FIGHT,
-  // and it has only been playtested for how running LOOKS. Stated here rather than left to be
-  // noticed, because this table is where the case for the verb was made.
+  // four times easier. Both fighters can run, so it is symmetric, but it is a change to the FIGHT
+  // and not only to how running looks.
+  //
+  // R22H.1: and that half has now been played too, by several people, with the fight reported as
+  // fine. So the deficit this verb was built to answer is answered four times harder than the
+  // measurements alone would have allowed - and the reason that is acceptable is not in any
+  // measurement here, it is that it was tried. Recorded because the previous line said the opposite
+  // ("only playtested for locomotion") and a stale caveat is worse than none: the next person to
+  // read this table would have gone looking for a risk that had already been retired.
   sprintMetersPerSecondBeforeR22G1: 0.5,
-  onlyPlaytestedForLocomotion: true,
+  playtested: Object.freeze({ locomotion: true, combat: true, by: 'several-players-reporting-positively' }),
 });
 
 function finite(value, fallback = 0) {
