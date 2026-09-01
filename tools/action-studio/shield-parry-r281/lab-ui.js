@@ -273,8 +273,12 @@ export function createShieldParryLabUi(elements) {
     // R22E.1: when the legs are wearing the run rather than borrowing from it, the cadence on
     // screen is the thing being judged, so the number is put next to it rather than left to be
     // inferred. Only appears under ?wholebody=1.
-    const wholeBody = sprintReport?.gait?.wholeBodyOnly === true
-      ? ` · 整支 clip:${sprintReport.gait.clipId} ${(2 / (sprintReport.gait.cycleMeters / (sprintReport.speedMps || 1))).toFixed(2)} 步/秒`
+    const gait = sprintReport?.gait;
+    const wholeBody = gait?.wholeBodyOnly === true
+      ? ` · 整支 clip:${gait.clipId} ${(2 * (sprintReport.speedMps || 0) / Math.abs(gait.cycleMeters || 1)).toFixed(2)} 步/秒`
+        // R22F.1: the price, next to the thing it bought. A slide of zero is not printed - every
+        // shipping configuration has one, and a permanent "滑步 0.00" teaches nothing.
+        + (gait.footSlideMetersPerSecond > 0.01 ? ` · 腳滑 ${gait.footSlideMetersPerSecond.toFixed(2)} m/s` : '')
       : '';
     const sprintStatus = sprintReport?.sprinting === true
       ? ` · 全速奔跑 ${sprintReport.speedMps} m/s${armClip}${wholeBody}`
