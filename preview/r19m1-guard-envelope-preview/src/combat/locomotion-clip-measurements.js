@@ -50,9 +50,20 @@ export const MEASURED_LOCOMOTION_CLIPS = Object.freeze({
   }),
   // Faster still, and barely touching the ground: 5% contact per foot is too little to fit a
   // confident slope against, which is itself the reason not to use it.
+  //
+  // R22B.1 took a second opinion and the two fits DISAGREE, by more than any other clip here: an
+  // independent median-of-planted-toe-velocity fit reads 4.73 m/s against this table's 7.2, a 52%
+  // gap. On the same run that method reproduces Running_A to 3% (3.37 vs 3.268) and Walking_B to
+  // 10% (0.95 vs 1.053), so the method is not the problem - the clip is. Its footFitSpreadMps of
+  // 0.133 is 133x Running_A's, and this comment already said the contact was too brief to trust.
+  //
+  // Left as it was rather than replaced: neither fit is clearly better, and NOTHING reads this
+  // number - the arms are driven by the walk's phase, not by this stride. It is recorded so that
+  // anyone who ever does depend on it knows it is the one number in this table that is disputed.
   Running_B: Object.freeze({
     durationSeconds: 0.8, authoredSpeedMps: 7.2, strideMeters: 5.76,
     axis: 'forward', airborneFraction: 0.83, footFitSpreadMps: 0.133,
+    disputedSecondFitMps: 4.73,
   }),
   // Recorded, unused. KayKit ships a running strafe and no walking one, so the sidestep this lab
   // actually performs - 0.75 m/s while locked - has no clip at any speed: these would play at a
