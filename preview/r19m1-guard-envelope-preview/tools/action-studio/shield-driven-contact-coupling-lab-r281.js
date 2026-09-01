@@ -111,7 +111,7 @@ const labScene = createCombatScene({
   separationMeters: DEBUG_QUERY.has('spacing') ? Number(DEBUG_QUERY.get('spacing')) : undefined,
 });
 const {
-  canvas, renderer, scene, camera, freeCamera, attacker, defender, attackerSword, buckler, resize, setView,
+  canvas, renderer, scene, camera, freeCamera, attacker, defender, attackerSword, buckler, attackerBuckler, resize, setView,
 } = labScene;
 // R20S.2: the game's camera by default; ?camera=free hands the frame back to the inspection rig,
 // which is a debugging tool rather than a way anyone plays.
@@ -129,6 +129,13 @@ const attackRuntime = createLongswordDirectionalAttackRuntime({ tempoScale: EXPE
 // reader below is unchanged - this stage moves the assembly and must move nothing else, and the
 // golden grid is what says so. The second fighter is now one more call, not another twelve lines.
 const defenderFighter = createFighter(THREE, { character: defender, buckler, camera });
+// R23B.1: the second fighter. Built but not yet wired to anything - it defends nothing until the
+// contact stack runs both ways (step 4) and nothing drives it until the opponent can guard (step 6).
+// It is constructed NOW because constructing it is the test: every guard runtime states the bones
+// it needs, and the attacker is animated from a different pack than the defender. If that rig were
+// short a wrist or a toe, this line throws on load rather than three steps later with the wiring
+// half-done and the cause buried.
+const attackerFighter = createFighter(THREE, { character: attacker, buckler: attackerBuckler, camera });
 const {
   guardMachine, guardRuntime, bracingRuntime, fineTrackingRuntime, residualBodyReachRuntime,
   residualStanceReachRuntime, predictivePresentation, activeParryInterceptIntent, parryGate,
@@ -772,7 +779,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     },
   },
   runtimes: {
-    laneController, playerController, // R20S.3
+    laneController, playerController, defenderFighter, attackerFighter, // R20S.3 + R23B.1
     defenderStance, frameClock,
     combat,
     attackRuntime,

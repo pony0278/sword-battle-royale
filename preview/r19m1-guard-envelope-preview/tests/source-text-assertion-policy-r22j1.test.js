@@ -74,7 +74,13 @@ function census() {
 // Measured by the census() above, not by a script written alongside it - the first draft of this
 // baseline came from a separate classifier and was wrong by three, which is exactly the trap a
 // ratchet is supposed to avoid.
-const BASELINE = Object.freeze({ total: 1163, srcText: 359, toolsText: 639, html: 157, absence: 144 });
+// R23B.1 raised srcText and total by one. The scene grew a second buckler and the assertion that
+// broke ("the defender is equipped") was replaced by two that matter more once there are two
+// fighters: the calibration is the accepted one, and BOTH shields come from one recipe, because two
+// that drift apart is a fairness bug no eye would catch. There is no behavioural version - the
+// scene needs a WebGL canvas. A raise with its reason attached is what this ratchet is for; a raise
+// without one is the thing it exists to stop.
+const BASELINE = Object.freeze({ total: 1164, srcText: 360, toolsText: 639, html: 157, absence: 144 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

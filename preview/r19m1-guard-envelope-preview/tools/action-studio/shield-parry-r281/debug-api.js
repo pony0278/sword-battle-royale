@@ -49,6 +49,15 @@ export function createShieldParryDebugApi({
     get laneDefenderSprintArmWeight() { return runtimes.laneController?.defenderSprintArmWeight ?? null; },
     // R21Y.1: which run those arms came from, and whether it was asked for or is the default.
     get laneDefenderSprintArmClip() { return runtimes.laneController?.defenderSprintArmClip ?? null; },
+    // R23B.1: proof from the live page that both fighters assembled. Reads the stage rather than the
+    // parts, because what is being checked is that the attacker's rig satisfied every guard runtime
+    // - a failure shows up as a load-time throw, and this is how a probe sees the success.
+    get fighters() {
+      return Object.freeze({
+        defender: runtimes.defenderFighter?.stage ?? null,
+        attacker: runtimes.attackerFighter?.stage ?? null,
+      });
+    },
     // R20X.1: which way the body is travelling in its own frame, and how far the stride is turned.
     get laneDefenderTravelPlan() { return runtimes.laneController?.defenderTravelPlan ?? null; },
     // R21A.2: where the player is pointing. Read-only, and nothing consults it to decide anything.
