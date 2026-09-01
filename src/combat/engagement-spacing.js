@@ -21,20 +21,34 @@ export const ENGAGEMENT_SPACING_STAGE = 'R18T.1';
 // to work rather than passing where the shield already rests.
 export const CALIBRATED_ENGAGEMENT_SEPARATION_METERS = 2.4;
 
-// R18X.1: the band the calibrations are trusted within - the range over which all three attack
-// directions were measured to reach the guard at least 10 times in 12, in BLOCK mode, headless.
-// The per-direction detail and the full table live in guard-directional-anchor.js.
+// R21S.1 - MEASURED_FULL_COVERAGE_BAND_METERS was here, and is deleted rather than annotated.
 //
-// It still does not contain the calibrated separation, and still for a measured reason rather than
-// a mistake in the constant: LEFT stops clearing the bar past 2.05m. What changed is the bottom.
-// Before the swept contact test followed the blade's arc this read 2.00-2.10m, and everything
-// below 2.00m was simply unswept; the arc fix cleared 1.50-2.05m and the sweep went down to 1.40m.
-export const MEASURED_FULL_COVERAGE_BAND_METERS = Object.freeze({
+// It said 1.55-2.05m was "the band the calibrations are trusted within", measured at R18X.1 as the
+// range over which all three directions reached the guard at least 10 times in 12. Nothing read it
+// at runtime; it was a claim with no consumer, and its upper end is now refuted outright. The
+// R21P.1 defence matrix drives the calibrated 2.40m stance and every direction defends there,
+// which is 0.35m past a maximum that said LEFT stops clearing the bar at 2.05m.
+//
+// Two things moved underneath it and neither prompted a re-measure: the band's ends are set by
+// RIGHT and LEFT, and RIGHT was retimed at R21B.1 while LEFT was retimed at R21K.1 and again at
+// R21O.3 - which moved LEFT's arrival from 78% to 91% of its own swing. A band about when the
+// blade is where cannot survive changing when, twice, on both of the directions that define it.
+//
+// Annotating it was the first plan and it was the worse one: a constant that still exists is still
+// quoted, and a caveat underneath it is not read by whoever greps for a number. What is kept is
+// the history rather than the claim.
+export const SUPERSEDED_FULL_COVERAGE_BAND_METERS = Object.freeze({
+  stage: 'R18X.1',
   minimum: 1.55,
   maximum: 2.05,
-  // Different directions set the two ends, which is the whole reason this is not one number.
   limitedBy: Object.freeze({ minimum: 'right', maximum: 'left' }),
   testedRange: Object.freeze({ minimum: 1.4, maximum: 2.5 }),
+  method: 'guard-reaches-blade-10-of-12-block-mode',
+  // Precise about which half died: the maximum is refuted by measurement, the minimum is merely
+  // untested since. Nothing here says the guard works below 1.55m - only that it works above 2.05.
+  refutedBy: Object.freeze({ stage: 'R21P.1', evidence: 'defence-matrix-defends-all-three-at-2.40m' }),
+  minimumIsUntestedRatherThanRefuted: true,
+  supersededBecause: Object.freeze(['right-retimed-r21b1', 'left-retimed-r21k1', 'left-retimed-r21o3']),
 });
 
 // R18X.1: the other half of what a separation means - not whether the guard can reach the blade,
@@ -48,11 +62,13 @@ export const MEASURED_FULL_COVERAGE_BAND_METERS = Object.freeze({
 // makes no difference whether the guard met it. LEFT reaches the knees and waist from over two
 // metres, which is why it is the direction that has driven every guard problem in this codebase.
 //
-// Read this against MEASURED_FULL_COVERAGE_BAND_METERS and the useful distance is narrow. The
-// guard is fully reliable from 1.55m out; all three attacks land from 1.55m in. They meet at a
-// point rather than over a band. Between 1.60m and 2.05m only LEFT is a real threat, and closer
-// than 1.50m the guard starts failing outright - RIGHT blocks 0 of 12 at 1.40m, and every miss in
-// that range reaches the body.
+// R21S.1: the paragraph that stood here paired this against the coverage band and concluded that
+// "they meet at a point rather than over a band" - the guard reliable from 1.55m out, every attack
+// landing from 1.55m in. Both halves of that pairing are gone now: R21E.1 superseded the reach
+// figures below, and R21S.1 deleted the coverage band whose maximum R21P.1 refuted. The conclusion
+// is removed rather than rewritten, because there is no second measurement left to draw it from.
+// What survives from the original sweep, on its own terms: closer than 1.50m the guard starts
+// failing outright - RIGHT blocks 0 of 12 at 1.40m, and every miss in that range reaches the body.
 //
 // R19J.2 measured what that range looks like from the attack's side. Below the guard's floor the
 // attack degenerates too: at the 0.9m body pushbox TOP and RIGHT land on blade fraction 0, the

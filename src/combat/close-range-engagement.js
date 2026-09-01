@@ -88,6 +88,11 @@ export const MEASURED_SHIELD_CATCH_BLADE_FRACTION = Object.freeze({
 // unguarded run found the guard turns a landing hit into a block three times in twenty-seven, and
 // never once for RIGHT: most of the blocks counted here are against swings that were missing
 // anyway. guard-effectiveness holds that pairing.
+// R21S.1: this floor comes from the same R18X.1 sweep whose other end - the 2.05m maximum - was
+// deleted after R21P.1's defence matrix defended all three directions at 2.40m. The floor is NOT
+// refuted by that: nothing measured since says whether the guard works below 1.55m, and the band
+// built on it below is about the attack's reach as much as the guard's. It is kept, and kept with
+// this note, so the next person weighing it knows the sweep it came from was half wrong.
 export const MEASURED_GUARD_WORKING_FLOOR_METERS = 1.55;
 
 // The gap is the finding, and it is computed rather than transcribed so that moving either end
