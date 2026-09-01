@@ -280,24 +280,38 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       const gaitReport = defenderGait.report;
       const sample = walkSampleFor(gaitReport);
       if (!sample || !defender?.sampleAnimation || !services?.captureRigPose) return null;
+      // R21U.1: the run's arms, if the body is going fast enough to be running.
+      //
+      // R21X.1 moved this ABOVE the gate, because it answers the gate's own question. The lab was
+      // telling this call that the guard owns the upper body whenever the mode is not 'block' -
+      // written in R20W.2, when the only thing that wanted the torso was a whole-body RUN clip -
+      // so in parry mode the run's arms were sampled, blended, and then dropped by the filter on
+      // the way out. Measured in the lab: parry scope 'legs', block scope 'whole-body', arm weight
+      // 1.0 in both. The arms were borrowed and thrown away.
+      //
+      // A speed above the ramp's floor is itself proof the guard is not using the arms, and that is
+      // measured rather than assumed: the ramp begins at 1.359 m/s (Froude 0.5 on this rig) and the
+      // fastest a guarding fighter can travel is the walk's 1.0. Sprinting is refused outright
+      // while the guard is up, so the two facts cannot disagree - and until now they did, with
+      // planSprint reading the guard as down and this call being told it was up.
+      const armWeight = sprintArmWeight(gaitReport.speedMetersPerSecond);
       // R20W.2: how much of the fighter the walk gets. A run has no legs-only reading, and the
       // gait says so itself, so a run clip can never be handed to a guarding fighter's legs.
       const gate = planWalkOverlay({
         attackInFlight: !exchangeIdle,
         combatResolving: !exchangeIdle,
-        guardOwnsUpperBody,
+        guardOwnsUpperBody: guardOwnsUpperBody && armWeight <= 0,
         wholeBodyClip: gaitReport.wholeBodyOnly === true,
       });
       lastWalkOverlayPlan = gate;
-      if (!gate.allowed) return gate;
-      // R21U.1: the run's arms, if the body is going fast enough to be running. Sampled FIRST so
-      // the rig is left holding the walk - the pose below is what the caller applies, but a reader
-      // stepping through this should not find the fighter mid-run at the end of a walk sample.
+      if (!gate.allowed) { lastSprintArmWeight = 0; return gate; }
+      // Sampled FIRST so the rig is left holding the walk - the pose below is what the caller
+      // applies, but a reader stepping through this should not find the fighter mid-run at the end
+      // of a walk sample.
       //
       // The run is sampled at the phase where it strikes with the walk (R21T.1 measured +20.7% of
       // a cycle), because arm swing is coupled to the opposite leg: unaligned, the arms would swing
       // against the feet, which reads worse than not borrowing them at all.
-      const armWeight = sprintArmWeight(gaitReport.speedMetersPerSecond);
       let runArmPose = null;
       if (armWeight > 0 && SPRINT_ARM_SOURCE_CLIPS.run) {
         const runDuration = clipDurations[SPRINT_ARM_SOURCE_CLIPS.run] || 1;
@@ -311,9 +325,10 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
         loop: true, inPlace: true, rootRotationPolicy: 'lock',
       });
       defender.update(0, labScene.camera);
-      // Blended before the filter, not after: at LEGS scope the arm entries are dropped by the
-      // filter, which is the right answer - that is a guarding fighter, and sprinting is refused
-      // while the guard is up, so those arms were never going to be worn.
+      // Blended before the filter, not after. At LEGS scope the arm entries are dropped, which is
+      // still the right answer for a guarding fighter walking - but a fighter at running speed can
+      // no longer BE at LEGS scope, because the arm weight above decides the scope. R21X.1: before
+      // that, this comment was describing a case the sprint fell into every time in parry mode.
       const walkPose = services.captureRigPose(defender.rig);
       lastSprintArmWeight = armWeight;
       pendingDefenderLegPose = filterPoseToWalkOverlay(
