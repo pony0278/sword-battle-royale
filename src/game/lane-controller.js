@@ -7,6 +7,10 @@ import { createLaneLocomotionRuntime, planLateralStep } from '../combat/lane-loc
 import { createDodgeStateRuntime, DODGE_DURATION_SECONDS } from '../combat/dodge-state.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../combat/lane-walk-cycle.js';
 import { filterPoseToWalkOverlay, planWalkOverlay } from '../combat/guard-walk-overlay.js';
+import {
+  LANE_WALK_CLIPS as SPRINT_ARM_SOURCE_CLIPS,
+} from '../combat/lane-walk-cycle.js';
+import { blendSprintArms, sprintArmSamplePhase, sprintArmWeight } from '../combat/sprint-arm-overlay.js';
 import { TRAVEL_YAW_BONES, hipYawDeltaQuaternion, planTravelRelativeLegs } from '../combat/travel-relative-legs.js';
 
 // R18Z.1 — where the two fighters are standing, and nothing else.
@@ -48,6 +52,7 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   // R20W.2: the last overlay decision, kept for the HUD and for probes - which of the fighter the
   // walk got this frame, and why it did not get any of them when it did not.
   let lastWalkOverlayPlan = null;
+  let lastSprintArmWeight = 0;
   // R20X.1: how far the stride has to be turned at the hip to point along this frame's travel.
   // Zero for anything going straight ahead, a right angle for a pure sidestep.
   let lastTravelPlan = null;
@@ -260,6 +265,9 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     get attackerWalkSample() { return walkSampleFor(attackerGait.report); },
     get defenderGait() { return defenderGait.report; },
     get defenderWalkOverlay() { return lastWalkOverlayPlan; },
+    // R21U.1: how much of the run's arms the walk is wearing, 0 at a walk and 1 at a sprint. A
+    // number rather than a boolean because the whole point is that there is no longer a switch.
+    get defenderSprintArmWeight() { return lastSprintArmWeight; },
     get defenderTravelPlan() { return lastTravelPlan; },
     // R19E.1, first slice of the sandwich: sample the walk on the defender and keep only the leg
     // chain. Called immediately before the guard runtime samples its own clip over the whole rig.
@@ -282,11 +290,35 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       });
       lastWalkOverlayPlan = gate;
       if (!gate.allowed) return gate;
+      // R21U.1: the run's arms, if the body is going fast enough to be running. Sampled FIRST so
+      // the rig is left holding the walk - the pose below is what the caller applies, but a reader
+      // stepping through this should not find the fighter mid-run at the end of a walk sample.
+      //
+      // The run is sampled at the phase where it strikes with the walk (R21T.1 measured +20.7% of
+      // a cycle), because arm swing is coupled to the opposite leg: unaligned, the arms would swing
+      // against the feet, which reads worse than not borrowing them at all.
+      const armWeight = sprintArmWeight(gaitReport.speedMetersPerSecond);
+      let runArmPose = null;
+      if (armWeight > 0 && SPRINT_ARM_SOURCE_CLIPS.run) {
+        const runDuration = clipDurations[SPRINT_ARM_SOURCE_CLIPS.run] || 1;
+        defender.sampleAnimation(SPRINT_ARM_SOURCE_CLIPS.run,
+          sprintArmSamplePhase(gaitReport.phase) * runDuration,
+          { loop: true, inPlace: true, rootRotationPolicy: 'lock' });
+        defender.update(0, labScene.camera);
+        runArmPose = services.captureRigPose(defender.rig);
+      }
       defender.sampleAnimation(sample.clipId, sample.timeSeconds, {
         loop: true, inPlace: true, rootRotationPolicy: 'lock',
       });
       defender.update(0, labScene.camera);
-      pendingDefenderLegPose = filterPoseToWalkOverlay(services.captureRigPose(defender.rig), gate.scope);
+      // Blended before the filter, not after: at LEGS scope the arm entries are dropped by the
+      // filter, which is the right answer - that is a guarding fighter, and sprinting is refused
+      // while the guard is up, so those arms were never going to be worn.
+      const walkPose = services.captureRigPose(defender.rig);
+      lastSprintArmWeight = armWeight;
+      pendingDefenderLegPose = filterPoseToWalkOverlay(
+        blendSprintArms(walkPose, runArmPose, armWeight), gate.scope,
+      );
       return gate;
     },
     // R20F.1: the dodge is a full-body clip and the last pre-strike writer: it overrides the

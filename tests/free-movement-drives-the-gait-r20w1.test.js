@@ -59,13 +59,16 @@ test('R20W.1 the clip it plays is the one for the direction the body is travelli
   assert.equal(laneController.defenderGait.direction, -1);
 });
 
-test('R20W.2 sprinting crosses into the run clip, and its stride comes with it', () => {
+test('R21U.1 sprinting keeps the walk clip, and its stride still comes with it', () => {
+  // This asserted the opposite until R21U.1: sprinting used to cross into Running_A. It came back
+  // at 1.15 steps per second - fewer than a WALKING person's two - because that clip's stride is
+  // 2.614m and no speed inside this game's ceiling of 1.62 m/s redeems it.
   const laneController = harness();
   const step = SPRINT_SPEED_MPS / 60;
   for (let i = 0; i < 30; i += 1) frame(laneController, { dz: -step });
   const gait = laneController.defenderGait;
-  assert.equal(gait.clipId, LANE_WALK_CLIPS.run);
-  assert.ok(gait.playbackRate > 0.4 && gait.playbackRate < 0.5, `sprint plays at ${gait.playbackRate}`);
+  assert.equal(gait.clipId, LANE_WALK_CLIPS.forward);
+  assert.ok(gait.playbackRate > 1.35 && gait.playbackRate < 1.5, `sprint plays at ${gait.playbackRate}`);
   // Distance-driven, so the stride still lands where the ground did: no slide at any speed.
   const cycles = gait.phase;
   const travelled = (SPRINT_SPEED_MPS / 60) * 30;

@@ -44,6 +44,9 @@ export function createShieldParryDebugApi({
     // R20W.2: how much of the defender the walk took this frame - legs under a raised guard, the
     // whole fighter when there is no guard to hold, none while an exchange owns them.
     get laneDefenderWalkOverlay() { return runtimes.laneController?.defenderWalkOverlay ?? null; },
+    // R21U.1: how much of the run's arms the walk is wearing. Exposed because the thing this
+    // replaced was a visible switch, and a ramp that cannot be read is a ramp nobody can check.
+    get laneDefenderSprintArmWeight() { return runtimes.laneController?.defenderSprintArmWeight ?? null; },
     // R20X.1: which way the body is travelling in its own frame, and how far the stride is turned.
     get laneDefenderTravelPlan() { return runtimes.laneController?.defenderTravelPlan ?? null; },
     // R21A.2: where the player is pointing. Read-only, and nothing consults it to decide anything.

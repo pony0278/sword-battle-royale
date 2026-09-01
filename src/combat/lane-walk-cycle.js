@@ -96,13 +96,19 @@ export function createLaneWalkCycle(options = {}) {
     throw new Error(`createLaneWalkCycle needs measured strides for ${Object.values(clips).join(', ')}`);
   }
 
-  // Which clip a speed belongs to. Backwards has only the one; forwards, the run takes over at the
-  // measured transition rather than at whichever verb the player pressed.
+  // Which clip a speed belongs to. Backwards has only the one; forwards there is now only one too.
+  //
+  // R21U.1: the run no longer takes the legs. R20W.2 handed them to Running_A above the measured
+  // transition, and the far side of that switch was wrong twice over - Running_A's 2.614m stride
+  // gives 1.15 steps per second at the sprint's 1.5 m/s, fewer than a WALKING person's two, and no
+  // speed this game may run at fixes it (the ceiling is 1.62, where it manages 1.24). Walking_B at
+  // the same speed takes 2.67 steps/second, which is a running cadence. The legs were right all
+  // along; it was the POSE that was missing, and sprint-arm-overlay.js borrows that instead.
+  //
+  // The threshold stays in the profile because the arm overlay begins ramping exactly where this
+  // switch used to fire - the gait is still a run at 1.36 m/s, it just no longer changes clip.
   function clipFor(speedMetersPerSecond) {
     if (speedMetersPerSecond < 0) return { clipId: profile.backwardClipId, cycleMeters: profile.backwardCycleMeters };
-    if (profile.runClipId && speedMetersPerSecond >= profile.runThresholdMetersPerSecond) {
-      return { clipId: profile.runClipId, cycleMeters: profile.runCycleMeters };
-    }
     return { clipId: profile.forwardClipId, cycleMeters: profile.forwardCycleMeters };
   }
   let phase = 0;
@@ -123,6 +129,9 @@ export function createLaneWalkCycle(options = {}) {
       // R20W.2: a run is a whole-body clip, and a guard cannot borrow only its legs without the
       // torso disagreeing. Sprinting already requires the guard down, so this never contradicts
       // the overlay - it is stated so a caller cannot quietly overlay a run onto a guard.
+      // R21U.1: nothing the legs wear is whole-body-only any more - the run is not worn at all.
+      // Kept as a field rather than removed because planWalkOverlay still asks, and a caller that
+      // one day hands the legs a whole-body clip should still be refused.
       wholeBodyOnly: clipId != null && clipId === profile.runClipId,
       cycleMeters: chosen.cycleMeters,
       // 1 is the gait as drawn. Above 1 the legs hurry, below 1 they float. Nothing reads this to
