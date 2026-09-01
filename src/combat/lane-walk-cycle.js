@@ -90,6 +90,8 @@ export function createLaneWalkCycle(options = {}) {
     runThresholdMetersPerSecond: LANE_WALK_CYCLE_PROFILE.runThresholdMetersPerSecond,
     movingThresholdMetersPerSecond: LANE_WALK_CYCLE_PROFILE.movingThresholdMetersPerSecond,
     authority: LANE_WALK_CYCLE_PROFILE.authority,
+    // R22E.1: an experiment switch, not a mode. Nothing ships with this on.
+    wholeBodyRun: options.wholeBodyRun === true,
     ...(options.profile || {}),
   });
   const measured = [profile.forwardCycleMeters, profile.backwardCycleMeters]
@@ -114,8 +116,17 @@ export function createLaneWalkCycle(options = {}) {
   //
   // The threshold stays in the profile because the arm overlay begins ramping exactly where this
   // switch used to fire - the gait is still a run at 1.36 m/s, it just no longer changes clip.
+  //
+  // R22E.1 puts the old behaviour back behind a switch, because "why can't the run just be worn
+  // whole" deserves to be answered by looking rather than by arithmetic in a comment. Off by
+  // default and off in everything that ships; wholeBodyRun:true hands the legs to the run above the
+  // measured transition, exactly as R20W.2 did, and the cadence numbers above are what that buys.
   function clipFor(speedMetersPerSecond) {
     if (speedMetersPerSecond < 0) return { clipId: profile.backwardClipId, cycleMeters: profile.backwardCycleMeters };
+    if (profile.wholeBodyRun && profile.runClipId
+      && speedMetersPerSecond >= profile.runThresholdMetersPerSecond) {
+      return { clipId: profile.runClipId, cycleMeters: profile.runCycleMeters };
+    }
     return { clipId: profile.forwardClipId, cycleMeters: profile.forwardCycleMeters };
   }
   let phase = 0;

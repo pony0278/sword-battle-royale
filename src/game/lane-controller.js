@@ -19,7 +19,7 @@ import { TRAVEL_YAW_BONES, hipYawDeltaQuaternion, planTravelRelativeLegs } from 
 // the entry should not be carrying.
 //
 // It owns no authority over whether anything was hit. It is told an outcome and moves people.
-export function createShieldParryLaneController({ labScene, walkClips, services, sprintArmClipId }) {
+export function createShieldParryLaneController({ labScene, walkClips, services, sprintArmClipId, wholeBodyRun = false }) {
   // R21Y.1: which run the arms are borrowed from. Resolved once, here, so an unmeasured name can
   // never reach the sampler - an overlay with no phase offset swings the arms against the feet.
   const sprintArmClip = resolveSprintArmClip(sprintArmClipId);
@@ -47,7 +47,9 @@ export function createShieldParryLaneController({ labScene, walkClips, services,
   // overlay rather than a base swap: sample the walk, keep the leg chain, let the guard sample the
   // whole rig as always, then lay the legs back on top. The captured legs live here between the
   // two steps of that sandwich.
-  const defenderGait = createLaneWalkCycle();
+  // R22E.1: the defender's gait alone takes the experiment switch - the attacker is not the thing
+  // being looked at, and leaving it on the walk keeps a side-by-side in one frame.
+  const defenderGait = createLaneWalkCycle({ wholeBodyRun });
   let pendingDefenderLegPose = null;
   // R20W.2: the last overlay decision, kept for the HUD and for probes - which of the fighter the
   // walk got this frame, and why it did not get any of them when it did not.

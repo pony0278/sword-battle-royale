@@ -136,7 +136,7 @@ const activeParryInterceptIntent = createActiveParryInterceptIntent();
 const parryGate = createCommittedParryContactGate();
 const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
   // R21Y.1: which run lends the sprint its arms; ?runclip=, Running_A unless somebody says otherwise.
-  labScene, walkClips: LANE_WALK_CLIPS, services: { captureRigPose, applyRigPose }, sprintArmClipId: EXPERIMENT.sprintArmClipId });
+  labScene, walkClips: LANE_WALK_CLIPS, services: { captureRigPose, applyRigPose }, sprintArmClipId: EXPERIMENT.sprintArmClipId, wholeBodyRun: EXPERIMENT.wholeBodyRun });
 const playerController = createShieldParryPlayerController({ // R20S.3: feet, lock-on and the camera
   camera, laneController, freeCamera, inspectionCamera: INSPECTION_CAMERA, // R20U.1: running is refused by these two
   // R21V.1: the sprint's ground speed is a playtest dial; with no ?sprint= this is the shipped seed.
@@ -396,7 +396,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     lockReport: () => playerController.lockReport, // R20S.3
     // R21Y.1: the arm clip rides along so the HUD can say which run is actually being worn - a
     // playtester comparing ?runclip= needs to see that the override took, not just that they typed it.
-    sprintReport: () => ({ ...playerController.sprintReport, armClip: laneController.defenderSprintArmClip }), // R20U.1
+    sprintReport: () => ({ ...playerController.sprintReport, armClip: laneController.defenderSprintArmClip, gait: laneController.defenderGait }), // R20U.1
     parryTally: () => parryTally.summary, // R21C.2
     opponent: () => opponentDriveController.summary, // R21E.1
     parryTallyReport: () => parryTally.reportText, // R21G.2: the whole run, pasteable
