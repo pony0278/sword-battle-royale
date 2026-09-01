@@ -7,10 +7,7 @@ import { createLaneLocomotionRuntime, planLateralStep } from '../combat/lane-loc
 import { createDodgeStateRuntime, DODGE_DURATION_SECONDS } from '../combat/dodge-state.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../combat/lane-walk-cycle.js';
 import { filterPoseToWalkOverlay, planWalkOverlay } from '../combat/guard-walk-overlay.js';
-import {
-  LANE_WALK_CLIPS as SPRINT_ARM_SOURCE_CLIPS,
-} from '../combat/lane-walk-cycle.js';
-import { blendSprintArms, sprintArmSamplePhase, sprintArmWeight } from '../combat/sprint-arm-overlay.js';
+import { blendSprintArms, resolveSprintArmClip, sprintArmSamplePhase, sprintArmWeight } from '../combat/sprint-arm-overlay.js';
 import { TRAVEL_YAW_BONES, hipYawDeltaQuaternion, planTravelRelativeLegs } from '../combat/travel-relative-legs.js';
 
 // R18Z.1 — where the two fighters are standing, and nothing else.
@@ -22,7 +19,10 @@ import { TRAVEL_YAW_BONES, hipYawDeltaQuaternion, planTravelRelativeLegs } from 
 // the entry should not be carrying.
 //
 // It owns no authority over whether anything was hit. It is told an outcome and moves people.
-export function createShieldParryLaneController({ labScene, walkClips, services }) {
+export function createShieldParryLaneController({ labScene, walkClips, services, sprintArmClipId }) {
+  // R21Y.1: which run the arms are borrowed from. Resolved once, here, so an unmeasured name can
+  // never reach the sampler - an overlay with no phase offset swings the arms against the feet.
+  const sprintArmClip = resolveSprintArmClip(sprintArmClipId);
   // Durations arrive after the assets load, so the clips are described here and measured later.
   // R20W.2: keyed by clip id rather than by direction, because the gait now picks between three.
   let clipDurations = {};
@@ -268,6 +268,8 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     // R21U.1: how much of the run's arms the walk is wearing, 0 at a walk and 1 at a sprint. A
     // number rather than a boolean because the whole point is that there is no longer a switch.
     get defenderSprintArmWeight() { return lastSprintArmWeight; },
+    // R21Y.1: which clip those arms came from, and why - read by the HUD and stamped into a tally.
+    get defenderSprintArmClip() { return sprintArmClip; },
     get defenderTravelPlan() { return lastTravelPlan; },
     // R19E.1, first slice of the sandwich: sample the walk on the defender and keep only the leg
     // chain. Called immediately before the guard runtime samples its own clip over the whole rig.
@@ -313,10 +315,10 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       // a cycle), because arm swing is coupled to the opposite leg: unaligned, the arms would swing
       // against the feet, which reads worse than not borrowing them at all.
       let runArmPose = null;
-      if (armWeight > 0 && SPRINT_ARM_SOURCE_CLIPS.run) {
-        const runDuration = clipDurations[SPRINT_ARM_SOURCE_CLIPS.run] || 1;
-        defender.sampleAnimation(SPRINT_ARM_SOURCE_CLIPS.run,
-          sprintArmSamplePhase(gaitReport.phase) * runDuration,
+      if (armWeight > 0 && sprintArmClip.clipId) {
+        const runDuration = clipDurations[sprintArmClip.clipId] || 1;
+        defender.sampleAnimation(sprintArmClip.clipId,
+          sprintArmSamplePhase(gaitReport.phase, sprintArmClip.clipId) * runDuration,
           { loop: true, inPlace: true, rootRotationPolicy: 'lock' });
         defender.update(0, labScene.camera);
         runArmPose = services.captureRigPose(defender.rig);

@@ -267,8 +267,11 @@ export function createShieldParryLabUi(elements) {
     // head at once.
     // R20U.1: running, on the same line as the lock, because "let go of the lock to run" is the
     // one rule about it a player has to hold in their head.
+    // R21Y.1: which run lent the arms, named only when it is not the shipped one - a plain URL's
+    // HUD is unchanged, and an A/B run says on screen which side of the comparison is live.
+    const armClip = sprintReport?.armClip?.reason === 'override' ? `(手臂 ${sprintReport.armClip.clipId})` : '';
     const sprintStatus = sprintReport?.sprinting === true
-      ? ` · 全速奔跑 ${sprintReport.speedMps} m/s`
+      ? ` · 全速奔跑 ${sprintReport.speedMps} m/s${armClip}`
       : sprintReport && sprintReport.reason !== 'not-requested' && sprintReport.reason !== 'sprint-is-forward-only'
         ? ` · 跑不起來:${sprintReport.reason === 'locked-on-let-go-of-the-lock-to-run' ? '鎖定中(Tab 解除才能跑)' : sprintReport.reason === 'guard-is-up' ? '舉著盾' : sprintReport.reason === 'mid-swing' ? '揮砍中' : '閃避中'}`
         : '';

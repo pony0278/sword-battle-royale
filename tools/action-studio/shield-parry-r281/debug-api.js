@@ -47,6 +47,8 @@ export function createShieldParryDebugApi({
     // R21U.1: how much of the run's arms the walk is wearing. Exposed because the thing this
     // replaced was a visible switch, and a ramp that cannot be read is a ramp nobody can check.
     get laneDefenderSprintArmWeight() { return runtimes.laneController?.defenderSprintArmWeight ?? null; },
+    // R21Y.1: which run those arms came from, and whether it was asked for or is the default.
+    get laneDefenderSprintArmClip() { return runtimes.laneController?.defenderSprintArmClip ?? null; },
     // R20X.1: which way the body is travelling in its own frame, and how far the stride is turned.
     get laneDefenderTravelPlan() { return runtimes.laneController?.defenderTravelPlan ?? null; },
     // R21A.2: where the player is pointing. Read-only, and nothing consults it to decide anything.

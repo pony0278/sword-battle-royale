@@ -27,6 +27,17 @@ export const MEASURED_FOOT_CONTACT_PHASE = Object.freeze({
     left: Object.freeze({ strike: 0.108, lift: 0.263 }),
     right: Object.freeze({ strike: 0.608, lift: 0.763 }),
   }),
+  // R21Y.1: the other run in the pack, measured because it was asked for as an arm source. Its toe
+  // is down for 8% of a cycle against Running_A's 16% - which was the stated reason not to trust
+  // its authored SPEED, since 8% of a cycle is thin to fit a slope against. The arms need its
+  // PHASE, not its speed, and that came back clean: a single contiguous contact per foot, exactly
+  // half a cycle apart.
+  Running_B: Object.freeze({
+    cycleSeconds: 0.8,
+    authoredSpeedMps: 7.2,
+    left: Object.freeze({ strike: 0.188, lift: 0.265 }),
+    right: Object.freeze({ strike: 0.688, lift: 0.767 }),
+  }),
 });
 
 // Both clips put their two feet exactly half a cycle apart. That is the precondition for blending
@@ -36,11 +47,30 @@ export const MEASURED_FOOT_CONTACT_PHASE = Object.freeze({
 export const GAITS_ARE_SYMMETRIC = Object.freeze({
   Walking_B: 0.5,
   Running_A: 0.5,
+  Running_B: 0.5,
 });
 
-// Add this to Running_A's normalised phase and the two clips strike with the same foot at the same
-// moment. 0.207 of its 0.8s cycle is 166ms.
-export const RUNNING_A_PHASE_OFFSET_TO_WALKING_B = 0.207;
+// Add this to a run's normalised phase and it strikes with the same foot as Walking_B at the same
+// moment. Running_A: 0.207 of its 0.8s cycle, 166ms. Running_B: 0.127, 102ms.
+//
+// R21Y.1 derives these from the contacts above rather than restating them, because an offset and
+// the strikes it was computed from are the same fact written twice, and the version that gets
+// edited without the other is the one that silently swings the arms against the feet.
+function offsetToWalkingB(runClipId) {
+  const walk = MEASURED_FOOT_CONTACT_PHASE.Walking_B?.left?.strike;
+  const run = MEASURED_FOOT_CONTACT_PHASE[runClipId]?.left?.strike;
+  if (walk == null || run == null) return null;
+  const offset = (walk - run) % 1;
+  return Number((offset < 0 ? offset + 1 : offset).toFixed(3));
+}
+
+export const PHASE_OFFSET_TO_WALKING_B = Object.freeze({
+  Running_A: offsetToWalkingB('Running_A'),
+  Running_B: offsetToWalkingB('Running_B'),
+});
+
+export const DEFAULT_RUN_CLIP_ID = 'Running_A';
+export const RUNNING_A_PHASE_OFFSET_TO_WALKING_B = PHASE_OFFSET_TO_WALKING_B.Running_A;
 
 // The part that does NOT line up, kept because it decides what a blend can and cannot be.
 //
@@ -56,6 +86,10 @@ export const RUNNING_A_PHASE_OFFSET_TO_WALKING_B = 0.207;
 export const STANCE_FRACTION_MISMATCH = Object.freeze({
   Walking_B: 0.06,
   Running_A: 0.16,
+  // R21Y.1: Running_B lands flatter still and leaves sooner - 8% - so it mismatches the walk's
+  // toe-off by less than Running_A does. Irrelevant while the legs are wholly the walk's, and
+  // recorded because it is the number that would matter if that ever stopped being true.
+  Running_B: 0.08,
   liftsRemainApartBy: 0.094,
   onlyOneEventCanBeMatched: true,
   reason: 'a-walk-strikes-heel-first-a-run-lands-flat',
@@ -70,11 +104,16 @@ export const LOCOMOTION_PHASE_METHOD = Object.freeze({
   authority: 'clip-timing-only-no-contact-authority',
 });
 
-// Where Running_A must be sampled to strike alongside Walking_B at a given normalised phase.
-export function alignedRunPhase(walkPhase) {
+// Where a run must be sampled to strike alongside Walking_B at a given normalised phase. MINUS the
+// offset, not plus: the run needs +offset to reach the walk's phase, so the run frame belonging to
+// this walk frame sits that far EARLIER in its own cycle. Getting that sign backwards compares the
+// two clips while they are out of step by twice the offset, which is how R21Y.1's first divergence
+// reading came back 23% high before it was checked against R21T.2's committed figures.
+export function alignedRunPhase(walkPhase, runClipId = DEFAULT_RUN_CLIP_ID) {
   const phase = Number(walkPhase);
-  if (!Number.isFinite(phase)) return null;
-  const shifted = (phase - RUNNING_A_PHASE_OFFSET_TO_WALKING_B) % 1;
+  const offset = PHASE_OFFSET_TO_WALKING_B[runClipId];
+  if (!Number.isFinite(phase) || offset == null) return null;
+  const shifted = (phase - offset) % 1;
   return shifted < 0 ? shifted + 1 : shifted;
 }
 
@@ -96,13 +135,46 @@ export function alignedRunPhase(walkPhase) {
 // worth keeping separate so it can be judged on its own.
 //
 // The wrists are not animated in either clip. Listing them in an overlay would be inert.
-export const MEASURED_UPPER_BODY_DIVERGENCE_DEGREES = Object.freeze({
-  'hand.r': 40.9, 'hand.l': 40.2,
-  'upperarm.r': 34.8, 'upperarm.l': 31.7,
-  'lowerarm.r': 19.9, 'lowerarm.l': 14.4,
-  head: 9.7, spine: 8.3, chest: 6.1,
-  'wrist.l': 0, 'wrist.r': 0,
+//
+// R21Y.1 measured the other candidate against the same walk, and it is a different animal - not
+// uniformly bigger, which is what "a faster run clip" would have predicted:
+//
+//   bone         Running_A      Running_B
+//   upperarm     31.7 / 34.8    39.8 / 41.1     more shoulder
+//   lowerarm     14.4 / 19.9    23.6 / 27.6     half again as much elbow (peaks 58-63 vs 35-37)
+//   hand         40.2 / 40.9    33.4 / 32.8     LESS hand
+//   head          9.7           17.9            and it leans
+//   spine         8.3           15.0
+//   chest         6.1            6.4            unchanged
+//
+// Running_A's advantage is entirely in the hand, which on this rig is the least readable of the
+// three - the wrist below it is not animated at all - while Running_B's is in the shoulder and
+// elbow, which are. That is the case for the swap; whether it reads better is still an eye's call,
+// which is why ?runclip= exists before the default moves.
+//
+// The head and spine figures also reopen something R21U.1 closed. Excluding the torso was argued
+// on "KayKit's run does not lean", measured at 8.3 degrees of spine - true of Running_A and NOT of
+// Running_B at 15.0. The forward-pitched sprint silhouette may be in the pack after all rather
+// than needing to be invented, but taking the torso is its own decision and is not made here.
+export const MEASURED_UPPER_BODY_DIVERGENCE_BY_RUN_CLIP = Object.freeze({
+  Running_A: Object.freeze({
+    'hand.r': 40.9, 'hand.l': 40.2,
+    'upperarm.r': 34.8, 'upperarm.l': 31.7,
+    'lowerarm.r': 19.9, 'lowerarm.l': 14.4,
+    head: 9.7, spine: 8.3, chest: 6.1,
+    'wrist.l': 0, 'wrist.r': 0,
+  }),
+  Running_B: Object.freeze({
+    'hand.r': 32.8, 'hand.l': 33.4,
+    'upperarm.r': 41.1, 'upperarm.l': 39.8,
+    'lowerarm.r': 27.6, 'lowerarm.l': 23.6,
+    head: 17.9, spine: 15.0, chest: 6.4,
+    'wrist.l': 0, 'wrist.r': 0,
+  }),
 });
+
+// The default clip's table, under the name R21T.2 gave it.
+export const MEASURED_UPPER_BODY_DIVERGENCE_DEGREES = MEASURED_UPPER_BODY_DIVERGENCE_BY_RUN_CLIP[DEFAULT_RUN_CLIP_ID];
 
 export const UPPER_BODY_DIVERGENCE_NOTES = Object.freeze({
   comparedAtAlignedPhase: true,

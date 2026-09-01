@@ -118,7 +118,11 @@ function conditionLine(conditions) {
   const sprint = Number(conditions.sprint?.sprintSpeedMps);
   const sprintText = !Number.isFinite(sprint) ? null
     : `衝刺 ${sprint.toFixed(2)} m/s${conditions.sprint?.sprintInsideBracket === false ? '（已超出量測區間）' : ''}`;
-  return [`條件: 攻擊節奏 ${tempoText}`, review, sprintText].filter(Boolean).join(' · ');
+  // R21Y.1: and which run lent the arms, when it is not the shipped one. Named only on an override
+  // so the common line stays short - a table with no clip named was taken on the build's own.
+  const armClip = conditions.sprint?.sprintArmClipReason === 'override'
+    ? `手臂 ${conditions.sprint.sprintArmClipId}` : null;
+  return [`條件: 攻擊節奏 ${tempoText}`, review, sprintText, armClip].filter(Boolean).join(' · ');
 }
 
 export function createParryAttemptTally(options = {}) {

@@ -51,6 +51,7 @@ function harness() {
     bones[bone] = { quaternion: { x: 0, y: 0, z: 0, w: 1 } };
   }
   let sampledClip = null;
+  const sampleOrder = [];
   const labScene = {
     engagementStance: { separationMeters: 2.4 },
     setLanePositions: () => {},
@@ -58,7 +59,7 @@ function harness() {
     camera: null,
     defender: {
       rig: bones,
-      sampleAnimation: (clipId) => { sampledClip = clipId; },
+      sampleAnimation: (clipId, timeSeconds) => { sampledClip = clipId; sampleOrder.push({ clipId, timeSeconds }); },
       update: () => {},
     },
   };
@@ -76,13 +77,13 @@ function harness() {
     },
   });
   laneController.setWalkDurations({ [LANE_WALK_CLIPS.forward]: 1.0667, [LANE_WALK_CLIPS.backward]: 1, [LANE_WALK_CLIPS.run]: 0.8 });
-  return { laneController, applied };
+  return { laneController, applied, sampleOrder };
 }
 
 // Walks the defender forward at a speed for long enough that the gait is reporting it, then takes
 // one walk sample with the guard claiming the upper body - which is what parry mode does.
 function sampleAt(speedMps, { guardOwnsUpperBody = true } = {}) {
-  const { laneController, applied } = harness();
+  const { laneController, applied, sampleOrder } = harness();
   const step = speedMps / 60;
   for (let i = 0; i < 20; i += 1) {
     laneController.moveDefenderWorld(0, -step);
@@ -90,7 +91,7 @@ function sampleAt(speedMps, { guardOwnsUpperBody = true } = {}) {
   }
   const gate = laneController.sampleDefenderWalk(true, guardOwnsUpperBody);
   laneController.overlayDefenderWalkLegs();
-  return { gate, pose: applied.at(-1) ?? {}, armWeight: laneController.defenderSprintArmWeight, laneController };
+  return { gate, pose: applied.at(-1) ?? {}, armWeight: laneController.defenderSprintArmWeight, laneController, sampleOrder };
 }
 
 test('R21X.1 sprinting reaches the arms even when the guard claims the upper body', () => {
@@ -148,4 +149,21 @@ test('R21X.1 a refused overlay reports no borrowed arms rather than the last fra
   laneController.sampleDefenderWalk(false, true); // an attack in flight: the guard takes everything
   assert.equal(laneController.defenderWalkOverlay.allowed, false);
   assert.equal(laneController.defenderSprintArmWeight, 0);
+});
+
+test('R21U.1 the run is sampled before the walk, so the rig is left holding the walk', () => {
+  // Moved here from a source-text assertion in sprint-arm-overlay-r21u1.test.js, which asserted the
+  // ordering by matching the literal call `sprintArmSamplePhase(gaitReport.phase)` and therefore
+  // broke the moment R21Y.1 gave that call a second argument - while the ordering it cares about
+  // had not moved at all. The order the sampler is actually called in is observable; assert that.
+  const { sampleOrder } = sampleAt(SPRINT_SPEED_MPS);
+  const run = sampleOrder.findIndex((call) => call.clipId === LANE_WALK_CLIPS.run);
+  const walk = sampleOrder.findIndex((call) => call.clipId === LANE_WALK_CLIPS.forward);
+  assert.ok(run !== -1, 'the run has to be sampled at all');
+  assert.ok(run < walk, 'the run first, so the last thing left on the rig is the walk');
+  assert.equal(sampleOrder.at(-1).clipId, LANE_WALK_CLIPS.forward);
+
+  // And at a walk the run is never sampled - the weight gate is upstream of the cost.
+  const walking = sampleAt(LANE_LOCOMOTION_PROFILE.forwardSpeedMps).sampleOrder;
+  assert.equal(walking.some((call) => call.clipId === LANE_WALK_CLIPS.run), false);
 });
