@@ -168,15 +168,46 @@ export function createShieldParryLabUi(elements) {
 
     if (opportunity.reason === 'attack-not-committed' || opportunity.reason === 'parry-input-too-early') {
       const attack = opportunity.attack;
+      // R21O.2: count down to the WINDOW, which is where the gate accepts, not to COMMITMENT,
+      // which is only where the attack becomes real. They are different moments and this line
+      // said the first while computing the second.
+      //
+      // At 1x the lie was small enough to hide inside a person's own timing error - the window
+      // opens 20ms BEFORE commitment on TOP, 26ms after on RIGHT, 110ms after on LEFT. R21O.1
+      // doubled the swing without scaling the window's fixed 180/60ms offsets, which stretched
+      // those gaps to 140 / 231 / 400ms, and the playtest failed exactly along that ranking:
+      // 4 / 5 / 10 presses too early, LEFT never once landing inside its window. The HUD had
+      // counted to zero and said press, 400ms early, on every LEFT swing.
+      //
+      // Both halves come off the opportunity itself rather than being rebuilt from parts, so this
+      // cannot drift from the rule it is describing: the gate accepts while ttc <= earliest.
+      //
+      // And it is the LATER of two moments, not either alone. The gate accepts only once the
+      // attack is committed AND the timing is inside the window, and which of those lands second
+      // depends on the direction: at 1x TOP commits 20ms AFTER its window opens, while LEFT
+      // commits 110ms before. Counting to commitment alone was the bug; counting to the window
+      // alone would simply move it onto TOP.
+      const earliestTtc = opportunity.profile?.earliestInputTtcSeconds;
+      const untilWindowMs = attack?.timeToContactSeconds == null || earliestTtc == null
+        ? null
+        : Math.max(0, (attack.timeToContactSeconds - earliestTtc) * 1000);
       const untilCommitMs = attack?.movementStartSeconds == null || attack?.elapsedSeconds == null
         ? null
         : Math.max(0, (attack.movementStartSeconds - attack.elapsedSeconds) * 1000);
-      const reviewMs = untilCommitMs == null
+      const untilAcceptMs = untilWindowMs == null || untilCommitMs == null
         ? null
-        : untilCommitMs / (parryReviewActive ? parryReviewRate : 1);
+        : Math.max(untilWindowMs, untilCommitMs);
+      const reviewMs = untilAcceptMs == null
+        ? null
+        : untilAcceptMs / (parryReviewActive ? parryReviewRate : 1);
+      // Committed and waiting is its own state. Folding it into "not committed" is what let the
+      // countdown stand in for two different questions in the first place.
+      const headline = untilAcceptMs == null
+        ? 'WAIT · ATTACK NOT COMMITTED'
+        : `${attack.committed ? 'COMMITTED' : 'WAIT'} · WINDOW IN ${untilAcceptMs.toFixed(0)}ms`;
       showParryCue(
         'wait',
-        untilCommitMs == null ? 'WAIT · ATTACK NOT COMMITTED' : `WAIT · WINDOW IN ${untilCommitMs.toFixed(0)}ms`,
+        headline,
         reviewMs == null ? '不要按 F；等待 PARRY NOW' : `game-time · 約 ${reviewMs.toFixed(0)}ms review-time · 不要先按 F`,
       );
       return;
