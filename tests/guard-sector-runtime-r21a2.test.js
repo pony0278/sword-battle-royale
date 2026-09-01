@@ -54,10 +54,19 @@ test('R21A.2 no rule consults the sector yet', () => {
   // reading this before that answer existed, the interesting question would have been decided by
   // accident - so the absence is the assertion, checked structurally rather than by grep.
   const combatDir = join(ROOT, 'src/combat');
+  // R21N.1: the directional input module imports the sector VOCABULARY - the three names - to
+  // validate a keystroke against. That is the opposite of a rule reading the aim: it writes the
+  // aim, and it is checked below that it takes nothing else from the module.
+    // R21Q.1 joins them: it imports the three names to build the mirror between the attacker's
+  // frame and the defender's. It writes no aim and reads none - it restates an ATTACK.
+  const vocabularyOnly = ['guard-sector.js', 'directional-parry-input.js', 'attack-direction-as-defended.js'];
   const offenders = readdirSync(combatDir)
-    .filter((name) => name.endsWith('.js') && name !== 'guard-sector.js')
+    .filter((name) => name.endsWith('.js') && !vocabularyOnly.includes(name))
     .filter((name) => readFileSync(join(combatDir, name), 'utf8').includes("from './guard-sector.js'"));
   assert.deepEqual(offenders, [], `combat rules must not read the aim yet: ${offenders}`);
+  const directionalInput = readFileSync(join(combatDir, 'directional-parry-input.js'), 'utf8');
+  assert.match(directionalInput, /import \{ GUARD_SECTORS \} from '\.\/guard-sector\.js';/);
+  assert.doesNotMatch(directionalInput, /planGuardSector/);
 
   // The parry path specifically - the one it will eventually join.
   for (const name of ['parry-gate-verdict.js', 'predictive-intercept-parry.js', 'guard-cone-gate.js',

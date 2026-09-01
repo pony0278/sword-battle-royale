@@ -45,6 +45,7 @@ import {
 import {
   measureAttackerRecoilWorldSilhouette,
 } from '../../src/combat/attacker-recoil-world-silhouette.js';
+import { maybeStartDefenceMatrixProbe } from './shield-parry-r281/defence-matrix-probe.js'; // R21P.1
 import { maybeStartParryGateProbe } from './shield-parry-r281/parry-gate-probe.js';
 import {
   compactInterceptDriveTelemetry,
@@ -64,6 +65,7 @@ import { createStanceDebugController } from './shield-parry-r281/stance-debug-co
 import { createShieldParryLabUi, bindShieldParryLabUiEvents } from './shield-parry-r281/lab-ui.js';
 import { createGuardSectorIndicator } from './shield-parry-r281/guard-sector-indicator.js';
 import { createParryAttemptTally } from './shield-parry-r281/parry-attempt-tally.js';
+import { clampAttackTempoScale } from '../../src/combat/attack-tempo.js'; // R21O.1
 import { createOpponentDriveController } from './shield-parry-r281/opponent-drive-controller.js'; // R21E.1
 import { createGuardSectorRuntime } from '../../src/game/guard-sector-runtime.js';
 import {
@@ -117,7 +119,10 @@ const INSPECTION_CAMERA = DEBUG_QUERY.get('camera') === 'free';
 const inspectionOverlay = createShieldParryInspectionOverlay({ THREE, scene });
 let defenderSword = null;
 
-const attackRuntime = createLongswordDirectionalAttackRuntime();
+// R21O.1: how long a swing takes. 1x by default - the golden grid and the parry gate are a record
+// of the exchange at 1x - and ?tempo=1.8 for the readability playtest.
+const ATTACK_TEMPO_SCALE = clampAttackTempoScale(DEBUG_QUERY.get('tempo'));
+const attackRuntime = createLongswordDirectionalAttackRuntime({ tempoScale: ATTACK_TEMPO_SCALE });
 const guardMachine = createGuardStateMachine();
 const guardRuntime = createGuardPresentationRuntime(THREE, { machine: guardMachine, character: defender });
 const bracingRuntime = createArticulatedImpactBracingRuntime(THREE, { rig: defender.rig, buckler });
@@ -232,7 +237,7 @@ const labUi = createShieldParryLabUi(uiElements);
 const guardSector = createGuardSectorRuntime();
 const guardSectorIndicator = createGuardSectorIndicator(document.getElementById('guardSector'));
 // R21C.2: counts what the attempts did, so a play test produces numbers rather than impressions.
-const parryTally = createParryAttemptTally();
+const parryTally = createParryAttemptTally({ conditions: () => ({ tempoScale: ATTACK_TEMPO_SCALE, slowReview: slowReview.checked }) });
 const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
 let ready = false;
@@ -527,7 +532,9 @@ function startAttack(direction = selectedDirection) {
   const started = combat.startAttack(direction);
   if (!started.accepted) return false;
   laneController.startAttack(direction, attackRuntime.snapshot?.action?.runtime?.contactSeconds);
-  parryTally.recordAttack(direction); // R21G.1: the denominator is the swing, not the press
+  // R21G.1: the denominator is the swing, not the press. R21M.1: with where the player was
+  // already pointing when it began, so a press that never moved can be told from a misread one.
+  parryTally.recordAttack(direction, guardSector.sector);
   status.textContent = `ATTACK ${direction.toUpperCase()} · wait for committed YES, then press PARRY NOW or F`;
   status.className = 'warn';
   document.querySelectorAll('[data-attack]').forEach((button) => button.classList.toggle('active', button.dataset.attack === direction));
@@ -580,6 +587,9 @@ function resolveContact(snapshot, currentBlade, deltaSeconds) {
     selectedMode,
     selectedDirection,
   });
+  // R21Q.1: what the swing did, beside how the press was graded - the column that would have said
+  // "you were hit" while every other table only said "too early".
+  parryTally.recordOutcome(selectedDirection, snapshot?.sequence, exchangeState.latestCombatResult?.resolution?.outcome, exchangeState.latestBodyHit?.contact === true);
   const settled = laneController.settle(exchangeState.latestCombatResult?.resolution?.outcome);
   if (settled) exchangeState.latestEngagementGround = settled;
   return resolved;
@@ -626,6 +636,14 @@ bindShieldParryLabUiEvents({
     onSprint: (held) => playerController.setSprintRequested(held), // R20U.1 Shift
     onLook: (deltaPixels) => (INSPECTION_CAMERA ? null : playerController.look(deltaPixels)), // R20S.3 free look
     onAim: (aim) => guardSector.aim(aim), // R21A.2 the guard sector, aim only - no rule reads it
+    // R21N.1: one press that names the direction and is the timed input. The sector is chosen
+    // first so the guard's rising edge - which IS the parry attempt (R20H.1) - already sees it;
+    // ordering these the other way round would arm every directional press against wherever the
+    // pointer happened to be left.
+    onDirectionalParry: (direction, pressed) => {
+      if (pressed) guardSector.select(direction);
+      return setGuardHeld(pressed);
+    },
     onShowSurface: (checked) => buckler.setParrySurfaceVisible(checked),
     onResize: resize,
   },
@@ -775,3 +793,4 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
   getExchangeState: () => exchangeState,
 });
 maybeStartParryGateProbe({ api: window.__G43B5R281_LAB__, windowRef: window, documentRef: document }); // R19G.1 CI gate
+maybeStartDefenceMatrixProbe({ api: window.__G43B5R281_LAB__, windowRef: window, documentRef: document }); // R21P.1 CI gate

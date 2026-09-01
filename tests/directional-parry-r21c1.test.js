@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { defendedSectorFor } from '../src/combat/attack-direction-as-defended.js';
+
 import {
   createCommittedParryContactGate,
   evaluateCommittedParryInput,
@@ -28,13 +30,17 @@ const press = (direction, aimedSector) => evaluateCommittedParryInput({
 
 test('R21C.1 pointing at the swing is what arms the parry', () => {
   for (const direction of LONGSWORD_ATTACK_DIRECTIONS) {
-    const matched = press(direction, direction);
-    assert.equal(matched.accepted, true, `${direction} answered in its own direction`);
+    // R21Q.1: "its own direction" is the sector the attack arrives from, not the name of the clip.
+    // The clips are named for the attacker's hand and the sector for the screen, so the lateral
+    // pair mirrors between them; this test asserted the raw names until the mirror was measured.
+    const answer = defendedSectorFor(direction);
+    const matched = press(direction, answer);
+    assert.equal(matched.accepted, true, `${direction} answered from where it arrives`);
     assert.equal(matched.gates.directionMatched, true);
-    assert.equal(matched.aimedSector, direction);
-    assert.equal(matched.attackDirection, direction);
+    assert.equal(matched.aimedSector, answer);
+    assert.equal(matched.attackDirection, direction, 'the clip keeps its own name');
 
-    for (const wrong of GUARD_SECTORS.filter((sector) => sector !== direction)) {
+    for (const wrong of GUARD_SECTORS.filter((sector) => sector !== answer)) {
       const missed = press(direction, wrong);
       assert.equal(missed.accepted, false, `${direction} must not be parried by aiming ${wrong}`);
       assert.equal(missed.reason, 'parry-input-wrong-direction');
@@ -58,7 +64,7 @@ test('R21C.1 no aim is a mismatch, not a pass', () => {
   // matching whatever the player happened to hold.
   assert.equal(evaluateCommittedParryInput({
     attackSnapshot: { ...attack('right'), action: { runtime: { movementStartSeconds: 0.12, contactSeconds: 0.23 } } },
-    aimedSector: 'right',
+    aimedSector: 'left',
   }).accepted, false);
 });
 
@@ -67,10 +73,12 @@ test('R21C.1 a wrong guess still spends the one attempt', () => {
   // what a wrong time costs: this swing is now a plain block. That is the whole stake - the guard
   // is untouched and still blocks, so guessing wrong loses the reward, not the exchange.
   const gate = createCommittedParryContactGate();
-  const wrong = gate.arm({ attackSnapshot: attack('right'), aimedSector: 'left', manual: true });
+  // R21Q.1: a RIGHT attack arrives on the LEFT, so 'right' is now the wrong guess and 'left' the
+  // right one - the two swapped roles here when the mirror was fixed.
+  const wrong = gate.arm({ attackSnapshot: attack('right'), aimedSector: 'right', manual: true });
   assert.equal(wrong.accepted, false);
   assert.equal(wrong.reason, 'parry-input-wrong-direction');
-  const retry = gate.arm({ attackSnapshot: attack('right'), aimedSector: 'right', manual: true });
+  const retry = gate.arm({ attackSnapshot: attack('right'), aimedSector: 'left', manual: true });
   assert.equal(retry.accepted, false);
   assert.equal(retry.reason, 'parry-input-already-used-for-attack');
 });

@@ -7,6 +7,7 @@ import {
   LONGSWORD_DIRECTIONAL_ATTACKS,
 } from './longsword-directional-metadata.js';
 import { getAttackTimeWarp, warpSourceToRuntime, warpRuntimeToSource } from './attack-time-warp.js';
+import { clampAttackTempoScale, DEFAULT_ATTACK_TEMPO_SCALE } from './attack-tempo.js';
 
 export const LONGSWORD_ATTACK_RUNTIME_STAGE = 'G4.1';
 export const LONGSWORD_ATTACK_INTERRUPTION_STAGE = 'G4.3B.1';
@@ -109,7 +110,12 @@ export function getLongswordDirectionalAttackProfile(direction, options = {}) {
   // and then restated in the clock the exchange counts in. Where a direction has no warp - TOP and
   // RIGHT - the two clocks are the same and this is the identity, byte for byte.
   const timeWarp = options.timeWarp === null ? null : (options.timeWarp || getAttackTimeWarp(key));
-  const toRuntime = (seconds) => warpSourceToRuntime(seconds, timeWarp);
+  // R21O.1: how long the whole swing takes, on top of the per-direction warp that fixes its shape.
+  // Every landmark below is derived through toRuntime, so the tempo reaches all of them at once -
+  // contact, the active window, the trail, the commitment marker and the clip's usable length keep
+  // their relationships to each other exactly and only move together.
+  const tempoScale = clampAttackTempoScale(options.tempoScale ?? DEFAULT_ATTACK_TEMPO_SCALE);
+  const toRuntime = (seconds) => warpSourceToRuntime(seconds, timeWarp, tempoScale);
   // R21J.1: the clip may be abandoned before it ends, but never extended past it, and never
   // trimmed back over anything the exchange is calibrated against - the trim is refused if it
   // would land at or before contact.
@@ -130,6 +136,7 @@ export function getLongswordDirectionalAttackProfile(direction, options = {}) {
   const cancelStartSeconds = clamp(Math.max(activeEndSeconds, durationSeconds - Math.min(0.16, durationSeconds * 0.28)), 0, durationSeconds);
   return Object.freeze({
     timeWarp,
+    tempoScale,
     sourceDurationSeconds,
     stage: LONGSWORD_ATTACK_RUNTIME_STAGE,
     weapon: 'longsword',
@@ -256,7 +263,7 @@ export function createLongswordDirectionalAttackRuntime(options = {}) {
       // R20M.1: the exchange counts in runtime; the clip is sampled in source. Everything else on
       // this snapshot is runtime - this one field is the sampler's, and says so by its name.
       sourceTimeSeconds: interruption?.sourceTimeSeconds
-        ?? (profile ? warpRuntimeToSource(elapsedSeconds, profile.timeWarp) : null),
+        ?? (profile ? warpRuntimeToSource(elapsedSeconds, profile.timeWarp, profile.tempoScale) : null),
       direction: profile?.direction || interruption?.direction || null,
       clipId: profile?.clipId || interruption?.clipId || null,
       contactSeconds: profile?.contactSeconds ?? null,
@@ -317,7 +324,7 @@ export function createLongswordDirectionalAttackRuntime(options = {}) {
       profile.durationSeconds,
     );
     // ...and the same instant as a place in the clip, which is what the pose sampler needs.
-    const sourceTimeSeconds = warpRuntimeToSource(runtimeSeconds, profile.timeWarp);
+    const sourceTimeSeconds = warpRuntimeToSource(runtimeSeconds, profile.timeWarp, profile.tempoScale);
     const phaseAtInterrupt = getLongswordAttackPhase(profile, runtimeSeconds);
     if (phaseAtInterrupt !== LONGSWORD_ATTACK_PHASES.ACTIVE && input.allowOutsideActive !== true) {
       return Object.freeze({ accepted: false, reason: 'attack-not-active', snapshot: snapshot() });

@@ -82,6 +82,14 @@ export function createOpponentDriveRuntime(options = {}) {
       restTargetMs = drawRestIntervalMs(sequence.random, profile);
       return lastDirection;
     },
+    // R21L.1: a fresh run zeroes the swing count without touching the bag or the seed. The tally
+    // resets on the same edge, and the two were reading from different clocks - a report could say
+    // "已出 48" beside a table totalling 34, which is one number too many for anyone to trust.
+    resetRun() {
+      attacksServed = 0;
+      lastDirection = null;
+      return report();
+    },
     reseed(value) {
       seed = Number.isFinite(Number(value)) ? Number(value) : DEFAULT_OPPONENT_SEED;
       sequence = createOpponentDirectionSequence(seed);

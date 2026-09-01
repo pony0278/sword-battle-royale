@@ -22,7 +22,13 @@ test('R21C.2 counts attempts per direction and why they missed', () => {
   // mistimed into tooEarly/tooLate and kept mistimed as their derived total.
   const row = (extra) => ({
     thrown: 0, attempts: 0, armed: 0, wrongDirection: 0, unaimed: 0,
-    tooEarly: 0, tooLate: 0, other: 0, noAnswer: 0, mistimed: 0, ...extra,
+    tooEarly: 0, tooLate: 0, other: 0, noAnswer: 0, mistimed: 0,
+    // R21M.1: these presses carry no aimed sector at all, so none of them is classified as
+    // moved or unmoved - pointing nowhere says nothing about movement.
+    pressesUnmoved: 0, pressesMoved: 0, misreadUnmoved: 0, misreadMoved: 0,
+    // R21Q.1: what the swing did, counted on its own axis - a press graded "too early" may still
+    // have put the shield in the way, and only this pair can say so.
+    defended: 0, struck: 0, ...extra,
   });
   assert.deepEqual(rows.right, row({ thrown: 3, attempts: 3, armed: 1, wrongDirection: 1, tooLate: 1, mistimed: 1 }));
   assert.deepEqual(rows.top, row({ thrown: 1, attempts: 1, unaimed: 1 }));
@@ -127,11 +133,14 @@ test('R21G.1 recording is not gated on the session - practising by hand still co
 
 test('R21G.1 the drive tells the tally when a run starts, and the lab counts every swing', () => {
   const controller = readFileSync(new URL('../tools/action-studio/shield-parry-r281/opponent-drive-controller.js', import.meta.url), 'utf8');
-  assert.ok(controller.includes('tally?.setSessionActive(enabled());'));
+  assert.ok(controller.includes('tally?.setSessionActive(running);'));
   // Before the early return, or a run would only ever be reset by the frame that also drove it.
-  assert.ok(controller.indexOf('tally?.setSessionActive(enabled());') < controller.indexOf('if (!enabled()) return null;'));
+  assert.ok(controller.indexOf('tally?.setSessionActive(running);') < controller.indexOf('if (!enabled()) return null;'));
+  // R21L.1: and the drive's own swing counter starts on the same edge, so a report cannot carry
+  // two totals from different clocks.
+  assert.ok(controller.includes('if (running && !wasEnabled) runtime.resetRun();'));
   const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-  assert.ok(entry.includes('parryTally.recordAttack(direction);'), 'every swing is counted as it starts');
+  assert.match(entry, /parryTally\.recordAttack\(direction, /, 'every swing is counted as it starts');
 });
 
 test('R21G.1 pressing before the attacker commits is a timing miss, not an unknown one', () => {
@@ -317,4 +326,150 @@ test('R21G.4 the raw samples stay out of rows, so the bucket invariant is untouc
   assert.ok(!('ttcMs' in tally.rows.top), 'rows is a counts view; an array in it breaks every deepEqual');
   const row = tally.rows.top;
   assert.equal(row.armed + row.wrongDirection + row.unaimed + row.tooEarly + row.tooLate + row.other + row.noAnswer, row.thrown);
+});
+
+test('R21L.1 a misread swing records what it was mistaken FOR', () => {
+  // "Wrong direction" says the swing was misread; it cannot say misread as what. R21A.1 measured
+  // that all three attacks travel on the defender's right through the windup and are separated
+  // only by the tip's vertical velocity - TOP rises, RIGHT holds level, LEFT falls - so they are
+  // not equally alike, and "make the swings readable" is a vaguer instruction than "these two are
+  // being mistaken for each other".
+  const tally = createParryAttemptTally();
+  let sequence = 0;
+  const miss = (thrown, aimed) => {
+    tally.recordAttack(thrown);
+    tally.record({
+      attackDirection: thrown, aimedSector: aimed, sequence: sequence += 1,
+      accepted: false, reason: 'parry-input-wrong-direction', timeToContactSeconds: 0.1,
+    });
+  };
+  miss('top', 'left'); miss('top', 'left'); miss('top', 'right');
+  miss('left', 'top');
+  const confusion = tally.confusion;
+  assert.equal(confusion.top.left, 2);
+  assert.equal(confusion.top.right, 1);
+  assert.equal(confusion.left.top, 1);
+  assert.equal(confusion.right.top, 0, 'a direction nobody misread is all zeroes');
+  assert.equal(confusion.top.top, 0, 'aiming correctly is not a miss, so the diagonal stays empty');
+  // The counts view stays a counts view; a nested object in it breaks every deepEqual on rows.
+  assert.ok(!('wrongAim' in tally.rows.top));
+  assert.equal(tally.rows.top.wrongDirection, 3, 'and still totals the row');
+});
+
+test('R21L.1 the matrix only appears when there is something in it', () => {
+  const clean = createParryAttemptTally();
+  clean.recordAttack('top');
+  clean.record({ attackDirection: 'top', sequence: 1, accepted: true, reason: 'ok', timeToContactSeconds: 0.1 });
+  assert.ok(!clean.reportText.includes('方向錯的分布'), 'an empty grid every run trains the eye to skip it');
+
+  const messy = createParryAttemptTally();
+  messy.recordAttack('left');
+  messy.record({
+    attackDirection: 'left', aimedSector: 'top', sequence: 1,
+    accepted: false, reason: 'parry-input-wrong-direction', timeToContactSeconds: 0.1,
+  });
+  const text = messy.reportText;
+  assert.match(text, /方向錯的分布（列 = 這一刀從你的哪一側來，欄 = 你瞄的）· 共 1 次/);
+  assert.match(text, /來自\\瞄準\ttop\tright\tleft/);
+  // R21Q.1: the LEFT attack is shown by the side it ARRIVES from, which is the player's right,
+  // so the dash sits under 'right' - the cell that would have meant "read it correctly".
+  assert.match(text, /^right\t1\t—\t0$/m, 'the diagonal is a dash, not a zero');
+});
+
+test('R21L.1 an unaimed press is not a misread one', () => {
+  // A null sector counts as a mismatch for the gate (R21C.1) but says nothing about what the
+  // player thought the swing was, so it must not land in the matrix.
+  const tally = createParryAttemptTally();
+  tally.recordAttack('right');
+  tally.record({
+    attackDirection: 'right', aimedSector: null, sequence: 1,
+    accepted: false, reason: 'parry-input-unaimed', timeToContactSeconds: 0.1,
+  });
+  assert.equal(tally.rows.right.unaimed, 1);
+  assert.equal(tally.rows.right.wrongDirection, 0);
+  for (const aimed of ['top', 'right', 'left']) assert.equal(tally.confusion.right[aimed], 0);
+});
+
+test('R21M.1 a press that never moved the aim is told apart from a misread one', () => {
+  // R21L.1's matrix came back with 15 of 16 misreads aimed at RIGHT, and never TOP mistaken for
+  // LEFT or the reverse - which is not what a reading failure between those two looks like. The
+  // sector holds indefinitely by design and RIGHT is the direction being parried 12 times in 13,
+  // so the aim sits there. Two explanations fit that matrix and want opposite fixes: the aim was
+  // already wrong and stayed (an input problem), or the player pointed and pointed wrong (reading).
+  const tally = createParryAttemptTally();
+  let sequence = 0;
+  const swing = (thrown, startAim, pressAim, reason, accepted = false) => {
+    tally.recordAttack(thrown, startAim);
+    tally.record({
+      attackDirection: thrown, aimedSector: pressAim, sequence: sequence += 1,
+      accepted, reason, timeToContactSeconds: 0.1,
+    });
+  };
+  swing('top', 'right', 'right', 'parry-input-wrong-direction');       // parked, never moved
+  swing('top', 'right', 'right', 'parry-input-wrong-direction');       // parked, never moved
+  swing('top', 'left', 'right', 'parry-input-wrong-direction');        // moved, and moved wrong
+  swing('top', 'left', 'top', 'parry-input-armed-awaiting-real-contact', true); // moved, correctly
+
+  const top = tally.aimMovement.top;
+  assert.equal(top.presses, 4);
+  assert.equal(top.unmoved, 2);
+  assert.equal(top.moved, 2);
+  assert.equal(top.misreadUnmoved, 2, 'the aim never left where the last swing put it');
+  assert.equal(top.misreadMoved, 1, 'this one is a genuine misread');
+  assert.equal(top.misreadUnmoved + top.misreadMoved, tally.rows.top.wrongDirection);
+  // A correct press that had to move counts as moved but never as a misread.
+  assert.equal(tally.rows.top.armed, 1);
+});
+
+test('R21M.1 the aim is compared against where THIS swing started, not the last press', () => {
+  const tally = createParryAttemptTally();
+  // The aim moves to top during the first swing and stays there. The second swing therefore starts
+  // with the aim already on top: pressing top on it is not a move, and must not read as one.
+  tally.recordAttack('left', 'right');
+  tally.record({ attackDirection: 'left', aimedSector: 'top', sequence: 1, reason: 'parry-input-wrong-direction', timeToContactSeconds: 0.1 });
+  tally.recordAttack('top', 'top');
+  tally.record({ attackDirection: 'top', aimedSector: 'top', sequence: 2, accepted: true, reason: 'ok', timeToContactSeconds: 0.1 });
+  assert.equal(tally.aimMovement.left.moved, 1, 'the first press did move');
+  assert.equal(tally.aimMovement.top.unmoved, 1, 'the second did not have to');
+  assert.equal(tally.aimMovement.top.moved, 0);
+});
+
+test('R21M.1 a swing recorded without a starting aim treats any press as a move', () => {
+  // recordAttack is called from startAttack, which every lab and probe reaches; one that does not
+  // pass the aim must not silently classify every press as "never moved".
+  const tally = createParryAttemptTally();
+  tally.recordAttack('right');
+  tally.record({ attackDirection: 'right', aimedSector: 'right', sequence: 1, accepted: true, reason: 'ok', timeToContactSeconds: 0.1 });
+  assert.equal(tally.aimMovement.right.moved, 1);
+  assert.equal(tally.aimMovement.right.unmoved, 0);
+});
+
+test('R21M.1 the movement table prints whenever anything was pressed', () => {
+  const tally = createParryAttemptTally();
+  tally.recordAttack('right', 'right');
+  tally.record({ attackDirection: 'right', aimedSector: 'right', sequence: 1, accepted: true, reason: 'ok', timeToContactSeconds: 0.1 });
+  const text = tally.reportText;
+  // A clean run has no confusion matrix but still has this: "the aim never moved" is as
+  // informative when the run went well as when it did not.
+  assert.ok(!text.includes('方向錯的分布'));
+  assert.match(text, /瞄準有沒有動（攻擊開始 → 按下）/);
+  assert.match(text, /^right\t1\t1\t0\t0\t0$/m);
+});
+
+test('R21M.1 the lab hands the aim in with every swing', () => {
+  const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
+  assert.match(entry, /parryTally\.recordAttack\(direction, guardSector\.sector\);/);
+});
+
+test('R21M.1 an unaimed press is neither moved nor unmoved', () => {
+  // Pointing nowhere is already counted as `unaimed`. Filing it as "never moved" would inflate
+  // the exact bucket this split exists to size.
+  const tally = createParryAttemptTally();
+  tally.recordAttack('top', 'right');
+  tally.record({ attackDirection: 'top', aimedSector: null, sequence: 1, reason: 'parry-input-unaimed', timeToContactSeconds: 0.1 });
+  const top = tally.aimMovement.top;
+  assert.equal(top.presses, 1, 'it was still a press');
+  assert.equal(top.unmoved, 0);
+  assert.equal(top.moved, 0);
+  assert.equal(tally.rows.top.unaimed, 1);
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   CALIBRATED_ENGAGEMENT_SEPARATION_METERS,
-  MEASURED_FULL_COVERAGE_BAND_METERS,
+  SUPERSEDED_FULL_COVERAGE_BAND_METERS,
   MEASURED_UNDEFENDED_BODY_REACH_METERS,
   effectiveSeparationAtContact,
   ENGAGEMENT_SPACING_STAGE,
@@ -93,7 +93,10 @@ test('R19D.1 the lab returns to the calibrated stance after boot and after a sta
 });
 
 test('R18V.1 replaces the provisional band with the measured one', () => {
-  const band = MEASURED_FULL_COVERAGE_BAND_METERS;
+  // R21S.1: the band is deleted; what it measured is kept as history. The assertions below still
+  // describe that measurement, because a superseded record is only useful if it is still the
+  // record - a history entry nobody checks decays into a number someone will quote.
+  const band = SUPERSEDED_FULL_COVERAGE_BAND_METERS;
   assert.ok(band.minimum < band.maximum, 'a placeholder band collapses to a point; a measured one does not');
   assert.equal(band.limitedBy.maximum, 'left');
   assert.equal(band.limitedBy.minimum, 'right');
@@ -140,16 +143,22 @@ test('R21E.1 the calibrated stance is inside every direction\'s threat, which it
   }
 });
 
-test('R21E.1 the coverage band is NOT re-measured, so it may not be paired with the reach', () => {
-  // These two used to be asserted against each other - coverage.minimum === reach.top === 1.55,
-  // reach.left === coverage.maximum - to say they "meet at a point rather than over a band".
-  // R21E.1 re-measured only the reach half. The pairing is therefore unsupported now: it must not
-  // be re-asserted from these constants until the guard's own reliability sweep is re-run, and
-  // this test exists to say so rather than to let the old equalities quietly return.
+test('R21S.1 the coverage band is deleted, and says which half was refuted', () => {
+  // The test that stood here forbade re-pairing the coverage band with the reach. Deleting the
+  // constant does that permanently: there is nothing left to pair. What replaces the guard is a
+  // record precise about which end died.
+  const record = SUPERSEDED_FULL_COVERAGE_BAND_METERS;
   const reach = MEASURED_UNDEFENDED_BODY_REACH_METERS;
-  const coverage = MEASURED_FULL_COVERAGE_BAND_METERS;
-  assert.notEqual(coverage.minimum, reach.top);
-  assert.notEqual(coverage.maximum, reach.left);
-  assert.equal(reach.supersedes.top, coverage.minimum, 'the old pairing held against the OLD reach');
-  assert.equal(reach.supersedes.left, coverage.maximum);
+  // The old pairing held against the OLD reach, which is exactly why it was so quotable.
+  assert.equal(reach.supersedes.top, record.minimum);
+  assert.equal(reach.supersedes.left, record.maximum);
+  // And why it is gone: the maximum is refuted by a measurement, the minimum only untested.
+  assert.equal(record.refutedBy.stage, 'R21P.1');
+  assert.equal(record.minimumIsUntestedRatherThanRefuted, true);
+  // Both ends were set by directions retimed since - which is how a measured band goes stale
+  // without anyone touching it.
+  assert.deepEqual([...record.supersededBecause].sort(),
+    ['left-retimed-r21k1', 'left-retimed-r21o3', 'right-retimed-r21b1']);
+  assert.equal(record.limitedBy.minimum, 'right');
+  assert.equal(record.limitedBy.maximum, 'left');
 });

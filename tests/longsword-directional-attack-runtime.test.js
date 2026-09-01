@@ -37,10 +37,13 @@ const EXPECTED = Object.freeze({
   left: Object.freeze({
     clipId: 'UAL2/Sword_Regular_B',
     // Written out from the design rather than read back from the code: R21K.1 has the burst at
-    // source [0.18, 1/3] at 1/3.125 speed, so contact 0.26 lands at 0.18 + 0.08*3.125 - exactly
-    // 0.43 - and everything after the burst is pushed back by what the burst cost.
-    contactSeconds: 0.18 + (0.26 - 0.18) * 3.125,
-    durationSeconds: 0.533 + (1 / 3 - 0.18) * 2.125,
+    // R21O.3: source [0.18, 0.22] at 1/5.25 speed. Contact is unchanged at 0.43 - the narrower
+    // region and the larger stretch are chosen to hold it there - but the region now ENDS before
+    // the blade reaches the defender (source 0.230), which is what puts the parry window in front
+    // of the arrival instead of behind it. The follow-through is no longer inside the stretch, so
+    // the clip is shorter: contact stays put and only the recovery after it shortens.
+    contactSeconds: 0.18 + (0.26 - 0.22) + (0.22 - 0.18) * 5.25,
+    durationSeconds: 0.533 + (0.22 - 0.18) * 4.25,
     sourceContactSeconds: 0.26, sourceDurationSeconds: 0.533, warped: true,
   }),
 });

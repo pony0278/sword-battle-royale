@@ -18,6 +18,7 @@ export function createOpponentDriveController({
     throw new Error('R21E.1 opponent drive needs the lane, the attack verb and the availability read');
   }
   const enabled = () => toggle?.checked === true;
+  let wasEnabled = false;
 
   return Object.freeze({
     // Called every frame with real milliseconds. A tester slowing the pre-contact review down is
@@ -25,7 +26,12 @@ export function createOpponentDriveController({
     frame(rawDeltaMs) {
       // Told every frame rather than on the click: the checkbox is polled, not listened to, and a
       // rising edge the tally detects itself cannot be missed by a handler that was never bound.
-      tally?.setSessionActive(enabled());
+      // A run begins on the rising edge, and both counters have to start there or the report
+      // carries two totals on different clocks.
+      const running = enabled();
+      if (running && !wasEnabled) runtime.resetRun();
+      wasEnabled = running;
+      tally?.setSessionActive(running);
       if (!enabled()) return null;
       const plan = runtime.frame({
         deltaMs: rawDeltaMs,

@@ -2,6 +2,7 @@
 // Callers provide snapshots/callbacks. This module never decides combat success.
 
 import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from '../../../src/combat/parry-lunge-reach.js';
+import { directionalParryFor } from '../../../src/combat/directional-parry-input.js';
 import {
   describeContactGeometry,
   formatAllInspectionGates,
@@ -167,15 +168,46 @@ export function createShieldParryLabUi(elements) {
 
     if (opportunity.reason === 'attack-not-committed' || opportunity.reason === 'parry-input-too-early') {
       const attack = opportunity.attack;
+      // R21O.2: count down to the WINDOW, which is where the gate accepts, not to COMMITMENT,
+      // which is only where the attack becomes real. They are different moments and this line
+      // said the first while computing the second.
+      //
+      // At 1x the lie was small enough to hide inside a person's own timing error - the window
+      // opens 20ms BEFORE commitment on TOP, 26ms after on RIGHT, 110ms after on LEFT. R21O.1
+      // doubled the swing without scaling the window's fixed 180/60ms offsets, which stretched
+      // those gaps to 140 / 231 / 400ms, and the playtest failed exactly along that ranking:
+      // 4 / 5 / 10 presses too early, LEFT never once landing inside its window. The HUD had
+      // counted to zero and said press, 400ms early, on every LEFT swing.
+      //
+      // Both halves come off the opportunity itself rather than being rebuilt from parts, so this
+      // cannot drift from the rule it is describing: the gate accepts while ttc <= earliest.
+      //
+      // And it is the LATER of two moments, not either alone. The gate accepts only once the
+      // attack is committed AND the timing is inside the window, and which of those lands second
+      // depends on the direction: at 1x TOP commits 20ms AFTER its window opens, while LEFT
+      // commits 110ms before. Counting to commitment alone was the bug; counting to the window
+      // alone would simply move it onto TOP.
+      const earliestTtc = opportunity.profile?.earliestInputTtcSeconds;
+      const untilWindowMs = attack?.timeToContactSeconds == null || earliestTtc == null
+        ? null
+        : Math.max(0, (attack.timeToContactSeconds - earliestTtc) * 1000);
       const untilCommitMs = attack?.movementStartSeconds == null || attack?.elapsedSeconds == null
         ? null
         : Math.max(0, (attack.movementStartSeconds - attack.elapsedSeconds) * 1000);
-      const reviewMs = untilCommitMs == null
+      const untilAcceptMs = untilWindowMs == null || untilCommitMs == null
         ? null
-        : untilCommitMs / (parryReviewActive ? parryReviewRate : 1);
+        : Math.max(untilWindowMs, untilCommitMs);
+      const reviewMs = untilAcceptMs == null
+        ? null
+        : untilAcceptMs / (parryReviewActive ? parryReviewRate : 1);
+      // Committed and waiting is its own state. Folding it into "not committed" is what let the
+      // countdown stand in for two different questions in the first place.
+      const headline = untilAcceptMs == null
+        ? 'WAIT · ATTACK NOT COMMITTED'
+        : `${attack.committed ? 'COMMITTED' : 'WAIT'} · WINDOW IN ${untilAcceptMs.toFixed(0)}ms`;
       showParryCue(
         'wait',
-        untilCommitMs == null ? 'WAIT · ATTACK NOT COMMITTED' : `WAIT · WINDOW IN ${untilCommitMs.toFixed(0)}ms`,
+        headline,
         reviewMs == null ? '不要按 F；等待 PARRY NOW' : `game-time · 約 ${reviewMs.toFixed(0)}ms review-time · 不要先按 F`,
       );
       return;
@@ -391,6 +423,48 @@ function lateralIntentFrom(held, attackerModifier) {
   return Math.sign(intent);
 }
 
+// R21N.1: one press that names the direction and is the timed input. Bound alongside F rather
+// than replacing it - F is still the guard, and a held guard is still omnidirectional.
+function bindDirectionalParry(documentRef, canvas, handlers) {
+  if (typeof handlers.onDirectionalParry !== 'function') return;
+  const held = new Set();
+  const press = (direction, source) => {
+    if (held.has(direction)) return;
+    held.add(direction);
+    handlers.onDirectionalParry(direction, true, source);
+  };
+  const release = (direction) => {
+    if (!held.delete(direction)) return;
+    handlers.onDirectionalParry(direction, false);
+  };
+  documentRef.addEventListener('keydown', (event) => {
+    if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+    const direction = directionalParryFor(event.code);
+    if (!direction) return;
+    event.preventDefault();
+    press(direction, 'key');
+  });
+  documentRef.addEventListener('keyup', (event) => {
+    const direction = directionalParryFor(event.code);
+    if (direction) release(direction);
+  });
+  // The sector indicator doubles as the buttons, so touch and mouse share the target the eye is
+  // already on. Pointer capture keeps a finger that slides off the cell from sticking the guard up.
+  for (const cell of canvas?.ownerDocument?.querySelectorAll?.('#guardSector [data-sector]') || []) {
+    const direction = directionalParryFor(cell.dataset.sector);
+    if (!direction) continue;
+    cell.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      cell.setPointerCapture?.(event.pointerId);
+      press(direction, 'button');
+    });
+    for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
+      cell.addEventListener(type, () => release(direction));
+    }
+  }
+  documentRef.addEventListener('blur', () => { for (const direction of [...held]) release(direction); });
+}
+
 function isParryKey(event) {
   return event?.code === 'KeyF'
     || String(event?.key || '').toLowerCase() === 'f'
@@ -443,6 +517,7 @@ export function bindShieldParryLabUiEvents({
 }) {
   bindFreeLook(canvas, handlers);
   bindGuardAim(canvas, handlers);
+  bindDirectionalParry(documentRef, canvas, handlers);
   let sprintHeld = false;
   function publishSprint(held) {
     if (held === sprintHeld) return;

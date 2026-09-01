@@ -27,7 +27,10 @@ function attack(elapsedSeconds, overrides = {}) {
 
 // R21C.1: these tests are about timing and geometry, so they all point correctly and let the
 // direction gate stand aside. The direction gate has its own test file.
-const AIMED = 'right';
+// R21Q.1: these snapshots are all RIGHT attacks, and a RIGHT attack spends its whole window on
+// the LEFT of the screen - so LEFT is the sector that answers it. Before the mirror was found the
+// gate compared the raw names and this said 'right'.
+const AIMED = 'left';
 
 function predictive(overrides = {}) {
   const requiredDistance = overrides.requiredDistance ?? 0.08;
