@@ -1,5 +1,6 @@
 import {
   KAYKIT_LEG_CHAIN_METERS,
+  MEASURED_LOCOMOTION_CLIPS,
   WALK_TO_RUN_TRANSITION,
   clipPlaybackRate,
   strideMetersFor,
@@ -92,6 +93,9 @@ export function createLaneWalkCycle(options = {}) {
     authority: LANE_WALK_CYCLE_PROFILE.authority,
     // R22E.1: an experiment switch, not a mode. Nothing ships with this on.
     wholeBodyRun: options.wholeBodyRun === true,
+    // R22F.1: and the OTHER way to wear a run - play it at the rate it was drawn at, and let the
+    // feet slide. See the block above advance() for why this is a real option rather than a bug.
+    runPlaybackAuthored: options.runPlaybackAuthored === true,
     ...(options.profile || {}),
   });
   const measured = [profile.forwardCycleMeters, profile.backwardCycleMeters]
@@ -154,7 +158,15 @@ export function createLaneWalkCycle(options = {}) {
       cycleMeters: chosen.cycleMeters,
       // 1 is the gait as drawn. Above 1 the legs hurry, below 1 they float. Nothing reads this to
       // decide anything - it is here so the stretch is a number somebody can see.
-      playbackRate: clipId ? clipPlaybackRate(clipId, speedMetersPerSecond) : null,
+      playbackRate: !clipId ? null
+        : profile.runPlaybackAuthored && clipId === profile.runClipId ? 1
+          : clipPlaybackRate(clipId, speedMetersPerSecond),
+      // R22F.1: how fast the planted foot travels across the ground. Zero whenever the gait is
+      // distance-driven, which is every case this project ships. Under ?footslide=1 it is the
+      // price being paid, so it is a number on the report and on the HUD rather than a surprise.
+      footSlideMetersPerSecond: !clipId || !(profile.runPlaybackAuthored && clipId === profile.runClipId)
+        ? 0
+        : Math.abs(Math.abs(MEASURED_LOCOMOTION_CLIPS[clipId]?.authoredSpeedMps ?? 0) - Math.abs(speedMetersPerSecond)),
       travelledMeters,
       speedMetersPerSecond,
       profile,
@@ -163,16 +175,44 @@ export function createLaneWalkCycle(options = {}) {
     return lastReport;
   }
 
+  // R22F.1 - the trade this module was built to refuse, offered as a switch.
+  //
+  // Everything above is distance-driven, and R19C.1's header says why: a foot that finishes its
+  // stride on a clock rather than on the ground skates whenever speed and clip disagree. That is
+  // the right default and it is not a law. It is a choice, and it costs something specific -
+  // a clip drawn for 7.2 m/s played at 1.5 runs at a fifth speed, which is the slow motion nobody
+  // wanted.
+  //
+  // The other side of the trade: play the run at the rate it was DRAWN at. The pose, the cadence
+  // and the skeletal motion are then exactly what the clip holds - the thing an animation viewer
+  // shows, because a viewer plays in place where there is no ground to disagree with. The price is
+  // arithmetic and unavoidable: the planted foot travels at the clip's authored speed while the
+  // body travels at the game's, so it slides by the difference. That number is reported rather than
+  // hidden, because it is the whole of what is being traded away.
+  //
+  // Only the run takes this. Walking stays distance-driven at every speed.
+  function runDurationSeconds() {
+    return MEASURED_LOCOMOTION_CLIPS[profile.runClipId]?.durationSeconds || null;
+  }
+
   function advance({ travelledMeters, deltaSeconds } = {}) {
     const travelled = finite(travelledMeters);
     const seconds = Math.max(0, finite(deltaSeconds));
     const speed = seconds > 1e-9 ? travelled / seconds : 0;
     if (Math.abs(speed) >= profile.movingThresholdMetersPerSecond) {
-      // Divided by the SIGNED stride of the clip that is about to play, so both clips run forwards
-      // in time: walking backwards at -0.1m against a -0.665m stride advances the phase, exactly
-      // as walking forwards does. Dividing by an unsigned stride ran the backwards clip in reverse.
-      const { cycleMeters } = clipFor(speed);
-      if (Math.abs(cycleMeters) > 1e-9) phase = wrapCyclePhase(phase + travelled / cycleMeters);
+      const chosen = clipFor(speed);
+      const authoredRun = profile.runPlaybackAuthored && chosen.clipId === profile.runClipId;
+      const duration = authoredRun ? runDurationSeconds() : null;
+      if (authoredRun && duration) {
+        // Time, not distance. One clip cycle per `duration` seconds, whatever the ground did.
+        phase = wrapCyclePhase(phase + seconds / duration);
+      } else if (Math.abs(chosen.cycleMeters) > 1e-9) {
+        // Divided by the SIGNED stride of the clip that is about to play, so both clips run
+        // forwards in time: walking backwards at -0.1m against a -0.665m stride advances the
+        // phase, exactly as walking forwards does. Dividing by an unsigned stride ran the
+        // backwards clip in reverse.
+        phase = wrapCyclePhase(phase + travelled / chosen.cycleMeters);
+      }
     }
     return report(travelled, speed);
   }

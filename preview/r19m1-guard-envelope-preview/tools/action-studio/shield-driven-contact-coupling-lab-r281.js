@@ -136,7 +136,7 @@ const activeParryInterceptIntent = createActiveParryInterceptIntent();
 const parryGate = createCommittedParryContactGate();
 const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
   // R21Y.1: which run lends the sprint its arms; ?runclip=, Running_A unless somebody says otherwise.
-  labScene, walkClips: LANE_WALK_CLIPS, services: { captureRigPose, applyRigPose }, sprintArmClipId: EXPERIMENT.sprintArmClipId, wholeBodyRun: EXPERIMENT.wholeBodyRun });
+  labScene, walkClips: LANE_WALK_CLIPS, services: { captureRigPose, applyRigPose }, sprintArmClipId: EXPERIMENT.sprintArmClipId, wholeBodyRun: EXPERIMENT.wholeBodyRun, runPlaybackAuthored: EXPERIMENT.runPlaybackAuthored });
 const playerController = createShieldParryPlayerController({ // R20S.3: feet, lock-on and the camera
   camera, laneController, freeCamera, inspectionCamera: INSPECTION_CAMERA, // R20U.1: running is refused by these two
   // R21V.1: the sprint's ground speed is a playtest dial; with no ?sprint= this is the shipped seed.
