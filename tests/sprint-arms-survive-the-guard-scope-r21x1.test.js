@@ -5,7 +5,7 @@ import { createShieldParryLaneController } from '../src/game/lane-controller.js'
 import { LANE_WALK_CLIPS } from '../src/combat/lane-walk-cycle.js';
 import { LANE_LOCOMOTION_PROFILE } from '../src/combat/lane-locomotion.js';
 import { SPRINT_SPEED_MPS } from '../src/combat/sprint-locomotion.js';
-import { SPRINT_ARM_RAMP_MPS, SPRINT_TORSO_OVERLAY_BONES, SPRINT_UPPER_BODY_OVERLAY_BONES } from '../src/combat/sprint-arm-overlay.js';
+import { SPRINT_ARM_RAMP_MPS, blendSprintUpperBody, SPRINT_TORSO_OVERLAY_BONES, SPRINT_UPPER_BODY_OVERLAY_BONES } from '../src/combat/sprint-arm-overlay.js';
 import { WALK_OVERLAY_BONES, WALK_OVERLAY_SCOPES } from '../src/combat/guard-walk-overlay.js';
 
 // R21X.1 - the run's arms were being borrowed and then thrown away.
@@ -108,9 +108,10 @@ test('R21X.1 sprinting reaches the arms even when the guard claims the upper bod
   for (const bone of SPRINT_TORSO_OVERLAY_BONES) {
     assert.equal(cameFrom(pose[bone]), LANE_WALK_CLIPS.run, `${bone} has to come from the run too`);
   }
-  // The hips are still the walk's: the legs are driven by the walk's stride and a run's pelvis
-  // would fight them.
-  assert.equal(cameFrom(pose.hips), LANE_WALK_CLIPS.forward, 'the pelvis stays with the legs');
+  // R22D.1: the pelvis is the run's now too, but only its ROTATION - measured as pure pitch, a
+  // lean rather than a swing. Its height is never blended, so the walk's bounce is what the legs
+  // still stand on.
+  assert.equal(cameFrom(pose.hips), LANE_WALK_CLIPS.run, 'the pelvis leans with the run');
   // And the legs are still the walk's - that is the whole shape of R21U.1.
   for (const bone of WALK_OVERLAY_BONES) {
     assert.equal(cameFrom(pose[bone]), LANE_WALK_CLIPS.forward, `${bone} must stay the walk's`);
@@ -174,4 +175,23 @@ test('R21U.1 the run is sampled before the walk, so the rig is left holding the 
   // And at a walk the run is never sampled - the weight gate is upstream of the cost.
   const walking = sampleAt(LANE_LOCOMOTION_PROFILE.forwardSpeedMps).sampleOrder;
   assert.equal(walking.some((call) => call.clipId === LANE_WALK_CLIPS.run), false);
+});
+
+test('R22D.1 the pelvis lends its lean but never its bounce', () => {
+  // Asserted against the blend itself rather than through the lane harness, whose fake poses carry
+  // no positions - so the same claim there would pass without testing anything.
+  //
+  // Why it matters: the run's hips rise 0.139m through a cycle against the walk's 0.055m. The legs
+  // are the walk's, so lifting the pelvis 2.5x further would put the feet through the floor at one
+  // end of the stride and in the air at the other. Rotation-only is what makes taking the pelvis
+  // safe at all, and it is a property of blendSprintUpperBody rather than a rule anyone applies.
+  const walk = {
+    hips: { position: { x: 0, y: 0.9, z: 0 }, quaternion: { x: 0, y: 0, z: 0, w: 1 }, scale: { x: 1, y: 1, z: 1 } },
+  };
+  const run = { hips: { position: { x: 0, y: 1.4, z: 0 }, quaternion: { x: Math.SQRT1_2, y: 0, z: 0, w: Math.SQRT1_2 } } };
+  const blended = blendSprintUpperBody(walk, run, 1);
+  assert.deepEqual(blended.hips.position, walk.hips.position, 'the bounce stays the walk\'s');
+  assert.deepEqual(blended.hips.scale, walk.hips.scale);
+  assert.ok(Math.abs(blended.hips.quaternion.x - Math.SQRT1_2) < 1e-9, 'the lean is the run\'s');
+  assert.ok(SPRINT_TORSO_OVERLAY_BONES.includes('hips'));
 });

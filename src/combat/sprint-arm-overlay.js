@@ -51,7 +51,24 @@ export const SPRINT_ARM_OVERLAY_BONES = Object.freeze([
 // and the deviation from the clip's own hand path falls from 27% of its swing to 12% (Running_A:
 // 28% to 18%). So the torso is not a bonus lean bolted on; without it the arms are not the run's
 // arms. Reported from play as "it does not look like Running_B", which it did not.
-export const SPRINT_TORSO_OVERLAY_BONES = Object.freeze(['spine', 'chest', 'head']);
+//
+// R22D.1 adds the hips, on a measurement that says it is both the largest thing left and the safest
+// of the ones left. Walking_B against Running_B at the aligned phase, sampled the way the game
+// samples (in-place, root rotation locked):
+//
+//   hips rotation   11.3 degrees mean, 11.8 peak - and PURE PITCH: 0.0 yaw, 0.0 roll
+//   hips height     the walk rises 0.055m through a cycle, the run 0.139m
+//
+// Pitch is a pelvis tilt, which is what a runner leans with, and taking it cannot swing the feet
+// sideways the way yaw would. It is also near-constant across the cycle (11.3 mean against 11.8
+// peak), so it lands as a static lean rather than a per-frame wobble - a constant offset adds no
+// sliding to a distance-driven gait.
+//
+// The BOUNCE is deliberately not taken, and cannot be: blendSprintUpperBody blends rotation only,
+// so hips.position never transfers. That is the right answer rather than a limitation - the legs
+// are the walk's, and lifting the pelvis 2.5x further through a cycle those legs were not drawn for
+// would put the feet through the floor at one end and in the air at the other.
+export const SPRINT_TORSO_OVERLAY_BONES = Object.freeze(['hips', 'spine', 'chest', 'head']);
 
 // What the overlay actually writes. The arms are still named separately because the ramp, the
 // phase alignment and every divergence measurement are about them.
@@ -179,6 +196,15 @@ export const SPRINT_ARM_OVERLAY_EVIDENCE = Object.freeze({
     Running_B: 0.897,
     Running_B_armsOnly: 0.518,
     Running_B_armsAndTorso: 0.779,
+    // R22D.1, with the pelvis lean added on top of the torso.
+    Running_B_armsAndTorsoAndHips: 0.800,
+  }),
+  // How far the worn arm strays from the clip's own hand path, as a fraction of that clip's swing.
+  // The three scopes, in the order they were taken.
+  handPathDeviationFraction: Object.freeze({
+    armsOnly: 0.27,
+    armsAndTorso: 0.12,
+    armsAndTorsoAndHips: 0.05,
   }),
   phaseOffset: RUNNING_A_PHASE_OFFSET_TO_WALKING_B,
   shippedPhaseOffset: PHASE_OFFSET_TO_WALKING_B[DEFAULT_RUN_CLIP_ID],
