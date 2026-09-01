@@ -20,7 +20,7 @@ import { TRAVEL_YAW_BONES, hipYawDeltaQuaternion, planTravelRelativeLegs } from 
 //
 // It owns no authority over whether anything was hit. It is told an outcome and moves people.
 export function createShieldParryLaneController({
-  labScene, walkClips, services, sprintArmClipId, wholeBodyRun = false, runPlaybackAuthored = false,
+  labScene, walkClips, services, sprintArmClipId, wholeBodyRun = true, runPlaybackAuthored = true,
 }) {
   // R21Y.1: which run the arms are borrowed from. Resolved once, here, so an unmeasured name can
   // never reach the sampler - an overlay with no phase offset swings the arms against the feet.
@@ -300,13 +300,27 @@ export function createShieldParryLaneController({
       // fastest a guarding fighter can travel is the walk's 1.0. Sprinting is refused outright
       // while the guard is up, so the two facts cannot disagree - and until now they did, with
       // planSprint reading the guard as down and this call being told it was up.
-      const armWeight = sprintArmWeight(gaitReport.speedMetersPerSecond);
+      //
+      // R22G.1: zero when the legs are already WEARING the run. The overlay samples the run at the
+      // walk's phase minus the alignment offset, which is correct when the body underneath is the
+      // walk - and wrong by exactly that offset when the body underneath is already the run. The
+      // arms would be borrowed from 12.7% earlier in the same clip they are being laid on.
+      const armWeight = gaitReport.wholeBodyOnly === true
+        ? 0
+        : sprintArmWeight(gaitReport.speedMetersPerSecond);
+      // R22G.1: whether the BODY is running, which is the question the gate below actually needs.
+      // Keying that off the arm weight alone was right only while the overlay was the sole way to
+      // run: once the legs wear the run themselves the weight is zero, the demotion below stopped
+      // firing, and in parry mode planWalkOverlay refused a whole-body clip outright - scope
+      // 'none', the sprint invisible again, exactly the R21X.1 bug from the other direction.
+      // Caught by the browser probe, not by any test, which is why that probe exists.
+      const bodyIsRunning = gaitReport.wholeBodyOnly === true || armWeight > 0;
       // R20W.2: how much of the fighter the walk gets. A run has no legs-only reading, and the
       // gait says so itself, so a run clip can never be handed to a guarding fighter's legs.
       const gate = planWalkOverlay({
         attackInFlight: !exchangeIdle,
         combatResolving: !exchangeIdle,
-        guardOwnsUpperBody: guardOwnsUpperBody && armWeight <= 0,
+        guardOwnsUpperBody: guardOwnsUpperBody && !bodyIsRunning,
         wholeBodyClip: gaitReport.wholeBodyOnly === true,
       });
       lastWalkOverlayPlan = gate;

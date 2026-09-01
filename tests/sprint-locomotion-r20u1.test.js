@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   MEASURED_DISENGAGE_DEFICIT,
   SPRINT_SPEED_BRACKET_MPS,
+  SPRINT_SPEED_CEILING_OVERTURNED,
   SPRINT_SPEED_MPS,
   SPRINT_SPEED_PROVENANCE,
   planSprint,
@@ -31,15 +32,24 @@ const hold = (movement, seconds, intent, step = 1 / 60) => {
   for (let elapsed = 0; elapsed < seconds - 1e-9; elapsed += step) { movement.update(); movement.move(step, intent); }
 };
 
-test('R20U.1 the speed sits inside the bracket the measurements leave for it', () => {
-  // Faster than a walk or it buys nothing; slower than the dodge's authored burst or the dodge
-  // stops being the fastest thing a fighter can do.
+test('R22G.1 the bracket floor still binds; its ceiling was overturned on purpose', () => {
+  // Faster than a walk or it buys nothing. That half is untouched.
   assert.ok(SPRINT_SPEED_MPS > SPRINT_SPEED_BRACKET_MPS.floor);
-  assert.ok(SPRINT_SPEED_MPS < SPRINT_SPEED_BRACKET_MPS.ceiling);
   assert.equal(SPRINT_SPEED_BRACKET_MPS.floor, LANE_LOCOMOTION_PROFILE.forwardSpeedMps);
   assert.equal(SPRINT_SPEED_BRACKET_MPS.ceiling, LANE_LOCOMOTION_PROFILE.authoredBurstCeilingMps);
-  // Tuned, not measured, and saying so - KayKit's Running clips carry no root travel to read.
-  assert.match(SPRINT_SPEED_PROVENANCE, /^seed/);
+
+  // The other half asserted SPRINT_SPEED_MPS < ceiling until R22G.1. The ceiling's MEASUREMENT is
+  // fine - Dodge_Backward covers 0.65m in 0.4s - but the RULE on top of it compared a sustained
+  // speed against a 0.4-second burst, and the deficit table below has always held the number that
+  // refutes it: with the 1.0s cooldown a dodge sustains 0.46 m/s, slower than walking. So the
+  // ceiling is passed deliberately, and the reasoning is a constant rather than a deleted line.
+  assert.ok(SPRINT_SPEED_MPS > SPRINT_SPEED_BRACKET_MPS.ceiling);
+  assert.equal(SPRINT_SPEED_CEILING_OVERTURNED.ceilingMps, SPRINT_SPEED_BRACKET_MPS.ceiling);
+  assert.match(SPRINT_SPEED_CEILING_OVERTURNED.whyTheRuleFails, /sustained.*burst/);
+  assert.ok(SPRINT_SPEED_CEILING_OVERTURNED.dodgeSustainedMps < LANE_LOCOMOTION_PROFILE.forwardSpeedMps,
+    'the dodge a sprint was kept slower than is itself slower than walking');
+  // No longer a seed awaiting play - play is what moved it.
+  assert.match(SPRINT_SPEED_PROVENANCE, /play/);
 });
 
 test('R20U.1 it answers the deficit that justified it', () => {
@@ -113,10 +123,14 @@ test('R20U.1 locked keeps the three walk speeds, because there the gap owns the 
 });
 
 test('R20U.1 running actually covers more ground, and only when unlocked', () => {
+  // R22G.1: measured running AWAY. At 3.0 m/s a second of advancing runs into the 0.9m contact
+  // floor from a 2.4m stance, and a clamped metre measures the clamp rather than the sprint.
   const { ground, movement } = harness();
   movement.setSprintRequested(true);
-  hold(movement, 1, { forward: 1, lateral: 0 });
-  const sprinted = 2.4 - ground.report.separationMeters;
+  const startedAt = ground.report.defenderPosition;
+  hold(movement, 1, { forward: -1, lateral: 0 });
+  const after = ground.report.defenderPosition;
+  const sprinted = Math.hypot(after.x - startedAt.x, after.z - startedAt.z);
   assert.ok(Math.abs(sprinted - SPRINT_SPEED_MPS) < 0.03, `a second of sprint is ${SPRINT_SPEED_MPS}m, got ${sprinted.toFixed(3)}`);
   assert.equal(movement.sprintReport.sprinting, true);
 

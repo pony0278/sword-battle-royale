@@ -91,11 +91,12 @@ export function createLaneWalkCycle(options = {}) {
     runThresholdMetersPerSecond: LANE_WALK_CYCLE_PROFILE.runThresholdMetersPerSecond,
     movingThresholdMetersPerSecond: LANE_WALK_CYCLE_PROFILE.movingThresholdMetersPerSecond,
     authority: LANE_WALK_CYCLE_PROFILE.authority,
-    // R22E.1: an experiment switch, not a mode. Nothing ships with this on.
-    wholeBodyRun: options.wholeBodyRun === true,
-    // R22F.1: and the OTHER way to wear a run - play it at the rate it was drawn at, and let the
-    // feet slide. See the block above advance() for why this is a real option rather than a bug.
-    runPlaybackAuthored: options.runPlaybackAuthored === true,
+    // R22G.1: both of these SHIP now, chosen in play. R22E.1 and R22F.1 built them as experiment
+    // switches and the experiment came back - at 3.0 m/s the whole run clip, played at the rate it
+    // was drawn at, reads as running. They default on and are turned off explicitly, which is the
+    // reverse of how they arrived.
+    wholeBodyRun: options.wholeBodyRun !== false,
+    runPlaybackAuthored: options.runPlaybackAuthored !== false,
     ...(options.profile || {}),
   });
   const measured = [profile.forwardCycleMeters, profile.backwardCycleMeters]

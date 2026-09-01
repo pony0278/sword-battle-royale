@@ -119,9 +119,21 @@ export const WALK_TO_RUN_TRANSITION = Object.freeze({
   biomechanicalTransitionMps: Math.sqrt(0.5 * 9.81 * 0.3765),
   // The speed at which the walk and run clips are stretched by equally much - the geometric mean of
   // what they were authored for. Below it the walk is the better-behaved clip, above it the run is.
+  //
+  // R22G.1: this is Walking_B against Running_A, the pair it was computed for, and it is kept at
+  // that pair deliberately - it is the number R20W.2's decision was made on. What changed is which
+  // side of it the sprint sits on. At 1.5 m/s the sprint was below the crossover and the walk was
+  // the better clip, which is what "keeps the walk clip" recorded. At 3.0 it is above, and the run
+  // is - so the run taking the legs back is this same measurement read at the new speed rather
+  // than a rule being broken.
   leastStretchCrossoverMps: Math.sqrt(1.053 * 3.268),
-  sprintSpeedMps: 1.5,
-  decision: 'sprint-below-the-crossover-keeps-the-walk-clip',
+  crossoverClipPair: Object.freeze(['Walking_B', 'Running_A']),
+  sprintSpeedMps: 3.0,
+  decision: 'sprint-above-the-crossover-wears-the-run-clip',
+  supersededDecision: Object.freeze({
+    atSprintMps: 1.5,
+    was: 'sprint-below-the-crossover-keeps-the-walk-clip',
+  }),
 });
 
 export function locomotionClipMeasurement(clipId) {

@@ -116,8 +116,12 @@ function conditionLine(conditions) {
   // 2.4 m/s is not a table about the game unless it says so - the bracket verdict comes along so a
   // reader can tell an override apart from the shipped seed without knowing what the seed is.
   const sprint = Number(conditions.sprint?.sprintSpeedMps);
+  // R22G.1: flagged when it is not the SHIPPED speed, not when it is outside the old bracket. The
+  // shipped sprint is deliberately past that ceiling now (see SPRINT_SPEED_CEILING_OVERTURNED), so
+  // marking every default run "outside the measured band" would cry wolf on every table. What a
+  // reader needs to know is whether this run was the build.
   const sprintText = !Number.isFinite(sprint) ? null
-    : `衝刺 ${sprint.toFixed(2)} m/s${conditions.sprint?.sprintInsideBracket === false ? '（已超出量測區間）' : ''}`;
+    : `衝刺 ${sprint.toFixed(2)} m/s${conditions.sprint?.sprintReason === 'seed' ? '' : '（非預設）'}`;
   // R21Y.1: and which run lent the arms, when it is not the shipped one. Named only on an override
   // so the common line stays short - a table with no clip named was taken on the build's own.
   const armClip = conditions.sprint?.sprintArmClipReason === 'override'
