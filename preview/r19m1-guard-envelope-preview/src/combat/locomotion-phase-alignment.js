@@ -69,7 +69,10 @@ export const PHASE_OFFSET_TO_WALKING_B = Object.freeze({
   Running_B: offsetToWalkingB('Running_B'),
 });
 
-export const DEFAULT_RUN_CLIP_ID = 'Running_A';
+// R22C.1: Running_B, chosen from play after R21Y.1 put both behind ?runclip= and R22A.1 fixed the
+// torso that was cancelling most of the borrowed swing. Running_A stays measured and selectable -
+// it is what every number above R21Y.1 was taken against - but it is no longer what ships.
+export const DEFAULT_RUN_CLIP_ID = 'Running_B';
 export const RUNNING_A_PHASE_OFFSET_TO_WALKING_B = PHASE_OFFSET_TO_WALKING_B.Running_A;
 
 // The part that does NOT line up, kept because it decides what a blend can and cannot be.
@@ -179,8 +182,13 @@ export const MEASURED_UPPER_BODY_DIVERGENCE_DEGREES = MEASURED_UPPER_BODY_DIVERG
 export const UPPER_BODY_DIVERGENCE_NOTES = Object.freeze({
   comparedAtAlignedPhase: true,
   rotationsAre: 'local-not-world',
-  theDifferenceIsArmsNotTorso: true,
-  runDoesNotLean: true,
+  // R21T.2 wrote these two as facts about "the run". They are facts about Running_A, and R21Y.1
+  // measured a second run for which both are false: Running_B's spine differs by 15.0 degrees and
+  // its head by 17.9, against 8.3 and 9.7. Kept per clip rather than corrected in place, because
+  // the original reading was right about the clip it was taken from - and R21U.1's whole exclusion
+  // argument rested on it.
+  theDifferenceIsArmsNotTorso: Object.freeze({ Running_A: true, Running_B: false }),
+  runDoesNotLean: Object.freeze({ Running_A: true, Running_B: false }),
   wristsAreNotAnimatedInEitherClip: true,
   // Nothing contests these bones: sprint-locomotion refuses to sprint while the guard is up
   // ('guard-is-up'), so the sprint's arms and the guard's upper body can never both want them.

@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 import {
   GAITS_ARE_SYMMETRIC,
+  MEASURED_UPPER_BODY_DIVERGENCE_BY_RUN_CLIP,
   MEASURED_UPPER_BODY_DIVERGENCE_DEGREES,
   UPPER_BODY_DIVERGENCE_NOTES,
   LOCOMOTION_PHASE_ALIGNMENT_STAGE,
@@ -30,12 +31,14 @@ test('R21T.1 both gaits put their feet exactly half a cycle apart', () => {
 test('R21T.1 the offset lands the run on its own strike', () => {
   // The check that says the number is the alignment and not an arithmetic slip: sampling the run
   // at the walk's strike phase must land on the run's own strike.
+  // Named clip, not the default: R22C.1 moved the default to Running_B, and this is R21T.1's
+  // reading of Running_A, which is still measured and still selectable.
   const walkStrike = MEASURED_FOOT_CONTACT_PHASE.Walking_B.left.strike;
   const runStrike = MEASURED_FOOT_CONTACT_PHASE.Running_A.left.strike;
-  assert.ok(Math.abs(alignedRunPhase(walkStrike) - runStrike) < 0.002);
+  assert.ok(Math.abs(alignedRunPhase(walkStrike, 'Running_A') - runStrike) < 0.002);
   assert.equal(RUNNING_A_PHASE_OFFSET_TO_WALKING_B, Number((walkStrike - runStrike).toFixed(3)));
   // It wraps, so a phase before the offset does not go negative.
-  assert.ok(alignedRunPhase(0.05) > 0.8);
+  assert.ok(alignedRunPhase(0.05, 'Running_A') > 0.8);
   assert.equal(alignedRunPhase('nonsense'), null);
 });
 
@@ -76,21 +79,33 @@ test('R21T.1 the method is reproducible, and the script is committed this time',
 
 test('R21T.2 the run has something worth borrowing, and it is the arms', () => {
   // The overlay's premise, checked before anything was built on it. If the two clips' upper bodies
-  // were alike, borrowing one would buy nothing.
-  const d = MEASURED_UPPER_BODY_DIVERGENCE_DEGREES;
-  for (const bone of ['upperarm.l', 'upperarm.r', 'hand.l', 'hand.r']) {
-    assert.ok(d[bone] > 30, `${bone} differs by only ${d[bone]} degrees`);
+  // were alike, borrowing one would buy nothing. True of both runs, so it survives R22C.1 moving
+  // the default - but it is asserted per clip now rather than through whichever one ships.
+  for (const clipId of ['Running_A', 'Running_B']) {
+    const d = MEASURED_UPPER_BODY_DIVERGENCE_BY_RUN_CLIP[clipId];
+    for (const bone of ['upperarm.l', 'upperarm.r', 'hand.l', 'hand.r']) {
+      assert.ok(d[bone] > 30, `${clipId} ${bone} differs by only ${d[bone]} degrees`);
+    }
+    assert.ok(Math.min(d['upperarm.l'], d['upperarm.r']) > d.spine * 2);
+    // Listing an unanimated bone in an overlay would be inert. Neither clip animates the wrists.
+    assert.equal(d['wrist.l'], 0);
+    assert.equal(d['wrist.r'], 0);
   }
-  // And the correction to the pitch: "lean and arm drive" was the argument, but the torso barely
-  // moves. The overlay will not buy a forward-pitched sprint silhouette.
-  for (const bone of ['spine', 'chest', 'head']) {
-    assert.ok(d[bone] < 10, `${bone} moves ${d[bone]} degrees - the run would lean after all`);
+
+  // R21T.2's other conclusion was "the torso barely moves, so the overlay will not buy a
+  // forward-pitched sprint silhouette". That was true of the clip it was measured on and false of
+  // the one that now ships, so the note is per clip and this asserts BOTH halves - the original
+  // reading was not wrong, it was narrower than the sentence it was written as.
+  assert.equal(UPPER_BODY_DIVERGENCE_NOTES.runDoesNotLean.Running_A, true);
+  assert.equal(UPPER_BODY_DIVERGENCE_NOTES.runDoesNotLean.Running_B, false);
+  const a = MEASURED_UPPER_BODY_DIVERGENCE_BY_RUN_CLIP.Running_A;
+  const b = MEASURED_UPPER_BODY_DIVERGENCE_BY_RUN_CLIP.Running_B;
+  for (const bone of ['spine', 'head']) {
+    assert.ok(a[bone] < 10, `Running_A ${bone} moves ${a[bone]} degrees`);
+    assert.ok(b[bone] > 10, `Running_B ${bone} moves only ${b[bone]} degrees`);
   }
-  assert.ok(Math.min(d['upperarm.l'], d['upperarm.r']) > d.spine * 3);
-  assert.equal(UPPER_BODY_DIVERGENCE_NOTES.runDoesNotLean, true);
-  // Listing an unanimated bone in an overlay would be inert.
-  assert.equal(d['wrist.l'], 0);
-  assert.equal(d['wrist.r'], 0);
+  // The default's table is the one that ships, and it is the leaning one now.
+  assert.equal(MEASURED_UPPER_BODY_DIVERGENCE_DEGREES, b);
 });
 
 test('R21T.2 nothing else claims those bones while sprinting', () => {
