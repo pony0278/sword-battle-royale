@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 
 import {
   GAITS_ARE_SYMMETRIC,
+  MEASURED_UPPER_BODY_DIVERGENCE_DEGREES,
+  UPPER_BODY_DIVERGENCE_NOTES,
   LOCOMOTION_PHASE_ALIGNMENT_STAGE,
   LOCOMOTION_PHASE_METHOD,
   MEASURED_FOOT_CONTACT_PHASE,
@@ -70,4 +72,29 @@ test('R21T.1 the method is reproducible, and the script is committed this time',
   assert.match(driver, /const GROUND_HEIGHT_METERS = 0\.04;/);
   assert.match(driver, /travels\s*\n?\/\/ backwards at exactly the authored speed|backwards at exactly the authored speed/);
   assert.match(probe, /const SAMPLES = 480;/);
+});
+
+test('R21T.2 the run has something worth borrowing, and it is the arms', () => {
+  // The overlay's premise, checked before anything was built on it. If the two clips' upper bodies
+  // were alike, borrowing one would buy nothing.
+  const d = MEASURED_UPPER_BODY_DIVERGENCE_DEGREES;
+  for (const bone of ['upperarm.l', 'upperarm.r', 'hand.l', 'hand.r']) {
+    assert.ok(d[bone] > 30, `${bone} differs by only ${d[bone]} degrees`);
+  }
+  // And the correction to the pitch: "lean and arm drive" was the argument, but the torso barely
+  // moves. The overlay will not buy a forward-pitched sprint silhouette.
+  for (const bone of ['spine', 'chest', 'head']) {
+    assert.ok(d[bone] < 10, `${bone} moves ${d[bone]} degrees - the run would lean after all`);
+  }
+  assert.ok(Math.min(d['upperarm.l'], d['upperarm.r']) > d.spine * 3);
+  assert.equal(UPPER_BODY_DIVERGENCE_NOTES.runDoesNotLean, true);
+  // Listing an unanimated bone in an overlay would be inert.
+  assert.equal(d['wrist.l'], 0);
+  assert.equal(d['wrist.r'], 0);
+});
+
+test('R21T.2 nothing else claims those bones while sprinting', () => {
+  // guard-walk-overlay names the legs as the bones with two would-be owners. The sprint's arms
+  // would be a third claimant, except that sprinting is already refused while the guard is up.
+  assert.equal(UPPER_BODY_DIVERGENCE_NOTES.ownershipIsUncontested, 'sprint-refused-while-guard-is-up');
 });

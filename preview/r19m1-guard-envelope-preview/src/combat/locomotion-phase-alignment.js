@@ -77,3 +77,40 @@ export function alignedRunPhase(walkPhase) {
   const shifted = (phase - RUNNING_A_PHASE_OFFSET_TO_WALKING_B) % 1;
   return shifted < 0 ? shifted + 1 : shifted;
 }
+
+// R21T.2 - is there anything in the run's upper body worth borrowing?
+//
+// The overlay's whole premise, and it had never been checked. Sampled at the aligned phase above,
+// per bone, as the angle between the two clips' LOCAL rotations - local rather than world, because
+// a world quaternion folds the spine's rotation into every arm bone hanging off it.
+//
+//   hand.r 40.9 / hand.l 40.2     upperarm.r 34.8 / .l 31.7     lowerarm.r 19.9 / .l 14.4
+//   head 9.7                      spine 8.3                     chest 6.1
+//   wrist.l 0.0                   wrist.r 0.0
+//
+// The premise holds, but not the way it was pitched. "Lean and arm drive" was the argument; the
+// measurement says the difference is almost entirely ARM - 32-41 degrees at the shoulder and hand
+// - and the torso barely moves at all. KayKit's run does not lean. So the overlay will buy the
+// swing and will NOT buy the forward-pitched sprint silhouette; that would have to be added as a
+// procedural spine pitch, which is an invention rather than something the clip contains, and is
+// worth keeping separate so it can be judged on its own.
+//
+// The wrists are not animated in either clip. Listing them in an overlay would be inert.
+export const MEASURED_UPPER_BODY_DIVERGENCE_DEGREES = Object.freeze({
+  'hand.r': 40.9, 'hand.l': 40.2,
+  'upperarm.r': 34.8, 'upperarm.l': 31.7,
+  'lowerarm.r': 19.9, 'lowerarm.l': 14.4,
+  head: 9.7, spine: 8.3, chest: 6.1,
+  'wrist.l': 0, 'wrist.r': 0,
+});
+
+export const UPPER_BODY_DIVERGENCE_NOTES = Object.freeze({
+  comparedAtAlignedPhase: true,
+  rotationsAre: 'local-not-world',
+  theDifferenceIsArmsNotTorso: true,
+  runDoesNotLean: true,
+  wristsAreNotAnimatedInEitherClip: true,
+  // Nothing contests these bones: sprint-locomotion refuses to sprint while the guard is up
+  // ('guard-is-up'), so the sprint's arms and the guard's upper body can never both want them.
+  ownershipIsUncontested: 'sprint-refused-while-guard-is-up',
+});
