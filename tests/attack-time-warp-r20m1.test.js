@@ -39,7 +39,9 @@ test('R20M.1 keeps the windup, stretches the burst, and resumes for the follow-t
   // Follow-through: shifted by the burst's whole cost, never stretched again.
   const burstCost = (left.endSourceSeconds - left.startSourceSeconds) * (left.stretch - 1);
   assert.ok(Math.abs(warpSourceToRuntime(0.533, left) - (0.533 + burstCost)) < 1e-9);
-  assert.ok(Math.abs(warpSourceToRuntime(0.533, left) - 0.8589) < 1e-3, 'the clip runs 0.533s -> ~0.86s');
+  // R21O.3 narrowed the region to [0.18, 0.22], so the follow-through leaves the stretch with the
+  // blade's arrival and the clip shortens from ~0.86s to ~0.70s. Contact does not move.
+  assert.ok(Math.abs(warpSourceToRuntime(0.533, left) - 0.703) < 1e-3, 'the clip runs 0.533s -> ~0.70s');
 });
 
 test('R20M.1 the two clocks round-trip exactly, everywhere', () => {
@@ -79,7 +81,10 @@ test('R21K.1 LEFT reaches the answerable window by moving its start, not its str
   const left = getAttackTimeWarp('left');
   const refs = LEFT_SECOND_PASS_REFERENCES;
   assert.equal(left.startSourceSeconds, refs.startSourceSecondsAfter);
-  assert.equal(left.stretch, refs.stretchAfter);
+  // R21O.3 raised the stretch past what R21K.1 chose, to hold contact at 0.43 while the region
+  // narrows. R21K.1's own reasoning below is why that is a cost and not a free change.
+  assert.equal(left.stretch, 5.25);
+  assert.ok(left.stretch > refs.stretchAfter);
   // Contact lands where RIGHT's now does, and exactly - 0.18 + 0.08 * 3.125.
   assert.ok(Math.abs(warpSourceToRuntime(0.26, left) - refs.runtimeContactSecondsAfter) < 1e-9);
 
@@ -93,6 +98,16 @@ test('R21K.1 LEFT reaches the answerable window by moving its start, not its str
   assert.equal(keyMs(refs.stretchAfter), refs.keySpanMsAfter);
   assert.ok(refs.keySpanMsAfter - refs.keySpanMsBefore < 10, 'the stepping is barely touched');
   assert.ok(refs.keySpanMsIfStretchedAlone - refs.keySpanMsBefore > 25, 'where the other route was not');
+
+  // R21O.3 pays exactly the price this test was written to refuse: at 5.25 an authored key spans
+  // 175ms, which is 71ms past R21K.1's baseline where 25ms was already called stepping. It is
+  // recorded rather than argued away, and it was measured rather than assumed - driving the built
+  // page at 2x, LEFT's blade never stalls (nothing under 60 deg/s for more than 24ms), so the
+  // steps read as plateaus rather than as held frames. What the narrow region does cost is the
+  // exit: the blade leaves the stretch at 305 deg/s and reaches 2001 within about 60ms, against
+  // TOP's 307 -> 1166. That acceleration is the thing to judge by eye, not the key span.
+  assert.equal(keyMs(left.stretch), 175);
+  assert.ok(keyMs(left.stretch) - refs.keySpanMsBefore > 25, 'R21O.3 knowingly reintroduces stepping');
 
   // What it cost: 20ms of windup that R20M.1 kept at authored pace on purpose. Everything before
   // that is still the tell.
