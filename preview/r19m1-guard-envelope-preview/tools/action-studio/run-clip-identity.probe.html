@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><title>Run clip identity · R22D.1</title>
+<script src="/node_modules/three/build/three.min.js"></script>
+<script src="/node_modules/three/examples/js/loaders/GLTFLoader.js"></script>
+</head><body><div id="status">loading…</div><script type="module">
+// R22D.1 - is the game reading the same Running_B the action studio shows?
+//
+// Challenged from play, and worth answering with the asset rather than with reassurance. Two ways
+// they could differ and both are checkable:
+//
+//   which clip  - the studio loads ALL eight packs, the game loads three, and the loader lets the
+//                 FIRST pack win a duplicate name. Different pack sets can therefore resolve the
+//                 same name to different clips.
+//   which parts - the game samples in-place with the root rotation locked, and hands the hips to
+//                 the walk. Whatever the clip does with root and hips never reaches the screen.
+import { loadKayKitAnimationLibrary, KAYKIT_ANIMATION_PACKS } from '/src/animation/kaykit-animation-library.js';
+import { createProceduralKayKitCharacter } from '/src/character/procedural-kaykit-character.js';
+
+const GAME_PACKS = ['basic', 'advanced', 'general'];
+
+async function main() {
+  const loader = new THREE.GLTFLoader();
+  const out = { packOrder: KAYKIT_ANIMATION_PACKS.map((p) => p.id) };
+
+  // Every pack, one at a time, so a duplicate name is visible rather than silently resolved.
+  out.whereEachClipLives = {};
+  for (const pack of KAYKIT_ANIMATION_PACKS) {
+    try {
+      const one = await loadKayKitAnimationLibrary(loader, { packIds: [pack.id] });
+      for (const name of ['Running_A', 'Running_B', 'Walking_B']) {
+        const clip = one.clips.get(name);
+        if (!clip) continue;
+        (out.whereEachClipLives[name] ||= []).push({
+          pack: pack.id,
+          duration: +clip.duration.toFixed(4),
+          tracks: clip.tracks.length,
+          // A fingerprint of the actual keyframe data, so two clips with the same name and
+          // duration in different packs cannot pass as identical.
+          checksum: clip.tracks.reduce((acc, t) => acc + t.times.length + t.values.length
+            + Math.round(Math.abs(t.values[0] || 0) * 1e6) + Math.round(Math.abs(t.values[t.values.length - 1] || 0) * 1e6), 0),
+        });
+      }
+    } catch (error) { out.whereEachClipLives[`__${pack.id}_error`] = String(error?.message || error); }
+  }
+
+  const gameLib = await loadKayKitAnimationLibrary(loader, { packIds: GAME_PACKS });
+  const allLib = await loadKayKitAnimationLibrary(loader, {});
+  out.duplicatesInGameSet = gameLib.duplicates;
+  out.duplicatesInStudioSet = allLib.duplicates;
+  out.sameClipObject = {};
+  for (const name of ['Running_A', 'Running_B', 'Walking_B']) {
+    const g = gameLib.clips.get(name); const a = allLib.clips.get(name);
+    out.sameClipObject[name] = {
+      gameHasIt: Boolean(g), studioHasIt: Boolean(a),
+      sameDuration: g && a ? Math.abs(g.duration - a.duration) < 1e-9 : null,
+      sameTrackCount: g && a ? g.tracks.length === a.tracks.length : null,
+      identicalValues: g && a ? g.tracks.every((t, i) => a.tracks[i]
+        && t.name === a.tracks[i].name && t.values.length === a.tracks[i].values.length
+        && t.values.every((v, j) => Math.abs(v - a.tracks[i].values[j]) < 1e-9)) : null,
+    };
+  }
+
+  // What the clip animates that the game never wears: the root and the hips.
+  const clip = gameLib.clips.get('Running_B');
+  out.runningBTracks = clip ? clip.tracks.map((t) => t.name) : null;
+
+  // How much the hips alone differ between the walk and the run, sampled at the aligned phase.
+  const character = createProceduralKayKitCharacter(THREE, {});
+  character.registerAnimations(gameLib);
+  // Read the components explicitly. Spreading a THREE.Quaternion copies its private _x/_y/_z/_w
+  // and none of the public getters, so `{...q}.x` is undefined and every angle came out NaN -
+  // which reported as a divergence of zero, the most reassuring possible wrong answer.
+  const localOf = (id) => {
+    const bone = character.rig.bones?.[id] || character.rig.root.getObjectByName(id);
+    if (!bone) return null;
+    const q = bone.quaternion;
+    return { x: q.x, y: q.y, z: q.z, w: q.w };
+  };
+  const posOf = (id) => {
+    const bone = character.rig.bones?.[id] || character.rig.root.getObjectByName(id);
+    if (!bone) return null;
+    return { x: bone.position.x, y: bone.position.y, z: bone.position.z };
+  };
+  const angle = (a, b) => 2 * Math.acos(Math.min(1, Math.abs(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w))) * 180 / Math.PI;
+  const walkDur = character.getAnimationDuration('Walking_B');
+  const runDur = character.getAnimationDuration('Running_B');
+  const OFFSET = 0.127;
+  // The bones the overlay never touches, measured the same way the borrowed ones were. Sampled
+  // exactly as the game samples - in-place, root rotation locked - so this is what the game would
+  // see, not what the raw clip holds.
+  const OPTS = { loop: true, inPlace: true, rootRotationPolicy: 'lock' };
+  const untouched = ['hips', 'root'];
+  const stats = Object.fromEntries(untouched.map((id) => [id, { total: 0, peak: 0, riseWalk: [], riseRun: [] }]));
+  const N = 240;
+  for (let i = 0; i < N; i += 1) {
+    const phase = i / N;
+    character.sampleAnimation('Walking_B', phase * walkDur, OPTS);
+    const walkQ = Object.fromEntries(untouched.map((id) => [id, localOf(id)]));
+    const walkP = Object.fromEntries(untouched.map((id) => [id, posOf(id)]));
+    const runPhase = ((phase - OFFSET) % 1 + 1) % 1;
+    character.sampleAnimation('Running_B', runPhase * runDur, OPTS);
+    for (const id of untouched) {
+      const w = walkQ[id]; const r = localOf(id);
+      if (!w || !r) continue;
+      const d = angle(w, r);
+      stats[id].total += d; if (d > stats[id].peak) stats[id].peak = d;
+      // Which AXIS the difference is on decides whether it can be taken. Pitch is a pelvis tilt
+      // and the legs can follow it; yaw swings the feet sideways and would slide them.
+      const rel = new THREE.Quaternion(w.x, w.y, w.z, w.w).invert()
+        .multiply(new THREE.Quaternion(r.x, r.y, r.z, r.w));
+      const e = new THREE.Euler().setFromQuaternion(rel, 'YXZ');
+      stats[id].pitch = Math.max(stats[id].pitch || 0, Math.abs(e.x) * 180 / Math.PI);
+      stats[id].yaw = Math.max(stats[id].yaw || 0, Math.abs(e.y) * 180 / Math.PI);
+      stats[id].roll = Math.max(stats[id].roll || 0, Math.abs(e.z) * 180 / Math.PI);
+      if (walkP[id]) stats[id].riseWalk.push(walkP[id].y);
+      const rp = posOf(id); if (rp) stats[id].riseRun.push(rp.y);
+    }
+  }
+  const spread = (xs) => (xs.length ? Math.max(...xs) - Math.min(...xs) : null);
+  out.untouchedBones = Object.fromEntries(untouched.map((id) => [id, {
+    meanDegrees: +(stats[id].total / N).toFixed(1),
+    peakDegrees: +stats[id].peak.toFixed(1),
+    // Vertical travel: the bounce. A run rises and falls far more than a walk, and this bone is
+    // where that lives.
+    verticalTravelWalk: spread(stats[id].riseWalk) == null ? null : +spread(stats[id].riseWalk).toFixed(4),
+    verticalTravelRun: spread(stats[id].riseRun) == null ? null : +spread(stats[id].riseRun).toFixed(4),
+    peakPitchDegrees: +(stats[id].pitch || 0).toFixed(1),
+    peakYawDegrees: +(stats[id].yaw || 0).toFixed(1),
+    peakRollDegrees: +(stats[id].roll || 0).toFixed(1),
+  }]));
+
+  window.__RUN_CLIP_IDENTITY__ = out;
+  document.getElementById('status').textContent = 'done';
+  document.documentElement.dataset.runClipIdentity = 'done';
+}
+main().catch((error) => {
+  document.getElementById('status').textContent = `error: ${error?.message || error}`;
+  document.documentElement.dataset.runClipIdentity = 'error';
+  window.__RUN_CLIP_IDENTITY_ERROR__ = String(error?.stack || error);
+});
+</script></body></html>

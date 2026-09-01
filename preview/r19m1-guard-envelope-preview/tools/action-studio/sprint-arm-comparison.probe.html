@@ -115,7 +115,22 @@ async function main() {
     applyRigPose(character.rig, restricted);
   }
 
+  // R22D.1: every trace starts from the same rig state.
+  //
+  // This is necessary but NOT sufficient, and the gap is recorded rather than papered over: the
+  // walk's own trace still reads 0.3745 / 0.3846 / 0.3684 m depending on whether main() left the
+  // rig on the walk, the run or the blend. Sampling a clip demonstrably resets every bone in
+  // rig.bones - measured directly, no bone differs after sampling the same walk frame from two
+  // prior states - so the residue is somewhere outside those 23 bones and has not been isolated.
+  // It is about 2% and it is COMMON to every series, so comparisons taken in one state are sound
+  // and absolute figures from this probe carry that much slop. Drive it with ?mode=walk.
+  function resetRig() {
+    character.sampleAnimation(WALK, 0, { loop: true, inPlace: true, rootRotationPolicy: 'lock' });
+    character.update(0, camera);
+  }
+
   function tracePose(poseFor) {
+    resetRig();
     const trace = [];
     for (let i = 0; i < 72; i += 1) {
       const phase = i / 72;

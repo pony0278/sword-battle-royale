@@ -39,6 +39,12 @@ test('R21U.1 the overlay borrows the arms that differ, and R22A.1 the torso they
   const travel = SPRINT_ARM_OVERLAY_EVIDENCE.handTravelMeters;
   assert.ok(travel.Running_B_armsOnly < travel.Running_B * 0.6, 'arms alone lose most of the swing');
   assert.ok(travel.Running_B_armsAndTorso > travel.Running_B_armsOnly * 1.4, 'the torso gives it back');
+  // R22D.1: and the pelvis lean closes most of what was left.
+  assert.ok(travel.Running_B_armsAndTorsoAndHips > travel.Running_B_armsAndTorso);
+  const deviation = SPRINT_ARM_OVERLAY_EVIDENCE.handPathDeviationFraction;
+  assert.ok(deviation.armsOnly > deviation.armsAndTorso && deviation.armsAndTorso > deviation.armsAndTorsoAndHips,
+    'each bone the overlay took brought the worn arm closer to the clip it is borrowed from');
+  assert.ok(deviation.armsAndTorsoAndHips <= 0.05);
   assert.ok(travel.Running_B_armsOnly > travel.Walking_B, 'it was never doing nothing, just not enough');
 
   for (const bone of SPRINT_ARM_OVERLAY_EXCLUSIONS.unanimated) {
