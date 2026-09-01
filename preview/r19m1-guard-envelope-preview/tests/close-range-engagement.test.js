@@ -12,7 +12,7 @@ import {
   assessCloseRangeEngagement,
 } from '../src/combat/close-range-engagement.js';
 import { MINIMUM_ENGAGEMENT_SEPARATION_METERS } from '../src/combat/lane-locomotion.js';
-import { MEASURED_FULL_COVERAGE_BAND_METERS } from '../src/combat/engagement-spacing.js';
+import { SUPERSEDED_FULL_COVERAGE_BAND_METERS } from '../src/combat/engagement-spacing.js';
 
 const DIRECTIONS = ['top', 'right', 'left'];
 
@@ -77,8 +77,11 @@ test('R19J.2 the gap is between the pushbox and the guard, and it is computed fr
   assert.ok(Math.abs(UNDEFENDED_CLOSE_RANGE_BAND_METERS.widthMeters - 0.65) < 1e-9);
   assert.ok(UNDEFENDED_CLOSE_RANGE_BAND_METERS.widthMeters > 0,
     'a non-positive width would mean the defence covers everything the attack reaches');
-  // And the guard's floor agrees with the coverage band measured from the other direction.
-  assert.equal(MEASURED_GUARD_WORKING_FLOOR_METERS, MEASURED_FULL_COVERAGE_BAND_METERS.minimum);
+  // R21S.1: the floor and the deleted coverage band's minimum are the same number from the same
+  // sweep, which is why deleting one had to say something about the other. That sweep's maximum
+  // was refuted; this end was not, so the floor stays and carries the caveat.
+  assert.equal(MEASURED_GUARD_WORKING_FLOOR_METERS, SUPERSEDED_FULL_COVERAGE_BAND_METERS.minimum);
+  assert.equal(SUPERSEDED_FULL_COVERAGE_BAND_METERS.minimumIsUntestedRatherThanRefuted, true);
 });
 
 test('R19J.2 the findings carry their verdict, their evidence, and the reversal', () => {
