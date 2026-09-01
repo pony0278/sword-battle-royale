@@ -73,8 +73,12 @@ test('R21Y.1 each clip is sampled where IT strikes with the walk', () => {
 });
 
 test('R21Y.1 an unmeasured clip name resolves to the default rather than being taken on trust', () => {
-  assert.equal(resolveSprintArmClip('Running_B').clipId, 'Running_B');
-  assert.equal(resolveSprintArmClip('Running_B').reason, 'override');
+  // R22C.1 moved the default to Running_B, so the override that proves the mechanism is the other
+  // one now. Asserted against the constant, not a literal, so the next move does not break it.
+  const other = SPRINT_ARM_CLIP_CANDIDATES.find((id) => id !== DEFAULT_SPRINT_ARM_CLIP_ID);
+  assert.equal(resolveSprintArmClip(other).clipId, other);
+  assert.equal(resolveSprintArmClip(other).reason, 'override');
+  assert.equal(resolveSprintArmClip(DEFAULT_SPRINT_ARM_CLIP_ID).reason, 'default');
   for (const bad of [undefined, null, '', '  ', 'Running_H', 'Running_Strafe_Left', 42]) {
     const resolved = resolveSprintArmClip(bad);
     assert.equal(resolved.clipId, DEFAULT_SPRINT_ARM_CLIP_ID, `${JSON.stringify(bad)}`);
@@ -84,7 +88,10 @@ test('R21Y.1 an unmeasured clip name resolves to the default rather than being t
   }
   assert.equal(resolveSprintArmClip('Running_H').reason, 'unmeasured-clip-has-no-phase-offset');
   assert.equal(DEFAULT_SPRINT_ARM_CLIP_ID, DEFAULT_RUN_CLIP_ID);
-  assert.equal(DEFAULT_SPRINT_ARM_CLIP_ID, 'Running_A', 'the default does not move until somebody has looked');
+  // R22C.1: it moved, after somebody looked. R21Y.1 shipped Running_A precisely so this could be
+  // decided by eye rather than by the divergence table, and it was.
+  assert.equal(DEFAULT_SPRINT_ARM_CLIP_ID, 'Running_B');
+  assert.equal(LANE_WALK_CLIPS.run, DEFAULT_SPRINT_ARM_CLIP_ID, 'one clip is "the run", not two');
 });
 
 test('R21Y.1 the two clips differ where the rig can show it', () => {
@@ -117,17 +124,17 @@ test('R21Y.1 the lab reads ?runclip= and a plain URL is still the build', () => 
   const plain = readLabExperimentParameters(new URLSearchParams(''));
   assert.equal(plain.sprintArmClipId, DEFAULT_SPRINT_ARM_CLIP_ID);
   assert.equal(plain.sprintArmClipReason, 'default');
-  assert.equal(plain.sprintArmPhaseOffset, 0.207);
+  assert.equal(plain.sprintArmPhaseOffset, 0.127);
 
-  const swapped = readLabExperimentParameters(new URLSearchParams('runclip=Running_B'));
-  assert.equal(swapped.sprintArmClipId, 'Running_B');
-  assert.equal(swapped.sprintArmPhaseOffset, 0.127, 'and the offset follows the clip');
+  const swapped = readLabExperimentParameters(new URLSearchParams('runclip=Running_A'));
+  assert.equal(swapped.sprintArmClipId, 'Running_A');
+  assert.equal(swapped.sprintArmPhaseOffset, 0.207, 'and the offset follows the clip');
 
   // All three dials are independent.
-  const all = readLabExperimentParameters(new URLSearchParams('tempo=2&sprint=1.8&runclip=Running_B'));
+  const all = readLabExperimentParameters(new URLSearchParams('tempo=2&sprint=1.8&runclip=Running_A'));
   assert.equal(all.tempoScale, 2);
   assert.equal(all.sprintSpeedMps, 1.8);
-  assert.equal(all.sprintArmClipId, 'Running_B');
+  assert.equal(all.sprintArmClipId, 'Running_A');
 });
 
 test('R21Y.1 every candidate gets a real duration, or it is sampled off its own cycle', () => {
@@ -136,10 +143,11 @@ test('R21Y.1 every candidate gets a real duration, or it is sampled off its own 
   // does not have, sampling 25% off its own 0.8s, and the arms would swing against the feet. That
   // is the exact failure the phase alignment exists to prevent, arriving through a lookup instead
   // of through the maths, with nothing on screen to say so.
+  // R22C.1: Running_B became the named run, so the clip bootstrap would now miss is Running_A -
+  // the selectable one. The hazard is unchanged, only which side of the swap it sits on.
   const candidates = new Set(SPRINT_ARM_CLIP_CANDIDATES);
-  assert.ok(candidates.has('Running_B'));
-  assert.ok(!Object.values(LANE_WALK_CLIPS).includes('Running_B'),
-    'Running_B is deliberately NOT in LANE_WALK_CLIPS - that is why bootstrap has to add it');
+  const notNamed = SPRINT_ARM_CLIP_CANDIDATES.filter((id) => !Object.values(LANE_WALK_CLIPS).includes(id));
+  assert.deepEqual(notNamed, ['Running_A'], 'the selectable clip is the one LANE_WALK_CLIPS does not name');
   for (const clipId of candidates) {
     // Both clips are 0.8s, and the durations bootstrap reads must come out the same as the ones
     // the phase table was measured against.

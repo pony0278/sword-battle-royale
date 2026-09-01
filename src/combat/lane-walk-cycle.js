@@ -35,12 +35,16 @@ export const LANE_WALK_CLIPS = Object.freeze({
   // 1.36 m/s (Froude 0.5). Sprint at 1.5 is past it and walking at 1.0 is not, so the same rule
   // that reads as "sprint runs" keeps meaning the right thing if either speed ever moves.
   //
-  // The cost is on the record: Running_A is drawn for 3.27 m/s, so at 1.5 it plays at 0.46x and
-  // holds a 63%-airborne pose for over a second. Walking_B stretched to 1.42x is the less distorted
-  // of the two, and R20W.1 chose it on that basis. This is the other option, taken deliberately -
-  // if the float reads badly, the fix is sprint speed (Running_A is honest from about 2.0 m/s up),
-  // not another clip.
-  run: 'Running_A',
+  // R21U.1 took the legs back off it, so this names the run for one purpose only: the clip the
+  // sprint borrows its upper body from. R22C.1 moved it from Running_A to Running_B, chosen from
+  // play after ?runclip= put both on the same build.
+  //
+  // The cost of ever putting the LEGS back on it is worse for this clip, not better, and is on the
+  // record so nobody re-reads this line as an invitation: Running_B is drawn for 7.2 m/s (a second
+  // fit says 4.73 - see locomotion-clip-measurements.js), so at the sprint's 1.5 it manages 0.52
+  // steps per second against a walking person's two. R22B.1 has the arithmetic. The walk keeps the
+  // legs because at 1.5 its cadence is 2.67 steps/s, which is a running cadence.
+  run: 'Running_B',
   // Backing away has no run: KayKit ships no backwards run, and a locked retreat is a walk anyway.
 });
 
@@ -104,6 +108,9 @@ export function createLaneWalkCycle(options = {}) {
   // speed this game may run at fixes it (the ceiling is 1.62, where it manages 1.24). Walking_B at
   // the same speed takes 2.67 steps/second, which is a running cadence. The legs were right all
   // along; it was the POSE that was missing, and sprint-arm-overlay.js borrows that instead.
+  //
+  // R22C.1 made the borrowed clip Running_B, whose stride is longer still, so the case is stronger
+  // rather than weaker: 0.52 steps/s if its legs were ever worn at the sprint's speed.
   //
   // The threshold stays in the profile because the arm overlay begins ramping exactly where this
   // switch used to fire - the gait is still a run at 1.36 m/s, it just no longer changes clip.

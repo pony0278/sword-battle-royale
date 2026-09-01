@@ -164,7 +164,10 @@ export function blendSprintUpperBody(walkPose, runPose, weight) {
 }
 
 export const SPRINT_ARM_OVERLAY_EVIDENCE = Object.freeze({
+  // Running_A's, the clip R21U.1 was argued against. R22C.1 ships Running_B, which is worse on the
+  // same measure - 0.52 steps/s - so the argument for keeping the legs on the walk only hardened.
   runStepsPerSecondAtSprint: 1.15,
+  shippedRunStepsPerSecondAtSprint: 0.52,
   walkStepsPerSecondAtSprint: 2.67,
   aWalkingPersonStepsPerSecond: 2,
   armDivergenceDegrees: Object.freeze({ shoulder: 34.8, hand: 40.9 }),
@@ -178,5 +181,6 @@ export const SPRINT_ARM_OVERLAY_EVIDENCE = Object.freeze({
     Running_B_armsAndTorso: 0.779,
   }),
   phaseOffset: RUNNING_A_PHASE_OFFSET_TO_WALKING_B,
+  shippedPhaseOffset: PHASE_OFFSET_TO_WALKING_B[DEFAULT_RUN_CLIP_ID],
   authority: 'locomotion-presentation-only-no-contact-authority',
 });
