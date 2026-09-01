@@ -5,7 +5,7 @@ import { createShieldParryLaneController } from '../src/game/lane-controller.js'
 import { LANE_WALK_CLIPS } from '../src/combat/lane-walk-cycle.js';
 import { LANE_LOCOMOTION_PROFILE } from '../src/combat/lane-locomotion.js';
 import { SPRINT_SPEED_MPS } from '../src/combat/sprint-locomotion.js';
-import { SPRINT_ARM_OVERLAY_BONES, SPRINT_ARM_RAMP_MPS } from '../src/combat/sprint-arm-overlay.js';
+import { SPRINT_ARM_RAMP_MPS, SPRINT_TORSO_OVERLAY_BONES, SPRINT_UPPER_BODY_OVERLAY_BONES } from '../src/combat/sprint-arm-overlay.js';
 import { WALK_OVERLAY_BONES, WALK_OVERLAY_SCOPES } from '../src/combat/guard-walk-overlay.js';
 
 // R21X.1 - the run's arms were being borrowed and then thrown away.
@@ -47,7 +47,7 @@ function harness() {
   // A rig whose bones are named exactly as the two overlays name them, and whose "pose" is just
   // which clip was last sampled - enough to see which bones survive the filter, which is the
   // entire subject.
-  for (const bone of [...WALK_OVERLAY_BONES, ...SPRINT_ARM_OVERLAY_BONES, 'spine', 'chest', 'head']) {
+  for (const bone of [...WALK_OVERLAY_BONES, ...SPRINT_UPPER_BODY_OVERLAY_BONES, 'hips']) {
     bones[bone] = { quaternion: { x: 0, y: 0, z: 0, w: 1 } };
   }
   let sampledClip = null;
@@ -68,7 +68,7 @@ function harness() {
     walkClips: LANE_WALK_CLIPS,
     services: {
       // Each clip stamps its own rotation on every bone, so which half of a blended pose came from
-      // the run is readable off the quaternion. blendSprintArms replaces ONLY the rotation - the
+      // the run is readable off the quaternion. blendSprintUpperBody replaces ONLY the rotation - the
       // rest of the entry is the walk's - so any marker outside the quaternion would say "walk"
       // for an arm the run had fully taken.
       captureRigPose: () => Object.fromEntries(Object.keys(bones)
@@ -99,10 +99,18 @@ test('R21X.1 sprinting reaches the arms even when the guard claims the upper bod
   assert.ok(armWeight > 0.99, `the run should be fully borrowed at the sprint, got ${armWeight}`);
   // This asserted 'legs' by accident until R21X.1 - not in a test, but in the lab.
   assert.equal(gate.scope, WALK_OVERLAY_SCOPES.WHOLE_BODY);
-  for (const bone of SPRINT_ARM_OVERLAY_BONES) {
+  for (const bone of SPRINT_UPPER_BODY_OVERLAY_BONES) {
     assert.ok(pose[bone], `${bone} must survive to the rig, or the overlay is decorative`);
     assert.equal(cameFrom(pose[bone]), LANE_WALK_CLIPS.run, `${bone} must come from the run`);
   }
+  // R22A.1: the torso specifically, because leaving it as the walk's cancels 42% of the arm swing
+  // the overlay exists to borrow - the arms carry local rotations and hang off it.
+  for (const bone of SPRINT_TORSO_OVERLAY_BONES) {
+    assert.equal(cameFrom(pose[bone]), LANE_WALK_CLIPS.run, `${bone} has to come from the run too`);
+  }
+  // The hips are still the walk's: the legs are driven by the walk's stride and a run's pelvis
+  // would fight them.
+  assert.equal(cameFrom(pose.hips), LANE_WALK_CLIPS.forward, 'the pelvis stays with the legs');
   // And the legs are still the walk's - that is the whole shape of R21U.1.
   for (const bone of WALK_OVERLAY_BONES) {
     assert.equal(cameFrom(pose[bone]), LANE_WALK_CLIPS.forward, `${bone} must stay the walk's`);
@@ -115,7 +123,7 @@ test('R21X.1 a guarding fighter WALKING still gets legs only', () => {
   const { gate, pose, armWeight } = sampleAt(LANE_LOCOMOTION_PROFILE.forwardSpeedMps);
   assert.equal(armWeight, 0);
   assert.equal(gate.scope, WALK_OVERLAY_SCOPES.LEGS);
-  for (const bone of SPRINT_ARM_OVERLAY_BONES) assert.equal(pose[bone], undefined, `${bone} belongs to the guard at a walk`);
+  for (const bone of SPRINT_UPPER_BODY_OVERLAY_BONES) assert.equal(pose[bone], undefined, `${bone} belongs to the guard at a walk`);
   for (const bone of WALK_OVERLAY_BONES) assert.ok(pose[bone], `${bone} is still the walk's`);
 });
 

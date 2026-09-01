@@ -25,7 +25,7 @@
 // says and the report is about the SCOPE (six bones) rather than about the clip.
 import { createProceduralKayKitCharacter } from '/src/character/procedural-kaykit-character.js';
 import { loadKayKitAnimationLibrary } from '/src/animation/kaykit-animation-library.js';
-import { blendSprintArms, sprintArmSamplePhase } from '/src/combat/sprint-arm-overlay.js';
+import { SPRINT_ARM_OVERLAY_BONES, blendSprintUpperBody, sprintArmSamplePhase } from '/src/combat/sprint-arm-overlay.js';
 import { captureRigPose, applyRigPose } from '/src/combat/guard-recovery-bridge.js';
 
 const WALK = 'Walking_B';
@@ -68,7 +68,7 @@ async function main() {
   const runPose = sample(RUN, runPhase * runDuration);
   const walkPose = sample(WALK, PHASE * walkDuration);
   if (MODE === 'run') applyRigPose(character.rig, runPose);
-  else if (MODE === 'blended') applyRigPose(character.rig, blendSprintArms(walkPose, runPose, 1));
+  else if (MODE === 'blended') applyRigPose(character.rig, blendSprintUpperBody(walkPose, runPose, 1));
   character.update(0, camera);
 
   // Framed on the FIXED reference pose, not on this image's pose, so a wider arm swing does not
@@ -100,15 +100,19 @@ async function main() {
     const node = bone(id);
     return node ? new THREE.Vector3().setFromMatrixPosition(node.matrixWorld) : null;
   };
-  function blendAt(phase, alsoTake) {
+  // `onlyTake` null means the production blend; a bone list restricts it to those bones.
+  function blendAt(phase, onlyTake) {
     character.sampleAnimation(RUN, sprintArmSamplePhase(phase, RUN) * runDuration, { loop: true, inPlace: true, rootRotationPolicy: 'lock' });
     character.update(0, camera);
     const rp = captureRigPose(character.rig);
     character.sampleAnimation(WALK, phase * walkDuration, { loop: true, inPlace: true, rootRotationPolicy: 'lock' });
     character.update(0, camera);
-    const blended = { ...blendSprintArms(captureRigPose(character.rig), rp, 1) };
-    for (const id of alsoTake) if (rp[id]) blended[id] = rp[id];
-    applyRigPose(character.rig, blended);
+    const walkPose = captureRigPose(character.rig);
+    const full = blendSprintUpperBody(walkPose, rp, 1);
+    if (!onlyTake) { applyRigPose(character.rig, full); return; }
+    const restricted = { ...walkPose };
+    for (const id of onlyTake) if (full[id]) restricted[id] = full[id];
+    applyRigPose(character.rig, restricted);
   }
 
   function tracePose(poseFor) {
@@ -130,12 +134,14 @@ async function main() {
   const traces = {
     [WALK]: tracePose((phase) => character.sampleAnimation(WALK, phase * walkDuration, { loop: true, inPlace: true, rootRotationPolicy: 'lock' })),
     [RUN]: tracePose((phase) => character.sampleAnimation(RUN, sprintArmSamplePhase(phase, RUN) * runDuration, { loop: true, inPlace: true, rootRotationPolicy: 'lock' })),
-    blended: tracePose((phase) => blendAt(phase, [])),
-    // R22A.1: the same blend, but also taking the torso the overlay currently excludes. The arm
-    // bones carry LOCAL rotations, so the hand's world path is the run's rotations hung on
-    // whatever spine and chest are underneath - and those stay the walk's. This measures how much
-    // of the run's actual arm path that costs.
-    blendedWithTorso: tracePose((phase) => blendAt(phase, ['spine', 'chest', 'head'])),
+    // What the game actually puts on the rig, through the production blend.
+    blended: tracePose((phase) => blendAt(phase, null)),
+    // R22A.1: the same blend with the torso held back, which is what the overlay did before this
+    // stage. Kept as the comparison that justified taking it: the arm bones carry LOCAL rotations,
+    // so with spine and chest left as the walk's, a large part of the borrowed swing is cancelled
+    // before it reaches the hand. If this ever stops being the smaller number, taking the torso
+    // stopped paying for itself.
+    blendedArmsOnly: tracePose((phase) => blendAt(phase, SPRINT_ARM_OVERLAY_BONES)),
   };
   window.__SPRINT_ARM_COMPARISON__ = { mode: MODE, runClip: RUN, walkPhase: PHASE, runPhase, runDuration, walkDuration, provenance, traces };
   document.getElementById('status').textContent = `${MODE} · ${RUN} @${runPhase.toFixed(3)}`;

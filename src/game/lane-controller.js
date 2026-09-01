@@ -7,7 +7,7 @@ import { createLaneLocomotionRuntime, planLateralStep } from '../combat/lane-loc
 import { createDodgeStateRuntime, DODGE_DURATION_SECONDS } from '../combat/dodge-state.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../combat/lane-walk-cycle.js';
 import { filterPoseToWalkOverlay, planWalkOverlay } from '../combat/guard-walk-overlay.js';
-import { blendSprintArms, resolveSprintArmClip, sprintArmSamplePhase, sprintArmWeight } from '../combat/sprint-arm-overlay.js';
+import { blendSprintUpperBody, resolveSprintArmClip, sprintArmSamplePhase, sprintArmWeight } from '../combat/sprint-arm-overlay.js';
 import { TRAVEL_YAW_BONES, hipYawDeltaQuaternion, planTravelRelativeLegs } from '../combat/travel-relative-legs.js';
 
 // R18Z.1 — where the two fighters are standing, and nothing else.
@@ -327,14 +327,16 @@ export function createShieldParryLaneController({ labScene, walkClips, services,
         loop: true, inPlace: true, rootRotationPolicy: 'lock',
       });
       defender.update(0, labScene.camera);
-      // Blended before the filter, not after. At LEGS scope the arm entries are dropped, which is
-      // still the right answer for a guarding fighter walking - but a fighter at running speed can
-      // no longer BE at LEGS scope, because the arm weight above decides the scope. R21X.1: before
-      // that, this comment was describing a case the sprint fell into every time in parry mode.
+      // Blended before the filter, not after. At LEGS scope the upper-body entries are dropped,
+      // which is still the right answer for a guarding fighter walking - but a fighter at running
+      // speed can no longer BE at LEGS scope, because the arm weight above decides the scope.
+      // R21X.1: before that, this comment was describing a case the sprint fell into every time in
+      // parry mode. R22A.1: the entries now include the torso, and the same reasoning covers it -
+      // sprinting is refused with the guard up, so the guard is never the one losing those bones.
       const walkPose = services.captureRigPose(defender.rig);
       lastSprintArmWeight = armWeight;
       pendingDefenderLegPose = filterPoseToWalkOverlay(
-        blendSprintArms(walkPose, runArmPose, armWeight), gate.scope,
+        blendSprintUpperBody(walkPose, runArmPose, armWeight), gate.scope,
       );
       return gate;
     },

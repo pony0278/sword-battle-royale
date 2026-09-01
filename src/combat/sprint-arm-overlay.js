@@ -34,17 +34,40 @@ export const SPRINT_ARM_OVERLAY_BONES = Object.freeze([
   'upperarm.r', 'lowerarm.r', 'hand.r',
 ]);
 
-// Deliberately absent, and each for its own measured reason:
-//   spine / chest / head - the two clips differ by 6-9 degrees there. KayKit's run does not lean,
-//     so taking the torso would buy nothing and would put a third claimant on bones the guard
-//     already owns. A forward-pitched sprint silhouette would have to be invented separately.
-//   wrist.l / wrist.r    - neither clip animates them at all. Listing them would be inert.
+// R22A.1 - and the torso, which R21U.1 excluded on an argument that turned out to be about one clip.
+//
+// That argument was "KayKit's run does not lean": Running_A's spine differs from the walk's by 8.3
+// degrees, so taking the torso would buy nothing. True of Running_A. Running_B's spine differs by
+// 15.0, and the reason this matters is not the lean itself - it is that these bones carry LOCAL
+// rotations, so the arms' actual path is the run's rotations hung on whatever spine and chest sit
+// underneath them. Leave those as the walk's and a large part of the borrowed swing is cancelled
+// before it reaches the hand. Traced through a whole cycle, right hand, chest-relative:
+//
+//   Walking_B                    0.374m of fore-aft travel
+//   Running_B alone              0.897m
+//   Running_B, arms only         0.518m   - 42% of the swing gone
+//   Running_B, arms + torso      0.779m
+//
+// and the deviation from the clip's own hand path falls from 27% of its swing to 12% (Running_A:
+// 28% to 18%). So the torso is not a bonus lean bolted on; without it the arms are not the run's
+// arms. Reported from play as "it does not look like Running_B", which it did not.
+export const SPRINT_TORSO_OVERLAY_BONES = Object.freeze(['spine', 'chest', 'head']);
+
+// What the overlay actually writes. The arms are still named separately because the ramp, the
+// phase alignment and every divergence measurement are about them.
+export const SPRINT_UPPER_BODY_OVERLAY_BONES = Object.freeze([
+  ...SPRINT_ARM_OVERLAY_BONES,
+  ...SPRINT_TORSO_OVERLAY_BONES,
+]);
+
+// Still deliberately absent: neither clip animates the wrists at all, so listing them is inert.
+// Nothing contests the torso while sprinting - sprint-locomotion refuses to run with the guard up
+// ('guard-is-up'), and the two runtimes that write spine and chest (guard-residual-body-reach and
+// articulated-impact-bracing) only run while guarding or on impact.
 export const SPRINT_ARM_OVERLAY_EXCLUSIONS = Object.freeze({
-  torso: Object.freeze(['spine', 'chest', 'head']),
-  // The largest of the three, head at 9.7 - a bound the excluded bones are under, not a value any
-  // of them has. It was 9 for one run of the tests, which the head then failed by seven tenths.
-  torsoDivergenceDegrees: 10,
   unanimated: Object.freeze(['wrist.l', 'wrist.r']),
+  torsoTakenSince: 'R22A.1',
+  torsoOwnershipIsUncontested: 'sprint-refused-while-guard-is-up',
 });
 
 // Where the arms start borrowing, and where they are fully the run's. The floor is the same
@@ -117,14 +140,18 @@ function slerp(a, b, t) {
   return { x: a.x * s0 + bx * s1, y: a.y * s0 + by * s1, z: a.z * s0 + bz * s1, w: a.w * s0 + bw * s1 };
 }
 
-// Rotation only. The arm bones' positions and scales are the rig's, not the clip's - blending them
+// Rotation only. The bones' positions and scales are the rig's, not the clip's - blending them
 // would let one clip's proportions leak into the other's and stretch the limb.
-export function blendSprintArms(walkPose, runPose, weight) {
+//
+// R22A.1 renamed this from blendSprintArms: it writes the torso now, and a function that moves the
+// spine while calling itself "arms" is the kind of name this repository keeps having to apologise
+// for in a comment.
+export function blendSprintUpperBody(walkPose, runPose, weight) {
   const w = Math.min(1, Math.max(0, Number(weight) || 0));
   const base = walkPose || {};
   if (w <= 0 || !runPose) return Object.freeze({ ...base });
   const output = { ...base };
-  for (const bone of SPRINT_ARM_OVERLAY_BONES) {
+  for (const bone of SPRINT_UPPER_BODY_OVERLAY_BONES) {
     const from = base[bone];
     const to = runPose[bone];
     if (!from?.quaternion || !to?.quaternion) continue;
@@ -142,6 +169,14 @@ export const SPRINT_ARM_OVERLAY_EVIDENCE = Object.freeze({
   aWalkingPersonStepsPerSecond: 2,
   armDivergenceDegrees: Object.freeze({ shoulder: 34.8, hand: 40.9 }),
   torsoDivergenceDegrees: 8.3,
+  // R22A.1: how much of the borrowed swing survives to the hand, per scope. The reason the torso
+  // is taken - not the lean, the swing.
+  handTravelMeters: Object.freeze({
+    Walking_B: 0.374,
+    Running_B: 0.897,
+    Running_B_armsOnly: 0.518,
+    Running_B_armsAndTorso: 0.779,
+  }),
   phaseOffset: RUNNING_A_PHASE_OFFSET_TO_WALKING_B,
   authority: 'locomotion-presentation-only-no-contact-authority',
 });
