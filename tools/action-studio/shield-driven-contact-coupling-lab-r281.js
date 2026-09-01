@@ -45,6 +45,7 @@ import {
 import {
   measureAttackerRecoilWorldSilhouette,
 } from '../../src/combat/attacker-recoil-world-silhouette.js';
+import { maybeStartDefenceMatrixProbe } from './shield-parry-r281/defence-matrix-probe.js'; // R21P.1
 import { maybeStartParryGateProbe } from './shield-parry-r281/parry-gate-probe.js';
 import {
   compactInterceptDriveTelemetry,
@@ -789,3 +790,4 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
   getExchangeState: () => exchangeState,
 });
 maybeStartParryGateProbe({ api: window.__G43B5R281_LAB__, windowRef: window, documentRef: document }); // R19G.1 CI gate
+maybeStartDefenceMatrixProbe({ api: window.__G43B5R281_LAB__, windowRef: window, documentRef: document }); // R21P.1 CI gate
