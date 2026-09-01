@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Locomotion phase probe · R21T.1</title>
+<script src="/node_modules/three/build/three.min.js"></script>
+<script src="/node_modules/three/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+<div id="status">loading…</div>
+<script type="module">
+// R21T.1 - where each foot is planted, as a fraction of the clip's own cycle.
+//
+// Blending a walk with a run only works if the two agree about which foot is down. Nothing in this
+// project has ever measured that: R20W.1 fitted the authored SPEED from the same contacts and kept
+// the speeds, not the phases, and its script was not kept either. So this rebuilds the reading and
+// reports the part that was thrown away.
+//
+// A foot is planted when the toe is at its lowest and is not moving with the body. Both tests
+// matter: height alone calls the whole low half of a stride a contact, and stillness alone catches
+// the top of the swing where the toe momentarily matches the body's speed.
+import { createProceduralKayKitCharacter } from '/src/character/procedural-kaykit-character.js';
+import { loadKayKitAnimationLibrary } from '/src/animation/kaykit-animation-library.js';
+
+const SAMPLES = 480; // the resolution R20W.1 fitted at, so the two readings are comparable
+const CLIPS = ['Walking_B', 'Running_A', 'Walking_Backwards', 'Walking_A'];
+const FEET = ['toes.l', 'toes.r'];
+
+function boneWorld(character, id) {
+  const bone = character.rig.bones?.[id] || character.rig.root.getObjectByName(id);
+  if (!bone) return null;
+  character.rig.root.updateMatrixWorld(true);
+  return new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld);
+}
+
+async function main() {
+  const character = createProceduralKayKitCharacter(THREE, {});
+  const library = await loadKayKitAnimationLibrary(new THREE.GLTFLoader(), { packIds: ['basic', 'advanced', 'general'] });
+  character.registerAnimations(library);
+  const out = {};
+  for (const clipId of CLIPS) {
+    const duration = character.getAnimationDuration(clipId);
+    if (!duration) { out[clipId] = { error: 'no-such-clip' }; continue; }
+    const series = { duration, samples: [] };
+    for (let i = 0; i < SAMPLES; i += 1) {
+      const phase = i / SAMPLES;
+      character.sampleAnimation(clipId, phase * duration, {});
+      const row = { phase };
+      for (const foot of FEET) {
+        const p = boneWorld(character, foot);
+        row[foot] = p ? { y: p.y, z: p.z, x: p.x } : null;
+      }
+      series.samples.push(row);
+    }
+    out[clipId] = series;
+  }
+  window.__LOCOMOTION_PHASE__ = out;
+  document.getElementById('status').textContent = 'done';
+  document.documentElement.dataset.locomotionPhase = 'done';
+}
+main().catch((error) => {
+  document.getElementById('status').textContent = `error: ${error?.message || error}`;
+  document.documentElement.dataset.locomotionPhase = 'error';
+  window.__LOCOMOTION_PHASE_ERROR__ = String(error?.stack || error);
+});
+</script>
+</body>
+</html>
