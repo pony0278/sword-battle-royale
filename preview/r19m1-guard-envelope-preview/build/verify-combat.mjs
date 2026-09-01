@@ -68,4 +68,14 @@ try {
 const failed = results.filter((result) => result.code !== 0);
 console.log('');
 for (const result of results) console.log(`${result.code === 0 ? 'PASS' : 'FAIL'} · ${result.label}`);
+// R21W.1: the evidence, repeated where the verdict is. A gate's own detail is printed as it runs
+// and is a screen or three above by the time the summary appears - which is how one red golden
+// grid run this cycle left nothing to look at. The gates already capture their output; this simply
+// stops it from having scrolled away.
+for (const result of failed) {
+  console.log(`\n--- ${result.label} · exit ${result.code} ---`);
+  const lines = result.output.trimEnd().split('\n');
+  console.log(lines.slice(-40).join('\n'));
+  if (lines.length > 40) console.log(`(${lines.length - 40} earlier lines above)`);
+}
 if (failed.length) process.exit(1);
