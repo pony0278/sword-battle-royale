@@ -10,6 +10,7 @@
 // the answer would be a more legible windup. "Wrong moment" says the window is too tight, and the
 // answer would be timing. Without the split a failure rate says only that it is hard.
 import { COMMITTED_PARRY_CONTACT_GATE_PROFILE } from '../../../src/combat/committed-parry-contact-gate.js';
+import { defendedSectorFor } from '../../../src/combat/attack-direction-as-defended.js'; // R21Q.1
 
 export const PARRY_ATTEMPT_TALLY_STAGE = 'R21C.2';
 
@@ -95,6 +96,9 @@ function emptyRow() {
     pressesMoved: 0,
     misreadUnmoved: 0,
     misreadMoved: 0,
+    // R21Q.1: what the swing did, as opposed to how the press was graded.
+    defended: 0,
+    struck: 0,
   };
 }
 
@@ -115,6 +119,7 @@ export function createParryAttemptTally(options = {}) {
   const readConditions = typeof options.conditions === 'function' ? options.conditions : () => null;
   const rows = new Map(DIRECTIONS.map((direction) => [direction, emptyRow()]));
   let lastSequence = null;
+  let lastOutcomeSequence = null;
   let sessionActive = false;
 
   return Object.freeze({
@@ -138,6 +143,23 @@ export function createParryAttemptTally(options = {}) {
       return sessionActive;
     },
     get sessionActive() { return sessionActive; },
+    // R21Q.1 - what the swing DID, which is not what the press was graded.
+    //
+    // Every table above grades the input: too early, wrong direction, armed. None of them said
+    // whether the blow landed, and that is the only thing a player actually feels. A press judged
+    // "too early" that still put the shield in the way is a completely different experience from
+    // one that left them open - and telling those two apart by hand is what cost this project a
+    // week of chasing LEFT. The exchange resolves over several frames, so the sequence dedupes.
+    recordOutcome(direction, sequence, outcome, struck) {
+      const row = rows.get(String(direction || '').toLowerCase());
+      if (!row) return null;
+      if (sequence != null && sequence === lastOutcomeSequence) return null;
+      if (outcome == null && struck !== true) return null;
+      lastOutcomeSequence = sequence ?? null;
+      if (outcome === 'parry' || outcome === 'block') row.defended += 1;
+      if (struck === true) row.struck += 1;
+      return row;
+    },
     // Called with each arm report. One attempt per attack sequence is already the gate's own rule,
     // so a repeat for the same sequence is the refusal that says so, not a second attempt.
     record(report) {
@@ -213,6 +235,23 @@ export function createParryAttemptTally(options = {}) {
       }
       lines.push(['總計', ...cols.map((c) => total[c])].join('\t'));
 
+      // R21Q.1 - the outcome, kept OUT of the table above on purpose. Those buckets partition the
+      // swings and must sum to 揮出; being hit is a different axis entirely - a press graded "too
+      // early" may still have put the shield in the way, and that is the difference between a
+      // frustrating round and an unplayable one. Mixing them would have cost the invariant that
+      // every bucket accounts for every swing.
+      const outcomes = DIRECTIONS.map((direction) => rows.get(direction));
+      if (outcomes.some((row) => row.defended > 0 || row.struck > 0)) {
+        lines.push('');
+        lines.push('這一刀最後怎麼了（跟上面的判定分開算）');
+        lines.push(['方向', '擋下或格檔', '被打中'].join('\t'));
+        for (const direction of DIRECTIONS) {
+          const row = rows.get(direction);
+          lines.push([direction, row.defended, row.struck].join('\t'));
+        }
+        lines.push(['總計', outcomes.reduce((a, r) => a + r.defended, 0), outcomes.reduce((a, r) => a + r.struck, 0)].join('\t'));
+      }
+
       // The second table is the one a pacing decision is read off. TTC, so all three directions
       // sit on the same scale despite contacting at different times.
       const timing = this.timing;
@@ -232,10 +271,15 @@ export function createParryAttemptTally(options = {}) {
       const misread = DIRECTIONS.reduce((sum, d) => sum + rows.get(d).wrongDirection, 0);
       if (misread > 0) {
         lines.push('');
-        lines.push(`方向錯的分布（列 = 對手揮的，欄 = 你瞄的）· 共 ${misread} 次`);
-        lines.push(['揮出\\瞄準', ...DIRECTIONS].join('\t'));
+        // R21Q.1: the row is the attack RESTATED AS THE PLAYER SEES IT, because the clips are
+        // named for the attacker's hand and the sector for the screen. Keyed by the raw name, the
+        // diagonal stopped meaning "read it correctly" - which is how 35 correct reads in a row
+        // were filed as misses.
+        lines.push(`方向錯的分布（列 = 這一刀從你的哪一側來，欄 = 你瞄的）· 共 ${misread} 次`);
+        lines.push(['來自\\瞄準', ...DIRECTIONS].join('\t'));
         for (const thrown of DIRECTIONS) {
-          lines.push([thrown, ...DIRECTIONS.map((aimed) => (aimed === thrown ? '—' : confusion[thrown][aimed]))].join('\t'));
+          const seenAs = defendedSectorFor(thrown) || thrown;
+          lines.push([seenAs, ...DIRECTIONS.map((aimed) => (aimed === seenAs ? '—' : confusion[thrown][aimed]))].join('\t'));
         }
       }
 

@@ -2,6 +2,7 @@ import {
   SWEPT_CONTACT_TEMPORAL_ELIGIBILITY_AUTHORITY,
 } from './swept-contact-temporal-eligibility.js';
 import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from './parry-lunge-reach.js';
+import { defendedSectorFor } from './attack-direction-as-defended.js'; // R21Q.1
 
 export const COMMITTED_PARRY_CONTACT_GATE_STAGE = 'G4.3B.5R.3';
 
@@ -100,7 +101,14 @@ export function evaluateCommittedParryInput(input = {}) {
   const attackDirection = String(input.attackSnapshot?.action?.direction || '').toLowerCase() || null;
   const aimedSector = String(input.aimedSector || '').toLowerCase() || null;
   const directionRequired = input.manual !== false;
-  const directionMatched = Boolean(attackDirection) && aimedSector === attackDirection;
+  // R21Q.1: compare against the attack RESTATED IN THE DEFENDER'S FRAME. The clips are named for
+  // the hand the cut is thrown with; the sector is named from a pointer offset in screen pixels,
+  // and two fighters facing each other mirror every lateral word between them. Measured: a RIGHT
+  // attack spends the entire parry window on the LEFT of the screen and never crosses the centre.
+  // Comparing the raw names told a player who read the fight correctly that they were wrong -
+  // 35 times out of 35 across three playtests, and only ever on the lateral pair.
+  const defendedSector = defendedSectorFor(attackDirection);
+  const directionMatched = Boolean(defendedSector) && aimedSector === defendedSector;
   const directionAnswered = !directionRequired || directionMatched;
 
   let reason = 'parry-input-armed-awaiting-real-contact';
@@ -140,6 +148,7 @@ export function evaluateCommittedParryInput(input = {}) {
     }),
     aimedSector,
     attackDirection,
+    defendedSector,
     timeToContactSeconds: ttc,
     requiredShieldTravelMeters,
     predictedPlaneDistanceMeters,

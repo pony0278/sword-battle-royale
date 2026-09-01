@@ -3,6 +3,7 @@ import {
   PROBED_PRESS_TTC_MS,
   judgeDefenceMatrix,
 } from '../../../src/combat/defence-matrix-verdict.js';
+import { defendedSectorFor } from '../../../src/combat/attack-direction-as-defended.js'; // R21Q.1
 
 // R21P.1 — the defence matrix's driver: presses at a NAMED moment instead of at the prompt.
 //
@@ -39,7 +40,11 @@ function aimAt(documentRef, windowRef, direction) {
   const rect = canvas.getBoundingClientRect();
   if (!(rect.width > 0) || !(rect.height > 0)) return false;
   const reach = Math.min(rect.width, rect.height) * 0.4;
-  const offset = { top: { x: 0, y: -reach }, right: { x: reach, y: 0 }, left: { x: -reach, y: 0 } }[direction];
+  // R21Q.1: point where the swing ARRIVES, not at the name of the clip. The offsets below are
+  // screen pixels and the clip names are the attacker's frame, so aiming by the raw name pointed
+  // this probe at the wrong half of the screen on every lateral attack - which is the same mistake
+  // the gate itself was making, and the reason both had to be fixed together.
+  const offset = { top: { x: 0, y: -reach }, right: { x: reach, y: 0 }, left: { x: -reach, y: 0 } }[defendedSectorFor(direction)];
   if (!offset) return false;
   const PointerEventCtor = windowRef.PointerEvent || windowRef.MouseEvent;
   canvas.dispatchEvent(new PointerEventCtor('pointermove', {

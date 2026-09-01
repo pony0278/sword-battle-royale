@@ -25,7 +25,10 @@ test('R21C.2 counts attempts per direction and why they missed', () => {
     tooEarly: 0, tooLate: 0, other: 0, noAnswer: 0, mistimed: 0,
     // R21M.1: these presses carry no aimed sector at all, so none of them is classified as
     // moved or unmoved - pointing nowhere says nothing about movement.
-    pressesUnmoved: 0, pressesMoved: 0, misreadUnmoved: 0, misreadMoved: 0, ...extra,
+    pressesUnmoved: 0, pressesMoved: 0, misreadUnmoved: 0, misreadMoved: 0,
+    // R21Q.1: what the swing did, counted on its own axis - a press graded "too early" may still
+    // have put the shield in the way, and only this pair can say so.
+    defended: 0, struck: 0, ...extra,
   });
   assert.deepEqual(rows.right, row({ thrown: 3, attempts: 3, armed: 1, wrongDirection: 1, tooLate: 1, mistimed: 1 }));
   assert.deepEqual(rows.top, row({ thrown: 1, attempts: 1, unaimed: 1 }));
@@ -366,9 +369,11 @@ test('R21L.1 the matrix only appears when there is something in it', () => {
     accepted: false, reason: 'parry-input-wrong-direction', timeToContactSeconds: 0.1,
   });
   const text = messy.reportText;
-  assert.match(text, /方向錯的分布（列 = 對手揮的，欄 = 你瞄的）· 共 1 次/);
-  assert.match(text, /揮出\\瞄準\ttop\tright\tleft/);
-  assert.match(text, /^left\t1\t0\t—$/m, 'the diagonal is a dash, not a zero');
+  assert.match(text, /方向錯的分布（列 = 這一刀從你的哪一側來，欄 = 你瞄的）· 共 1 次/);
+  assert.match(text, /來自\\瞄準\ttop\tright\tleft/);
+  // R21Q.1: the LEFT attack is shown by the side it ARRIVES from, which is the player's right,
+  // so the dash sits under 'right' - the cell that would have meant "read it correctly".
+  assert.match(text, /^right\t1\t—\t0$/m, 'the diagonal is a dash, not a zero');
 });
 
 test('R21L.1 an unaimed press is not a misread one', () => {

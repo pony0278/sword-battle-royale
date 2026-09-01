@@ -51,7 +51,8 @@ function armedReport() {
   return evaluateCommittedParryInput({
     // R21C.1: a parry is answered by direction now, so an arm this test relies on being accepted
     // has to point at the swing it is answering - the same as a player's would.
-    aimedSector: 'right',
+    // R21Q.1: and the swing below is a RIGHT attack, which arrives on the defender's LEFT.
+    aimedSector: 'left',
     attackSnapshot: {
       sequence: 9,
       phase: 'attack_windup',

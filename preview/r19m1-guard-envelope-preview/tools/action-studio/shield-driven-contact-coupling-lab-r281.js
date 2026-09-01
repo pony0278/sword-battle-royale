@@ -587,6 +587,9 @@ function resolveContact(snapshot, currentBlade, deltaSeconds) {
     selectedMode,
     selectedDirection,
   });
+  // R21Q.1: what the swing did, beside how the press was graded - the column that would have said
+  // "you were hit" while every other table only said "too early".
+  parryTally.recordOutcome(selectedDirection, snapshot?.sequence, exchangeState.latestCombatResult?.resolution?.outcome, exchangeState.latestBodyHit?.contact === true);
   const settled = laneController.settle(exchangeState.latestCombatResult?.resolution?.outcome);
   if (settled) exchangeState.latestEngagementGround = settled;
   return resolved;
