@@ -112,7 +112,13 @@ function conditionLine(conditions) {
   const tempo = Number(conditions.tempoScale);
   const tempoText = Number.isFinite(tempo) ? `${tempo.toFixed(2).replace(/0$/, '')}×` : '?';
   const review = conditions.slowReview === true ? '慢動作輔助 0.12× + 凍結 1.5s' : '無慢動作輔助';
-  return `條件: 攻擊節奏 ${tempoText} · ${review}`;
+  // R21V.1: the sprint speed joins them for the same reason. It is a dial now, and a table taken at
+  // 2.4 m/s is not a table about the game unless it says so - the bracket verdict comes along so a
+  // reader can tell an override apart from the shipped seed without knowing what the seed is.
+  const sprint = Number(conditions.sprint?.sprintSpeedMps);
+  const sprintText = !Number.isFinite(sprint) ? null
+    : `衝刺 ${sprint.toFixed(2)} m/s${conditions.sprint?.sprintInsideBracket === false ? '（已超出量測區間）' : ''}`;
+  return [`條件: 攻擊節奏 ${tempoText}`, review, sprintText].filter(Boolean).join(' · ');
 }
 
 export function createParryAttemptTally(options = {}) {
