@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { codeOnly } from './support/source-text.js';
 
 import {
   SPRINT_ARM_OVERLAY_BONES,
@@ -127,9 +128,20 @@ test('R21U.1 the lane controller blends before it filters, and reports a weight 
   // called instead of matching the literal call text. It broke on R21Y.1 giving that call a second
   // argument while the ordering had not moved at all, which is the whole case against the form.
   //
-  // What is left here is genuinely about the source: the blend must happen INSIDE the filter call,
-  // and a reordering that filtered first would still pass any behavioural test at whole-body scope.
-  assert.match(laneController, /blendSprintUpperBody\(walkPose, runArmPose, armWeight\),\s*gate\.scope/);
-  // A number, not a boolean, because the whole point is that there is no switch any more.
-  assert.match(laneController, /get defenderSprintArmWeight\(\) \{ return lastSprintArmWeight; \}/);
+  // What is left is one assertion, kept deliberately under R22J.1's rule: the blend must happen
+  // INSIDE the filter call, and NO reachable state reveals it. A reordering that filtered first
+  // would differ only at LEGS scope with a non-zero arm weight, and since R22G.1 that pair cannot
+  // occur - the gate demotes "the guard owns the upper body" whenever the body is running, which
+  // is whenever the weight is above zero. So it is asserted on the source, and this comment is the
+  // justification the rule asks for rather than an apology.
+  //
+  // Read as CODE, not as text: codeOnly strips comments and string bodies, so the assertion cannot
+  // be satisfied - or, as in R22I.1, broken - by prose that merely mentions the call.
+  assert.match(codeOnly(laneController), /blendSprintUpperBody\(walkPose, runArmPose, armWeight\),\s*gate\.scope/);
+
+  // The second assertion here read `get defenderSprintArmWeight() { return lastSprintArmWeight; }`
+  // out of the source. Deleted rather than converted: it was a textual restatement of something
+  // three tests in sprint-arms-survive-the-guard-scope-r21x1.test.js already assert by DRIVING the
+  // controller - the weight is 1 at a sprint, 0 at a walk, 0 when the overlay is refused. A textual
+  // copy of a behavioural claim is the pile R22J.1 exists to stop growing.
 });
