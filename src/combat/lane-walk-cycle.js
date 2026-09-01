@@ -1,5 +1,6 @@
 import {
   KAYKIT_LEG_CHAIN_METERS,
+  MEASURED_LOCOMOTION_CLIPS,
   WALK_TO_RUN_TRANSITION,
   clipPlaybackRate,
   strideMetersFor,
@@ -35,12 +36,16 @@ export const LANE_WALK_CLIPS = Object.freeze({
   // 1.36 m/s (Froude 0.5). Sprint at 1.5 is past it and walking at 1.0 is not, so the same rule
   // that reads as "sprint runs" keeps meaning the right thing if either speed ever moves.
   //
-  // The cost is on the record: Running_A is drawn for 3.27 m/s, so at 1.5 it plays at 0.46x and
-  // holds a 63%-airborne pose for over a second. Walking_B stretched to 1.42x is the less distorted
-  // of the two, and R20W.1 chose it on that basis. This is the other option, taken deliberately -
-  // if the float reads badly, the fix is sprint speed (Running_A is honest from about 2.0 m/s up),
-  // not another clip.
-  run: 'Running_A',
+  // R21U.1 took the legs back off it, so this names the run for one purpose only: the clip the
+  // sprint borrows its upper body from. R22C.1 moved it from Running_A to Running_B, chosen from
+  // play after ?runclip= put both on the same build.
+  //
+  // The cost of ever putting the LEGS back on it is worse for this clip, not better, and is on the
+  // record so nobody re-reads this line as an invitation: Running_B is drawn for 7.2 m/s (a second
+  // fit says 4.73 - see locomotion-clip-measurements.js), so at the sprint's 1.5 it manages 0.52
+  // steps per second against a walking person's two. R22B.1 has the arithmetic. The walk keeps the
+  // legs because at 1.5 its cadence is 2.67 steps/s, which is a running cadence.
+  run: 'Running_B',
   // Backing away has no run: KayKit ships no backwards run, and a locked retreat is a walk anyway.
 });
 
@@ -86,6 +91,12 @@ export function createLaneWalkCycle(options = {}) {
     runThresholdMetersPerSecond: LANE_WALK_CYCLE_PROFILE.runThresholdMetersPerSecond,
     movingThresholdMetersPerSecond: LANE_WALK_CYCLE_PROFILE.movingThresholdMetersPerSecond,
     authority: LANE_WALK_CYCLE_PROFILE.authority,
+    // R22G.1: both of these SHIP now, chosen in play. R22E.1 and R22F.1 built them as experiment
+    // switches and the experiment came back - at 3.0 m/s the whole run clip, played at the rate it
+    // was drawn at, reads as running. They default on and are turned off explicitly, which is the
+    // reverse of how they arrived.
+    wholeBodyRun: options.wholeBodyRun !== false,
+    runPlaybackAuthored: options.runPlaybackAuthored !== false,
     ...(options.profile || {}),
   });
   const measured = [profile.forwardCycleMeters, profile.backwardCycleMeters]
@@ -96,11 +107,29 @@ export function createLaneWalkCycle(options = {}) {
     throw new Error(`createLaneWalkCycle needs measured strides for ${Object.values(clips).join(', ')}`);
   }
 
-  // Which clip a speed belongs to. Backwards has only the one; forwards, the run takes over at the
-  // measured transition rather than at whichever verb the player pressed.
+  // Which clip a speed belongs to. Backwards has only the one; forwards there is now only one too.
+  //
+  // R21U.1: the run no longer takes the legs. R20W.2 handed them to Running_A above the measured
+  // transition, and the far side of that switch was wrong twice over - Running_A's 2.614m stride
+  // gives 1.15 steps per second at the sprint's 1.5 m/s, fewer than a WALKING person's two, and no
+  // speed this game may run at fixes it (the ceiling is 1.62, where it manages 1.24). Walking_B at
+  // the same speed takes 2.67 steps/second, which is a running cadence. The legs were right all
+  // along; it was the POSE that was missing, and sprint-arm-overlay.js borrows that instead.
+  //
+  // R22C.1 made the borrowed clip Running_B, whose stride is longer still, so the case is stronger
+  // rather than weaker: 0.52 steps/s if its legs were ever worn at the sprint's speed.
+  //
+  // The threshold stays in the profile because the arm overlay begins ramping exactly where this
+  // switch used to fire - the gait is still a run at 1.36 m/s, it just no longer changes clip.
+  //
+  // R22E.1 puts the old behaviour back behind a switch, because "why can't the run just be worn
+  // whole" deserves to be answered by looking rather than by arithmetic in a comment. Off by
+  // default and off in everything that ships; wholeBodyRun:true hands the legs to the run above the
+  // measured transition, exactly as R20W.2 did, and the cadence numbers above are what that buys.
   function clipFor(speedMetersPerSecond) {
     if (speedMetersPerSecond < 0) return { clipId: profile.backwardClipId, cycleMeters: profile.backwardCycleMeters };
-    if (profile.runClipId && speedMetersPerSecond >= profile.runThresholdMetersPerSecond) {
+    if (profile.wholeBodyRun && profile.runClipId
+      && speedMetersPerSecond >= profile.runThresholdMetersPerSecond) {
       return { clipId: profile.runClipId, cycleMeters: profile.runCycleMeters };
     }
     return { clipId: profile.forwardClipId, cycleMeters: profile.forwardCycleMeters };
@@ -123,11 +152,22 @@ export function createLaneWalkCycle(options = {}) {
       // R20W.2: a run is a whole-body clip, and a guard cannot borrow only its legs without the
       // torso disagreeing. Sprinting already requires the guard down, so this never contradicts
       // the overlay - it is stated so a caller cannot quietly overlay a run onto a guard.
+      // R21U.1: nothing the legs wear is whole-body-only any more - the run is not worn at all.
+      // Kept as a field rather than removed because planWalkOverlay still asks, and a caller that
+      // one day hands the legs a whole-body clip should still be refused.
       wholeBodyOnly: clipId != null && clipId === profile.runClipId,
       cycleMeters: chosen.cycleMeters,
       // 1 is the gait as drawn. Above 1 the legs hurry, below 1 they float. Nothing reads this to
       // decide anything - it is here so the stretch is a number somebody can see.
-      playbackRate: clipId ? clipPlaybackRate(clipId, speedMetersPerSecond) : null,
+      playbackRate: !clipId ? null
+        : profile.runPlaybackAuthored && clipId === profile.runClipId ? 1
+          : clipPlaybackRate(clipId, speedMetersPerSecond),
+      // R22F.1: how fast the planted foot travels across the ground. Zero whenever the gait is
+      // distance-driven, which is every case this project ships. Under ?footslide=1 it is the
+      // price being paid, so it is a number on the report and on the HUD rather than a surprise.
+      footSlideMetersPerSecond: !clipId || !(profile.runPlaybackAuthored && clipId === profile.runClipId)
+        ? 0
+        : Math.abs(Math.abs(MEASURED_LOCOMOTION_CLIPS[clipId]?.authoredSpeedMps ?? 0) - Math.abs(speedMetersPerSecond)),
       travelledMeters,
       speedMetersPerSecond,
       profile,
@@ -136,16 +176,44 @@ export function createLaneWalkCycle(options = {}) {
     return lastReport;
   }
 
+  // R22F.1 - the trade this module was built to refuse, offered as a switch.
+  //
+  // Everything above is distance-driven, and R19C.1's header says why: a foot that finishes its
+  // stride on a clock rather than on the ground skates whenever speed and clip disagree. That is
+  // the right default and it is not a law. It is a choice, and it costs something specific -
+  // a clip drawn for 7.2 m/s played at 1.5 runs at a fifth speed, which is the slow motion nobody
+  // wanted.
+  //
+  // The other side of the trade: play the run at the rate it was DRAWN at. The pose, the cadence
+  // and the skeletal motion are then exactly what the clip holds - the thing an animation viewer
+  // shows, because a viewer plays in place where there is no ground to disagree with. The price is
+  // arithmetic and unavoidable: the planted foot travels at the clip's authored speed while the
+  // body travels at the game's, so it slides by the difference. That number is reported rather than
+  // hidden, because it is the whole of what is being traded away.
+  //
+  // Only the run takes this. Walking stays distance-driven at every speed.
+  function runDurationSeconds() {
+    return MEASURED_LOCOMOTION_CLIPS[profile.runClipId]?.durationSeconds || null;
+  }
+
   function advance({ travelledMeters, deltaSeconds } = {}) {
     const travelled = finite(travelledMeters);
     const seconds = Math.max(0, finite(deltaSeconds));
     const speed = seconds > 1e-9 ? travelled / seconds : 0;
     if (Math.abs(speed) >= profile.movingThresholdMetersPerSecond) {
-      // Divided by the SIGNED stride of the clip that is about to play, so both clips run forwards
-      // in time: walking backwards at -0.1m against a -0.665m stride advances the phase, exactly
-      // as walking forwards does. Dividing by an unsigned stride ran the backwards clip in reverse.
-      const { cycleMeters } = clipFor(speed);
-      if (Math.abs(cycleMeters) > 1e-9) phase = wrapCyclePhase(phase + travelled / cycleMeters);
+      const chosen = clipFor(speed);
+      const authoredRun = profile.runPlaybackAuthored && chosen.clipId === profile.runClipId;
+      const duration = authoredRun ? runDurationSeconds() : null;
+      if (authoredRun && duration) {
+        // Time, not distance. One clip cycle per `duration` seconds, whatever the ground did.
+        phase = wrapCyclePhase(phase + seconds / duration);
+      } else if (Math.abs(chosen.cycleMeters) > 1e-9) {
+        // Divided by the SIGNED stride of the clip that is about to play, so both clips run
+        // forwards in time: walking backwards at -0.1m against a -0.665m stride advances the
+        // phase, exactly as walking forwards does. Dividing by an unsigned stride ran the
+        // backwards clip in reverse.
+        phase = wrapCyclePhase(phase + travelled / chosen.cycleMeters);
+      }
     }
     return report(travelled, speed);
   }

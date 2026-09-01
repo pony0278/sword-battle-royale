@@ -16,9 +16,9 @@ const forbiddenAuthority = [
 ];
 
 test('R18M.C1 entry delegates scene bootstrap and inspection overlay composition', () => {
-  assert.match(entry, /createShieldParryLabScene/);
+  assert.match(entry, /createCombatScene/);
   assert.match(entry, /createShieldParryInspectionOverlay/);
-  assert.match(entry, /const labScene = createShieldParryLabScene/);
+  assert.match(entry, /const labScene = createCombatScene/);
   assert.match(entry, /const inspectionOverlay = createShieldParryInspectionOverlay/);
   assert.match(entry, /updateLiveContactMarkers: \(report\) => inspectionOverlay\.update\(report\)/);
 });

@@ -50,9 +50,20 @@ export const MEASURED_LOCOMOTION_CLIPS = Object.freeze({
   }),
   // Faster still, and barely touching the ground: 5% contact per foot is too little to fit a
   // confident slope against, which is itself the reason not to use it.
+  //
+  // R22B.1 took a second opinion and the two fits DISAGREE, by more than any other clip here: an
+  // independent median-of-planted-toe-velocity fit reads 4.73 m/s against this table's 7.2, a 52%
+  // gap. On the same run that method reproduces Running_A to 3% (3.37 vs 3.268) and Walking_B to
+  // 10% (0.95 vs 1.053), so the method is not the problem - the clip is. Its footFitSpreadMps of
+  // 0.133 is 133x Running_A's, and this comment already said the contact was too brief to trust.
+  //
+  // Left as it was rather than replaced: neither fit is clearly better, and NOTHING reads this
+  // number - the arms are driven by the walk's phase, not by this stride. It is recorded so that
+  // anyone who ever does depend on it knows it is the one number in this table that is disputed.
   Running_B: Object.freeze({
     durationSeconds: 0.8, authoredSpeedMps: 7.2, strideMeters: 5.76,
     axis: 'forward', airborneFraction: 0.83, footFitSpreadMps: 0.133,
+    disputedSecondFitMps: 4.73,
   }),
   // Recorded, unused. KayKit ships a running strafe and no walking one, so the sidestep this lab
   // actually performs - 0.75 m/s while locked - has no clip at any speed: these would play at a
@@ -108,9 +119,21 @@ export const WALK_TO_RUN_TRANSITION = Object.freeze({
   biomechanicalTransitionMps: Math.sqrt(0.5 * 9.81 * 0.3765),
   // The speed at which the walk and run clips are stretched by equally much - the geometric mean of
   // what they were authored for. Below it the walk is the better-behaved clip, above it the run is.
+  //
+  // R22G.1: this is Walking_B against Running_A, the pair it was computed for, and it is kept at
+  // that pair deliberately - it is the number R20W.2's decision was made on. What changed is which
+  // side of it the sprint sits on. At 1.5 m/s the sprint was below the crossover and the walk was
+  // the better clip, which is what "keeps the walk clip" recorded. At 3.0 it is above, and the run
+  // is - so the run taking the legs back is this same measurement read at the new speed rather
+  // than a rule being broken.
   leastStretchCrossoverMps: Math.sqrt(1.053 * 3.268),
-  sprintSpeedMps: 1.5,
-  decision: 'sprint-below-the-crossover-keeps-the-walk-clip',
+  crossoverClipPair: Object.freeze(['Walking_B', 'Running_A']),
+  sprintSpeedMps: 3.0,
+  decision: 'sprint-above-the-crossover-wears-the-run-clip',
+  supersededDecision: Object.freeze({
+    atSprintMps: 1.5,
+    was: 'sprint-below-the-crossover-keeps-the-walk-clip',
+  }),
 });
 
 export function locomotionClipMeasurement(clipId) {

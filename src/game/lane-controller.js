@@ -7,6 +7,7 @@ import { createLaneLocomotionRuntime, planLateralStep } from '../combat/lane-loc
 import { createDodgeStateRuntime, DODGE_DURATION_SECONDS } from '../combat/dodge-state.js';
 import { createLaneWalkCycle, walkClipTimeSeconds } from '../combat/lane-walk-cycle.js';
 import { filterPoseToWalkOverlay, planWalkOverlay } from '../combat/guard-walk-overlay.js';
+import { blendSprintUpperBody, resolveSprintArmClip, sprintArmSamplePhase, sprintArmWeight } from '../combat/sprint-arm-overlay.js';
 import { TRAVEL_YAW_BONES, hipYawDeltaQuaternion, planTravelRelativeLegs } from '../combat/travel-relative-legs.js';
 
 // R18Z.1 — where the two fighters are standing, and nothing else.
@@ -18,7 +19,12 @@ import { TRAVEL_YAW_BONES, hipYawDeltaQuaternion, planTravelRelativeLegs } from 
 // the entry should not be carrying.
 //
 // It owns no authority over whether anything was hit. It is told an outcome and moves people.
-export function createShieldParryLaneController({ labScene, walkClips, services }) {
+export function createShieldParryLaneController({
+  labScene, walkClips, services, sprintArmClipId, wholeBodyRun = true, runPlaybackAuthored = true,
+}) {
+  // R21Y.1: which run the arms are borrowed from. Resolved once, here, so an unmeasured name can
+  // never reach the sampler - an overlay with no phase offset swings the arms against the feet.
+  const sprintArmClip = resolveSprintArmClip(sprintArmClipId);
   // Durations arrive after the assets load, so the clips are described here and measured later.
   // R20W.2: keyed by clip id rather than by direction, because the gait now picks between three.
   let clipDurations = {};
@@ -43,11 +49,14 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
   // overlay rather than a base swap: sample the walk, keep the leg chain, let the guard sample the
   // whole rig as always, then lay the legs back on top. The captured legs live here between the
   // two steps of that sandwich.
-  const defenderGait = createLaneWalkCycle();
+  // R22E.1: the defender's gait alone takes the experiment switch - the attacker is not the thing
+  // being looked at, and leaving it on the walk keeps a side-by-side in one frame.
+  const defenderGait = createLaneWalkCycle({ wholeBodyRun, runPlaybackAuthored });
   let pendingDefenderLegPose = null;
   // R20W.2: the last overlay decision, kept for the HUD and for probes - which of the fighter the
   // walk got this frame, and why it did not get any of them when it did not.
   let lastWalkOverlayPlan = null;
+  let lastSprintArmWeight = 0;
   // R20X.1: how far the stride has to be turned at the hip to point along this frame's travel.
   // Zero for anything going straight ahead, a right angle for a pure sidestep.
   let lastTravelPlan = null;
@@ -260,6 +269,11 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
     get attackerWalkSample() { return walkSampleFor(attackerGait.report); },
     get defenderGait() { return defenderGait.report; },
     get defenderWalkOverlay() { return lastWalkOverlayPlan; },
+    // R21U.1: how much of the run's arms the walk is wearing, 0 at a walk and 1 at a sprint. A
+    // number rather than a boolean because the whole point is that there is no longer a switch.
+    get defenderSprintArmWeight() { return lastSprintArmWeight; },
+    // R21Y.1: which clip those arms came from, and why - read by the HUD and stamped into a tally.
+    get defenderSprintArmClip() { return sprintArmClip; },
     get defenderTravelPlan() { return lastTravelPlan; },
     // R19E.1, first slice of the sandwich: sample the walk on the defender and keep only the leg
     // chain. Called immediately before the guard runtime samples its own clip over the whole rig.
@@ -272,21 +286,76 @@ export function createShieldParryLaneController({ labScene, walkClips, services 
       const gaitReport = defenderGait.report;
       const sample = walkSampleFor(gaitReport);
       if (!sample || !defender?.sampleAnimation || !services?.captureRigPose) return null;
+      // R21U.1: the run's arms, if the body is going fast enough to be running.
+      //
+      // R21X.1 moved this ABOVE the gate, because it answers the gate's own question. The lab was
+      // telling this call that the guard owns the upper body whenever the mode is not 'block' -
+      // written in R20W.2, when the only thing that wanted the torso was a whole-body RUN clip -
+      // so in parry mode the run's arms were sampled, blended, and then dropped by the filter on
+      // the way out. Measured in the lab: parry scope 'legs', block scope 'whole-body', arm weight
+      // 1.0 in both. The arms were borrowed and thrown away.
+      //
+      // A speed above the ramp's floor is itself proof the guard is not using the arms, and that is
+      // measured rather than assumed: the ramp begins at 1.359 m/s (Froude 0.5 on this rig) and the
+      // fastest a guarding fighter can travel is the walk's 1.0. Sprinting is refused outright
+      // while the guard is up, so the two facts cannot disagree - and until now they did, with
+      // planSprint reading the guard as down and this call being told it was up.
+      //
+      // R22G.1: zero when the legs are already WEARING the run. The overlay samples the run at the
+      // walk's phase minus the alignment offset, which is correct when the body underneath is the
+      // walk - and wrong by exactly that offset when the body underneath is already the run. The
+      // arms would be borrowed from 12.7% earlier in the same clip they are being laid on.
+      const armWeight = gaitReport.wholeBodyOnly === true
+        ? 0
+        : sprintArmWeight(gaitReport.speedMetersPerSecond);
+      // R22G.1: whether the BODY is running, which is the question the gate below actually needs.
+      // Keying that off the arm weight alone was right only while the overlay was the sole way to
+      // run: once the legs wear the run themselves the weight is zero, the demotion below stopped
+      // firing, and in parry mode planWalkOverlay refused a whole-body clip outright - scope
+      // 'none', the sprint invisible again, exactly the R21X.1 bug from the other direction.
+      // Caught by the browser probe, not by any test, which is why that probe exists.
+      const bodyIsRunning = gaitReport.wholeBodyOnly === true || armWeight > 0;
       // R20W.2: how much of the fighter the walk gets. A run has no legs-only reading, and the
       // gait says so itself, so a run clip can never be handed to a guarding fighter's legs.
       const gate = planWalkOverlay({
         attackInFlight: !exchangeIdle,
         combatResolving: !exchangeIdle,
-        guardOwnsUpperBody,
+        guardOwnsUpperBody: guardOwnsUpperBody && !bodyIsRunning,
         wholeBodyClip: gaitReport.wholeBodyOnly === true,
       });
       lastWalkOverlayPlan = gate;
-      if (!gate.allowed) return gate;
+      if (!gate.allowed) { lastSprintArmWeight = 0; return gate; }
+      // Sampled FIRST so the rig is left holding the walk - the pose below is what the caller
+      // applies, but a reader stepping through this should not find the fighter mid-run at the end
+      // of a walk sample.
+      //
+      // The run is sampled at the phase where it strikes with the walk (R21T.1 measured +20.7% of
+      // a cycle), because arm swing is coupled to the opposite leg: unaligned, the arms would swing
+      // against the feet, which reads worse than not borrowing them at all.
+      let runArmPose = null;
+      if (armWeight > 0 && sprintArmClip.clipId) {
+        const runDuration = clipDurations[sprintArmClip.clipId] || 1;
+        defender.sampleAnimation(sprintArmClip.clipId,
+          sprintArmSamplePhase(gaitReport.phase, sprintArmClip.clipId) * runDuration,
+          { loop: true, inPlace: true, rootRotationPolicy: 'lock' });
+        defender.update(0, labScene.camera);
+        runArmPose = services.captureRigPose(defender.rig);
+      }
       defender.sampleAnimation(sample.clipId, sample.timeSeconds, {
         loop: true, inPlace: true, rootRotationPolicy: 'lock',
       });
       defender.update(0, labScene.camera);
-      pendingDefenderLegPose = filterPoseToWalkOverlay(services.captureRigPose(defender.rig), gate.scope);
+      // Blended before the filter, not after. At LEGS scope the upper-body entries are dropped,
+      // which is still the right answer for a guarding fighter walking - but a fighter at running
+      // speed can no longer BE at LEGS scope, because the arm weight above decides the scope.
+      // R21X.1: before that, this comment was describing a case the sprint fell into every time in
+      // parry mode. R22A.1: the entries now include the torso, and the same reasoning covers it -
+      // sprinting is refused with the guard up, so the guard is never the one losing those bones.
+      const walkPose = services.captureRigPose(defender.rig);
+      lastSprintArmWeight = armWeight;
+      pendingDefenderLegPose = filterPoseToWalkOverlay(
+        blendSprintUpperBody(walkPose, runArmPose, armWeight), gate.scope,
+      );
       return gate;
     },
     // R20F.1: the dodge is a full-body clip and the last pre-strike writer: it overrides the

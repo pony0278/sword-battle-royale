@@ -36,6 +36,10 @@ export function createFreeMovementController({
   // through their own guard.
   readGuardActive = () => true,
   readAttacking = () => true,
+  // R21V.1: the sprint's ground speed, so a playtest can A/B it without a rebuild. Left undefined
+  // it resolves to the seed - resolveSprintSpeed owns the clamp and the bracket verdict, so a bad
+  // value here cannot become a bad speed downstream.
+  sprintSpeedMps = undefined,
 } = {}) {
   if (!laneController?.report) throw new Error(`${FREE_MOVEMENT_STAGE} needs the lane controller`);
   // Where the camera looks when nothing is locked. It has to be state of its own, and finding that
@@ -129,6 +133,7 @@ export function createFreeMovementController({
         dodging: laneController.dodgeReport?.dodging === true,
         forwardInput,
         lateralInput,
+        speedMps: sprintSpeedMps,
       });
       // Diagonals are not faster. Scaling the intent to unit length first is the fix for a
       // straight-line-versus-diagonal gap that measured 1.46x - two axes added at full speed each.

@@ -29,7 +29,7 @@ test('R20Q.1 the shared module stays renderer-free, so both labs and the tests c
 
 test('R20Q.1 the lab reaches into the combat lab for actors and clips, never for its wiring', () => {
   // Same fighters and same swings, so a framing judgement is made on the real thing.
-  assert.match(labJs, /createShieldParryLabScene/);
+  assert.match(labJs, /createCombatScene/);
   assert.match(labJs, /bootstrapShieldParryLabAssets/);
   assert.match(labJs, /createLongswordDirectionalAttackRuntime/);
   // But none of the combat lab's own wiring: the entry stays untouched while tuning happens.

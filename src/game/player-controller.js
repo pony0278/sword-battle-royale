@@ -17,9 +17,11 @@ export const PLAYER_CONTROLLER_STAGE = 'R20S.3';
 export function createShieldParryPlayerController({
   camera, laneController, freeCamera, inspectionCamera = false,
   readGuardActive = () => true, readAttacking = () => true,
+  // R21V.1: forwarded, never interpreted - resolveSprintSpeed owns the clamp and the bracket verdict.
+  sprintSpeedMps = undefined,
 }) {
   const cameraController = createShieldParryCameraController({ camera, aspectRatio: camera.aspect });
-  const movement = createFreeMovementController({ laneController, readGuardActive, readAttacking });
+  const movement = createFreeMovementController({ laneController, readGuardActive, readAttacking, sprintSpeedMps });
   let intent = Object.freeze({ forward: 0, lateral: 0 });
 
   return Object.freeze({

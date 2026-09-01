@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>Run clip inventory · R22B.1</title>
+<script src="/node_modules/three/build/three.min.js"></script>
+<script src="/node_modules/three/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+<div id="status">loading…</div>
+<script type="module">
+// R22B.1 - what forward runs this pack actually contains, and what each is drawn for.
+//
+// Asked from play: can the whole Running_B clip be used directly, the way the action studio shows
+// it? The action studio plays clips IN PLACE at speed 1 - the character does not travel - so no
+// clip can ever slide there. In the game the body crosses real ground, and that is what forces the
+// compromise. Which means the question is really "what ground speed is each clip honest at", and
+// before answering that it is worth knowing whether the pack holds a JOG nobody has looked at.
+//
+// So this lists every run-shaped clip name in the packs the game loads, and fits each one's
+// authored speed independently of MEASURED_LOCOMOTION_CLIPS - a second opinion on numbers the whole
+// gait rests on, one of which that table already flags as its least confident.
+import { createProceduralKayKitCharacter } from '/src/character/procedural-kaykit-character.js';
+import { loadKayKitAnimationLibrary } from '/src/animation/kaykit-animation-library.js';
+
+const SAMPLES = 480;
+const CANDIDATES = ['Running_A', 'Running_B', 'Walking_B'];
+
+async function main() {
+  const character = createProceduralKayKitCharacter(THREE, {});
+  const library = await loadKayKitAnimationLibrary(new THREE.GLTFLoader(), { packIds: ['basic', 'advanced', 'general'] });
+  character.registerAnimations(library);
+  const out = { available: [...library.clips.keys()] };
+  for (const clipId of CANDIDATES) {
+    const duration = character.getAnimationDuration(clipId);
+    if (!duration) { out[clipId] = { error: 'no-such-clip' }; continue; }
+    const rows = [];
+    for (let i = 0; i < SAMPLES; i += 1) {
+      character.sampleAnimation(clipId, (i / SAMPLES) * duration, {});
+      character.rig.root.updateMatrixWorld(true);
+      const row = {};
+      for (const foot of ['toes.l', 'toes.r']) {
+        const bone = character.rig.bones?.[foot] || character.rig.root.getObjectByName(foot);
+        const p = new THREE.Vector3().setFromMatrixPosition(bone.matrixWorld);
+        row[foot] = { y: p.y, z: p.z };
+      }
+      rows.push(row);
+    }
+    out[clipId] = { duration, rows };
+  }
+  window.__RUN_CLIP_INVENTORY__ = out;
+  document.getElementById('status').textContent = 'done';
+  document.documentElement.dataset.runClipInventory = 'done';
+}
+main().catch((error) => {
+  document.getElementById('status').textContent = `error: ${error?.message || error}`;
+  document.documentElement.dataset.runClipInventory = 'error';
+  window.__RUN_CLIP_INVENTORY_ERROR__ = String(error?.stack || error);
+});
+</script>
+</body>
+</html>

@@ -1,4 +1,10 @@
-// R20K.1 (B6e) - the lab's frame clock, and the one place a measurement may take it off the wall.
+// R20K.1 (B6e) - the frame clock, and the one place a measurement may take it off the wall.
+//
+// R22I.1 renamed this from createLabFrameClock. "Lab" named the only caller there has ever been,
+// not the thing: a frame clock that a harness may pin is what any build of this game needs, and
+// pinning is a capability the header below describes rather than part of what it is. The obvious
+// alternative, createFixedStepFrameClock, would have been worse - it defaults to the WALL clock and
+// is only fixed-step while something is measuring.
 //
 // The lab integrates on requestAnimationFrame deltas, clamped so a dropped frame cannot teleport
 // the sim. That is right for play and wrong for measurement: the golden grid's cells clear the
@@ -16,7 +22,7 @@
 //
 // Pinning is for measurement only. Play must keep the wall clock, or the sim would run fast on a
 // slow machine and slow on a fast one; setFixedStep(null) is how a harness hands the clock back.
-export function createLabFrameClock({ maxStepMs = 50, now = () => performance.now() } = {}) {
+export function createFrameClock({ maxStepMs = 50, now = () => performance.now() } = {}) {
   let lastTimestamp = now();
   let frames = 0;
   let fixedStepMs = null;

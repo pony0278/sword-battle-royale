@@ -72,6 +72,7 @@ async function driveOnePress({ api, windowRef, documentRef, direction, pressTtcM
   const contactSeconds = api.attackRuntime.snapshot?.action?.runtime?.contactSeconds ?? null;
   if (contactSeconds == null) return { direction, pressTtcMs, outcome: null, reason: 'no-attack-timeline' };
   let pressed = false;
+  let pressedAtTtcMs = null;
   let outcome = null;
   const startedAt = windowRef.performance.now();
   while (windowRef.performance.now() - startedAt < EXCHANGE_TIMEOUT_MS) {
@@ -82,6 +83,9 @@ async function driveOnePress({ api, windowRef, documentRef, direction, pressTtcM
       // releasing would test the release rather than the timing.
       api.setGuardHeld(true);
       pressed = true;
+      // The TTC the press ACTUALLY landed at, not the one it aimed for. Pinned, these should be
+      // identical run to run; if they ever drift again, this is the number that says so.
+      pressedAtTtcMs = (contactSeconds - elapsed) * 1000;
     }
     const resolved = api.latestCombatResult?.resolution?.outcome;
     if (resolved && !outcome) outcome = resolved;
@@ -89,14 +93,24 @@ async function driveOnePress({ api, windowRef, documentRef, direction, pressTtcM
     if (pressed && !api.attackRuntime.active && !api.combat.active) break;
   }
   api.setGuardHeld(false);
-  return { direction, pressTtcMs, outcome, reason: outcome ? null : 'no-resolution' };
+  // R21Z.1: what the press actually did, so a red cell is diagnosable. 'no-resolution' alone
+  // cannot distinguish "the shield was late" from "the attack never reached anybody".
+  return {
+    direction,
+    pressTtcMs,
+    outcome,
+    reason: outcome ? null : 'no-resolution',
+    pressedAtTtcMs: pressedAtTtcMs == null ? null : Number(pressedAtTtcMs.toFixed(1)),
+    contactSeconds: Number(contactSeconds.toFixed(4)),
+  };
 }
 
 function stamp(documentRef, run, observations) {
   const root = documentRef.documentElement;
   root.dataset.defenceMatrix = run.pass ? 'pass' : 'fail';
   root.dataset.defenceMatrixDetail = observations
-    .map((row) => `${row.direction}@${row.pressTtcMs}:${row.outcome || row.reason || 'none'}`)
+    .map((row) => `${row.direction}@${row.pressTtcMs}:${row.outcome || row.reason || 'none'}`
+      + (row.pressedAtTtcMs == null ? '' : `(@${row.pressedAtTtcMs}ms)`))
     .join(' ');
   if (!run.pass) {
     root.dataset.defenceMatrixFailures = run.failures
@@ -113,6 +127,25 @@ export function maybeStartDefenceMatrixProbe({ api, windowRef, documentRef }) {
   // The review aid rescales the pre-contact phase, which is exactly the thing being timed here.
   const slowReview = documentRef.getElementById('slowReview');
   if (slowReview) slowReview.checked = false;
+  // R21Z.1: pin the step, for the reason R20K.1 already wrote down for the golden grid - and which
+  // this probe was built without. On the wall clock a frame is however long the browser felt like,
+  // so `contactSeconds - elapsed` crosses the press threshold at a different point in the swing on
+  // every run, and a cell decided by a few milliseconds lands on either side of it.
+  //
+  // The evidence that this is not theoretical: across three consecutive runs of the CURRENT record,
+  // top@180 came back 'parry', then 'block', then 'parry'. The gate normalises both to 'defended'
+  // so it stayed green - but the same press was resolving by two different mechanisms, which means
+  // the timing was moving. left@180 is the tightest cell in the matrix (R21O.3: LEFT arrives late)
+  // and it is the one that went red, with no resolution at all.
+  //
+  // Pinned, every wait below is still wall-clock - rAF still fires in real time - but the SIM
+  // advances by exactly 1/60 per frame, so the press lands on a deterministic frame of the swing.
+  if (typeof api.setFixedStepMs !== 'function') {
+    root.dataset.defenceMatrix = 'fail';
+    root.dataset.defenceMatrixFailures = 'R21Z.1: lab has no pinned frame step; the matrix would be unreproducible';
+    return true;
+  }
+  api.setFixedStepMs(1000 / 60);
   (async () => {
     const observations = [];
     const observed = {};

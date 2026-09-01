@@ -65,7 +65,7 @@ import { createStanceDebugController } from './shield-parry-r281/stance-debug-co
 import { createShieldParryLabUi, bindShieldParryLabUiEvents } from './shield-parry-r281/lab-ui.js';
 import { createGuardSectorIndicator } from './shield-parry-r281/guard-sector-indicator.js';
 import { createParryAttemptTally } from './shield-parry-r281/parry-attempt-tally.js';
-import { clampAttackTempoScale } from '../../src/combat/attack-tempo.js'; // R21O.1
+import { readLabExperimentParameters } from './shield-parry-r281/lab-experiment-parameters.js'; // R21O.1, R21V.1
 import { createOpponentDriveController } from './shield-parry-r281/opponent-drive-controller.js'; // R21E.1
 import { createGuardSectorRuntime } from '../../src/game/guard-sector-runtime.js';
 import {
@@ -75,7 +75,7 @@ import {
 import { createShieldParryPreContactController } from '../../src/game/pre-contact-controller.js';
 import { createVisualOwnershipRuntimeTaps } from './shield-parry-r281/visual-ownership-runtime-taps.js';
 import { createShieldParryContactHandoffController } from '../../src/game/contact-handoff-controller.js';
-import { createShieldParryLabScene } from '../../src/game/scene.js';
+import { createCombatScene } from '../../src/game/scene.js';
 import { createFreeInspectionCameraControls } from './free-inspection-camera-controls.js';
 import { cloneSurface, magnitude, createBladePolylineSampler } from '../../src/game/geometry.js';
 import { createShieldParryFrameReporting } from './shield-parry-r281/frame-reporting.js';
@@ -88,7 +88,7 @@ import { LANE_WALK_CLIPS, bootstrapShieldParryLabAssets } from '../../src/game/b
 import { createNeutralStanceController } from '../../src/game/neutral-stance.js';
 import { createBodyStrikeReactionController } from '../../src/game/body-strike-reaction-controller.js';
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
-import { createLabFrameClock } from '../../src/game/frame-clock.js';
+import { createFrameClock } from '../../src/game/frame-clock.js';
 import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-reporter.js';
 import { createShieldParryPlayerController } from '../../src/game/player-controller.js';
 
@@ -105,7 +105,7 @@ const PARRY_PROMPT_HOLD_MS = 1500;
 const DEBUG_QUERY = new URLSearchParams(window.location.search);
 const DEBUG_MODE = DEBUG_QUERY.get('debug') === '1';
 
-const labScene = createShieldParryLabScene({
+const labScene = createCombatScene({
   createInspectionCamera: createFreeInspectionCameraControls, // R20Z.4: the lab brings its own observer
   THREE, documentRef: document, windowRef: window,
   separationMeters: DEBUG_QUERY.has('spacing') ? Number(DEBUG_QUERY.get('spacing')) : undefined,
@@ -119,10 +119,12 @@ const INSPECTION_CAMERA = DEBUG_QUERY.get('camera') === 'free';
 const inspectionOverlay = createShieldParryInspectionOverlay({ THREE, scene });
 let defenderSword = null;
 
-// R21O.1: how long a swing takes. 1x by default - the golden grid and the parry gate are a record
-// of the exchange at 1x - and ?tempo=1.8 for the readability playtest.
-const ATTACK_TEMPO_SCALE = clampAttackTempoScale(DEBUG_QUERY.get('tempo'));
-const attackRuntime = createLongswordDirectionalAttackRuntime({ tempoScale: ATTACK_TEMPO_SCALE });
+// The two dials a playtest may turn, both defaulting to what ships: how long a swing takes
+// (?tempo=, R21O.1 - the golden grid and the parry gate are a record of the exchange at 1x) and how
+// fast a sprint travels (?sprint=, R21V.1). Read, clamped and judged in one module so the entry
+// carries the choice rather than the parsing, and so the tally can stamp both into its conditions.
+const EXPERIMENT = readLabExperimentParameters(DEBUG_QUERY);
+const attackRuntime = createLongswordDirectionalAttackRuntime({ tempoScale: EXPERIMENT.tempoScale });
 const guardMachine = createGuardStateMachine();
 const guardRuntime = createGuardPresentationRuntime(THREE, { machine: guardMachine, character: defender });
 const bracingRuntime = createArticulatedImpactBracingRuntime(THREE, { rig: defender.rig, buckler });
@@ -133,10 +135,12 @@ const predictivePresentation = createPredictiveInterceptParryPresentationRuntime
 const activeParryInterceptIntent = createActiveParryInterceptIntent();
 const parryGate = createCommittedParryContactGate();
 const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
-  labScene, walkClips: LANE_WALK_CLIPS, services: { captureRigPose, applyRigPose } });
+  // R21Y.1: which run lends the sprint its arms; ?runclip=, Running_A unless somebody says otherwise.
+  labScene, walkClips: LANE_WALK_CLIPS, services: { captureRigPose, applyRigPose }, sprintArmClipId: EXPERIMENT.sprintArmClipId, wholeBodyRun: EXPERIMENT.wholeBodyRun, runPlaybackAuthored: EXPERIMENT.runPlaybackAuthored });
 const playerController = createShieldParryPlayerController({ // R20S.3: feet, lock-on and the camera
   camera, laneController, freeCamera, inspectionCamera: INSPECTION_CAMERA, // R20U.1: running is refused by these two
-  readGuardActive: () => defenderStance.report.guardActive === true, readAttacking: () => attackRuntime.active === true });
+  // R21V.1: the sprint's ground speed is a playtest dial; with no ?sprint= this is the shipped seed.
+  readGuardActive: () => defenderStance.report.guardActive === true, readAttacking: () => attackRuntime.active === true, sprintSpeedMps: EXPERIMENT.sprintSpeedMps });
 const exchangeState = createShieldParryExchangeState();
 // R20G.1 (B6c): defence is a choice - in block mode the guard (and the whole measured defence
 // behind it) exists only while the key is held; the machine follows this input, never auto-raises.
@@ -237,13 +241,13 @@ const labUi = createShieldParryLabUi(uiElements);
 const guardSector = createGuardSectorRuntime();
 const guardSectorIndicator = createGuardSectorIndicator(document.getElementById('guardSector'));
 // R21C.2: counts what the attempts did, so a play test produces numbers rather than impressions.
-const parryTally = createParryAttemptTally({ conditions: () => ({ tempoScale: ATTACK_TEMPO_SCALE, slowReview: slowReview.checked }) });
+const parryTally = createParryAttemptTally({ conditions: () => ({ tempoScale: EXPERIMENT.tempoScale, slowReview: slowReview.checked, sprint: EXPERIMENT }) });
 const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
 let ready = false;
 let selectedDirection = 'right';
 let selectedMode = null; // R19I.1: chosen, never assumed
-const frameClock = createLabFrameClock(); // R20K.1: the wall clock, until a harness pins it
+const frameClock = createFrameClock(); // R20K.1: the wall clock, until a harness pins it
 let attackerIdleDuration = 1;
 let attackerIdleClockSeconds = 0;
 let attackerRecovery = null;
@@ -390,7 +394,9 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     debugStanceProfile: () => debugStanceProfile,
     parryReviewActive: (snapshot) => isParryPreContactReviewActive(snapshot),
     lockReport: () => playerController.lockReport, // R20S.3
-    sprintReport: () => playerController.sprintReport, // R20U.1
+    // R21Y.1: the arm clip rides along so the HUD can say which run is actually being worn - a
+    // playtester comparing ?runclip= needs to see that the override took, not just that they typed it.
+    sprintReport: () => ({ ...playerController.sprintReport, armClip: laneController.defenderSprintArmClip, gait: laneController.defenderGait }), // R20U.1
     parryTally: () => parryTally.summary, // R21C.2
     opponent: () => opponentDriveController.summary, // R21E.1
     parryTallyReport: () => parryTally.reportText, // R21G.2: the whole run, pasteable

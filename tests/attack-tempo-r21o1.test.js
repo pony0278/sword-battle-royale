@@ -17,6 +17,7 @@ import {
 import { ATTACK_TIME_WARPS, warpRuntimeToSource, warpSourceToRuntime } from '../src/combat/attack-time-warp.js';
 import { getLongswordDirectionalAttackProfile } from '../src/combat/longsword-directional-attack-runtime.js';
 import { createParryAttemptTally } from '../tools/action-studio/shield-parry-r281/parry-attempt-tally.js';
+import { readLabExperimentParameters } from '../tools/action-studio/shield-parry-r281/lab-experiment-parameters.js';
 
 const DIRECTIONS = ['top', 'right', 'left'];
 
@@ -139,12 +140,16 @@ test('R21O.1 a pasted run says what it was measured under', () => {
 });
 
 test('R21O.1 the lab takes the scale from the query and passes it to the attack runtime', async () => {
+  // R21V.1: the parsing moved to lab-experiment-parameters.js, where ?sprint= joined it. The claim
+  // is unchanged - the query decides the tempo, and the fight and the report read the same value.
   const entry = await readFile(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-  assert.match(entry, /clampAttackTempoScale\(DEBUG_QUERY\.get\('tempo'\)\)/);
-  assert.match(entry, /createLongswordDirectionalAttackRuntime\(\{ tempoScale: ATTACK_TEMPO_SCALE \}\)/);
+  assert.match(entry, /readLabExperimentParameters\(DEBUG_QUERY\)/);
+  assert.equal(readLabExperimentParameters(new URLSearchParams('tempo=2')).tempoScale, 2);
+  assert.equal(readLabExperimentParameters(new URLSearchParams('')).tempoScale, DEFAULT_ATTACK_TEMPO_SCALE);
+  assert.match(entry, /createLongswordDirectionalAttackRuntime\(\{ tempoScale: EXPERIMENT\.tempoScale \}\)/);
   // The report is built from the same constant the fight runs on, so it cannot describe a run
   // that did not happen.
-  assert.match(entry, /conditions: \(\) => \(\{ tempoScale: ATTACK_TEMPO_SCALE, slowReview: slowReview\.checked \}\)/);
+  assert.match(entry, /conditions: \(\) => \(\{ tempoScale: EXPERIMENT\.tempoScale, slowReview: slowReview\.checked, sprint: EXPERIMENT \}\)/);
   // Timing only. Whether a parry lands is still the swept contact's answer.
   const tempo = await readFile(new URL('../src/combat/attack-tempo.js', import.meta.url), 'utf8');
   assert.doesNotMatch(tempo, /resolveContact|parryGate|accepted|aimedSector/);
