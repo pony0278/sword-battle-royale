@@ -70,15 +70,74 @@ export const ATTACK_TIME_WARP_STAGE = 'R21B.1';
 // The windup lands at 423-771 deg/s: still the fastest preparation of the three, which is RIGHT's
 // identity, but no longer indistinguishable from a strike. The follow-through past 0.30s keeps its
 // authored pace and simply starts later.
+// R21O.3 - the stretch has to end BEFORE the blade arrives, not after it.
+//
+// R21O.1 slowed the whole swing so the direction could be read in time, and LEFT became
+// unparryable: 13 presses across two playtests, every one judged too early, not one inside its
+// window. It was not the cue (R21O.2 fixed a real lie there and LEFT did not improve) and it was
+// not an animation desync - measured, the blade reaches its contact point 12-20ms before contact
+// at 2x, against 6ms at 1x. Visual and logical contact agree.
+//
+// It was the ORDER of two moments. Sampling the engine's own body geometry every frame - the
+// closest approach the hurtbox reports, plane gap and radial distance combined - says when the
+// blade actually arrives at the defender:
+//
+//   direction   arrives at        window opens at
+//   TOP         93% of the swing  58% (1x) / 79% (2x)
+//   LEFT        77% of the swing  58% (1x) / 79% (2x)
+//
+// The window is anchored to contact minus a FIXED 180ms, so scaling the swing moves the window
+// later as a fraction of it while the arrival stays put. At 1x LEFT's window opened 86ms before
+// the blade arrived. At 2x it opened 16ms AFTER. By the time the gate would accept, the blade was
+// already on the defender - and the player, pressing when they saw it rush in, was always early.
+//
+// In source time the three moments that matter are close together:
+//
+//   blade reaches the body   0.230s
+//   peak blade rotation      0.258s
+//   authored contact         0.260s
+//
+// and the warp region began at 0.18 - before all of them - so it stretched the approach and the
+// burst as one. Ending it at 0.22 puts the arrival outside the stretch, which moves it to 91% of
+// the swing, level with TOP's 93%; the stretch rises to 5.25 so contact still lands at 430ms and
+// nothing downstream moves. Measured in the built page at 2x: the window now opens 104ms before
+// the blade arrives, where it had been 16ms behind.
+//
+// The cost is real and is the reason this was a choice rather than a fix. The burst leaves the
+// stretched region with the arrival, so LEFT's peak goes from 641 to 2002 deg/s at 2x, against
+// TOP's 1218 and RIGHT's 730. R20M.1 stretched this burst precisely because 3972 deg/s was
+// unreadable; 2002 is half of that, and it is measured at the tempo the fight now runs at, but
+// LEFT is once again the quickest blade of the three.
+//
+// Both cannot be had by moving this edge. The arrival and the peak are 28ms of source apart, so
+// any end that frees one frees the other; slowing only the peak would need the region to START
+// after 0.230, leaving 30ms of source to absorb the 250ms of runtime the warp contributes, which
+// needs a stretch near 7.8 and puts contact inside the region. That is a re-balance, not an edit.
+export const LEFT_ARRIVAL_ORDERING_REFERENCES = Object.freeze({
+  stage: 'R21O.3',
+  sourceSeconds: Object.freeze({ bladeReachesBody: 0.230, peakRotation: 0.258, authoredContact: 0.260 }),
+  arrivalShareOfSwing: Object.freeze({ before: 0.772, after: 0.912, top: 0.930 }),
+  windowVersusArrivalMs: Object.freeze({ beforeAt2x: -16, afterAt2x: 104, beforeAt1x: 86 }),
+  peakDegreesPerSecondAt2x: Object.freeze({ before: 641, after: 2002, top: 1218, right: 730 }),
+  realCutFastPhaseDegreesPerSecond: Object.freeze({ min: 700, max: 1200 }),
+  // Why the old edge could not simply be nudged: contact stays 430ms in both, so the whole cost
+  // shows up in these two numbers moving in opposite directions.
+  supersedes: Object.freeze({ stage: 'R21K.1', endSourceSeconds: 1 / 3, stretch: 3.125 }),
+  authority: 'timeline-shape-only-no-contact-authority',
+});
+
 export const ATTACK_TIME_WARPS = Object.freeze({
   left: Object.freeze({
     // R21K.1: the burst's stretch is barely touched; the window it opens is moved by starting
     // 20ms of source earlier. See LEFT_SECOND_PASS_REFERENCES.
+    // R21O.3: the region now ENDS before the blade reaches the defender rather than after it.
+    // See LEFT_ARRIVAL_ORDERING_REFERENCES - this is the change that lets LEFT be parried at all
+    // once the swing is slowed.
     direction: 'left',
     startSourceSeconds: 0.18,
-    endSourceSeconds: 1 / 3,
-    stretch: 3.125,
-    reason: 'left-burst-3972-deg-per-second-in-one-key; window closed 13ms before the measured press',
+    endSourceSeconds: 0.22,
+    stretch: 5.25,
+    reason: 'left-burst-3972-deg-per-second-in-one-key; the stretch must end before the blade arrives, or the parry window opens behind it',
   }),
   right: Object.freeze({
     // R21I.1: 1.6 -> 1.87. See RIGHT_RETIME_REFERENCES.secondPass for what a player's hands
