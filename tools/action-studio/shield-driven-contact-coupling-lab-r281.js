@@ -75,7 +75,7 @@ import {
 import { createShieldParryPreContactController } from '../../src/game/pre-contact-controller.js';
 import { createVisualOwnershipRuntimeTaps } from './shield-parry-r281/visual-ownership-runtime-taps.js';
 import { createShieldParryContactHandoffController } from '../../src/game/contact-handoff-controller.js';
-import { createShieldParryLabScene } from '../../src/game/scene.js';
+import { createCombatScene } from '../../src/game/scene.js';
 import { createFreeInspectionCameraControls } from './free-inspection-camera-controls.js';
 import { cloneSurface, magnitude, createBladePolylineSampler } from '../../src/game/geometry.js';
 import { createShieldParryFrameReporting } from './shield-parry-r281/frame-reporting.js';
@@ -88,7 +88,7 @@ import { LANE_WALK_CLIPS, bootstrapShieldParryLabAssets } from '../../src/game/b
 import { createNeutralStanceController } from '../../src/game/neutral-stance.js';
 import { createBodyStrikeReactionController } from '../../src/game/body-strike-reaction-controller.js';
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
-import { createLabFrameClock } from '../../src/game/frame-clock.js';
+import { createFrameClock } from '../../src/game/frame-clock.js';
 import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-reporter.js';
 import { createShieldParryPlayerController } from '../../src/game/player-controller.js';
 
@@ -105,7 +105,7 @@ const PARRY_PROMPT_HOLD_MS = 1500;
 const DEBUG_QUERY = new URLSearchParams(window.location.search);
 const DEBUG_MODE = DEBUG_QUERY.get('debug') === '1';
 
-const labScene = createShieldParryLabScene({
+const labScene = createCombatScene({
   createInspectionCamera: createFreeInspectionCameraControls, // R20Z.4: the lab brings its own observer
   THREE, documentRef: document, windowRef: window,
   separationMeters: DEBUG_QUERY.has('spacing') ? Number(DEBUG_QUERY.get('spacing')) : undefined,
@@ -247,7 +247,7 @@ const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, 
 let ready = false;
 let selectedDirection = 'right';
 let selectedMode = null; // R19I.1: chosen, never assumed
-const frameClock = createLabFrameClock(); // R20K.1: the wall clock, until a harness pins it
+const frameClock = createFrameClock(); // R20K.1: the wall clock, until a harness pins it
 let attackerIdleDuration = 1;
 let attackerIdleClockSeconds = 0;
 let attackerRecovery = null;
