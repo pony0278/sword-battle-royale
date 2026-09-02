@@ -114,6 +114,15 @@ const INSPECTION_CAMERA = DEBUG_QUERY.get('camera') === 'free';
 const inspectionOverlay = createShieldParryInspectionOverlay({ THREE, scene });
 let defenderSword = null;
 let weaponMount = null; // R23E.1: ?mount=, built once the load has both calibrations
+// R23G.1: the player's own engagement, swinging the other way. Built in main() rather than here
+// because it needs the defender's sword, and that sword's calibration is read out of a clip that
+// has not loaded yet. Null until then, and every frame call below is guarded on `ready`.
+let playerEngagement = null;
+// R23G.1: which way the player swung. Taken from the aim they are already holding rather than from
+// keys of its own - the sector is set by the mouse, drawn by the HUD indicator, and was already the
+// thing they point with to defend. One aim, both verbs.
+let playerDirection = 'top';
+let playerWasSwinging = false; // R23G.1: the falling edge is what banks the step
 
 // The two dials a playtest may turn, both defaulting to what ships: how long a swing takes
 // (?tempo=, R21O.1 - the golden grid and the parry gate are a record of the exchange at 1x) and how
@@ -443,6 +452,9 @@ function forceOldTwoActorB3(direction = selectedDirection) {
 }
 function startAttack(direction = selectedDirection) {
   if (!ready || combat.active || attackRuntime.active || engagement.hasRecovery) return false;
+  // R23G.1: and not into the player's swing either. One advance runtime, one swinging slot - the
+  // refusal is symmetric because the ledger underneath is.
+  if (playerEngagement?.attackRuntime.active || playerEngagement?.combat.active) return false;
   // B6c: parry mode keeps its armed guard; block mode raises only what the held key says.
   if ((selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
   selectedDirection = direction;
@@ -501,6 +513,38 @@ function isParryPreContactReviewActive(snapshot = attackRuntime.snapshot) {
 }
 
 
+// R23G.1: the player's swing, aimed where they are already pointing.
+//
+// The sector is null until a first aim ('never-aimed'), and a swing that silently refuses because
+// of an invisible precondition is worse than one that picks a direction and says which - so an
+// unaimed press swings TOP and the status line names it.
+//
+// Refused while either engagement is live, and that is the LEDGER's rule surfacing rather than a
+// new one: engagement-ground holds one advance runtime and one swinging slot, so two swings at once
+// would not be a harder fight, it would be one swing wearing the other's arithmetic.
+function startPlayerAttack() {
+  if (!ready || !playerEngagement) return false;
+  if (combat.active || attackRuntime.active || playerEngagement.combat.active
+    || playerEngagement.attackRuntime.active || playerEngagement.hasRecovery) return false;
+  const aimed = guardSector.sector;
+  playerDirection = aimed || 'top';
+  playerEngagement.resetExchangeState({ previousShieldLeadSurface: null });
+  playerEngagement.rememberBlade(playerEngagement.captureBlade());
+  const started = playerEngagement.combat.startAttack(playerDirection);
+  if (!started.accepted) return false;
+  laneController.startAttack(playerDirection, playerEngagement.attackRuntime.snapshot?.action?.runtime?.contactSeconds, { swinger: 'defender' });
+  status.textContent = `YOU SWING ${playerDirection.toUpperCase()}${aimed ? '' : ' · nothing aimed yet, so TOP'}`;
+  status.className = 'warn';
+  return true;
+}
+function resolvePlayerContact(snapshot, currentBlade, deltaSeconds) {
+  const resolved = playerEngagement.contactHandoff.resolveContact(snapshot, currentBlade, deltaSeconds, {
+    previousBlade: playerEngagement.previousBlade, selectedMode: 'block', selectedDirection: playerDirection,
+  });
+  const settled = laneController.settle(playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome);
+  if (settled) playerEngagement.exchangeState.latestEngagementGround = settled;
+  return resolved;
+}
 function resolveContact(snapshot, currentBlade, deltaSeconds) {
   const resolved = contactHandoffController.resolveContact(snapshot, currentBlade, deltaSeconds, {
     previousBlade: engagement.previousBlade,
@@ -527,6 +571,45 @@ async function main() {
   laneController.setWalkDurations(bootstrap.locomotionClipDurations);
   neutralStance.setIdleDuration(bootstrap.defenderIdleDuration);
   defenderSword = bootstrap.defenderSword;
+  // R23G.1: the mirror of the engagement above - the player swings, the opponent receives. Measured
+  // before it was wired: every per-frame call in this stack is inert while its own attack runtime
+  // has no action (updatePreContact returns on !snapshot.action, updateCombatBeforeGuard on
+  // !combat.active, advanceDefender's root write on no plan), which is why a second one can sit in
+  // the frame loop without the golden grid moving a single cell.
+  playerEngagement = createEngagement(THREE, {
+    swinger: defender, swingerSword: defenderSword, receiver: attacker, receiverBuckler: attackerBuckler,
+    receiverFighter: attackerFighter, camera,
+    attackRuntime: createLongswordDirectionalAttackRuntime({ tempoScale: EXPERIMENT.tempoScale }),
+    createOwnershipTaps: createVisualOwnershipRuntimeTaps,
+    longswordAttackPhases: LONGSWORD_ATTACK_PHASES, promptHoldMs: PARRY_PROMPT_HOLD_MS, debugMode: DEBUG_MODE,
+    presentationServices: {
+      captureRigPose, applyRigPose, blendRecoveryPose,
+      sampleLongswordAttackRecovery, sampleLiveParryOldB3ReleaseBlend,
+    },
+    preContactServices: {
+      cloneSurface, magnitude, planArticulatedImpactBracing, planFineGuardTracking,
+      analyzePredictiveInterceptParry, evaluateCommittedParryInput,
+      measureSweptSwordBucklerClosestApproach, planGuardThreatCorrection,
+      sampleActiveShieldLeadMotion, compactInterceptDriveTraceFrame, compactInterceptDriveTelemetry,
+    },
+    contactServices: { measureAttackerRecoilWorldSilhouette },
+    // The opponent does not defend yet - step 6 is what gives them a guard - so this says so
+    // explicitly rather than letting an absent stance read as a raised one.
+    readContext: () => ({
+      selectedMode: 'block', slowReviewChecked: false, defenderSword: attackerSword, debugStanceProfile,
+      separationMeters: laneController.separationMeters, defenderFacingErrorRadians: 0,
+      dodgeReport: null, stanceReport: { guardActive: false }, lateGuardRaise: false,
+    }),
+    callbacks: {
+      onBodyStruck: (bodyContact) => attackerFighter.bodyStrikeReaction.start(bodyContact),
+      readDodgeReport: () => null,
+      readGuardActive: () => false,
+      updateLiveContactMarkers: () => {},
+      formatInspectionFailureSummary,
+      publishStatus: () => {},
+    },
+  });
+  playerEngagement.setIdleDuration(bootstrap.defenderIdleDuration);
   // R23E.1: ?mount=. The PLAYER's sword only - the attacker's blade is what every contact
   // measurement is taken from, and moving it 0.608m is a different fight, not a different look.
   weaponMount = createWeaponMountController({ weapon: defenderSword, mounts: bootstrap.defenderMounts, mode: EXPERIMENT.weaponMountMode, readGuardState: () => guardMachine.state });
@@ -553,6 +636,7 @@ bindShieldParryLabUiEvents({
     onDebugResetDefaults: resetDebugStanceDefaults,
     onDefenderIntent: (intent) => laneController.setDefenderIntent(intent), onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
     onDefenderLateralIntent: (intent) => laneController.setDefenderLateralIntent(intent), onGuardKey: (held) => setGuardHeld(held), // R19V.1 + R20G.1
+    onAttack: () => startPlayerAttack(), // R23G.1 the player's own swing
     onDodge: (direction) => requestDodge(direction), // R20F.1 through the stance gate
     onMoveIntent: (moveIntent) => playerController.setMoveIntent(moveIntent), // R20S.3 WASD, world frame
     onLockToggle: () => playerController.toggleLock(), // R20S.3 Tab
@@ -597,7 +681,20 @@ function frame(timestamp) {
 
     parryWhiffReporter.report(snapshot, selectedDirection); // R20S.1: a report about a finished attack, never a decision
 
-    laneController.update(snapshot.elapsedSeconds, Boolean(snapshot.action), snapshot.phase); // R20B.1 phase rides along
+    // R23G.1: the player's swing advances on the same clock. One swing at a time is not a policy
+    // here, it is the ledger: engagement-ground holds one advance runtime and one swinging slot, so
+    // the lane is driven by whichever engagement actually has an action this frame.
+    const playerSnapshot = playerEngagement ? playerEngagement.attackRuntime.update(deltaMs) : null;
+    // R23G.1: bank the step the frame the swing ends. Measured without this: the player closed the
+    // measured 0.862m of a TOP advance and then stood there forever - separation stuck at 1.538m
+    // and the swing never banked, because the ledger only spends a swing while one is live and
+    // nothing was telling it this one had stopped. The opponent's side banks at the START of its
+    // next attack instead, which is what the golden grid was measured against and is therefore not
+    // changed here; the two ought to agree, and that is its own change with its own evidence.
+    if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; }
+    playerWasSwinging = Boolean(playerSnapshot?.action);
+    const laneSwing = playerSnapshot?.action ? playerSnapshot : snapshot;
+    laneController.update(laneSwing.elapsedSeconds, Boolean(laneSwing.action), laneSwing.phase); // R20B.1 phase rides along
 
     const contactFrame = contactHandoffController.updateCombatBeforeGuard({
       deltaSeconds,
@@ -615,13 +712,30 @@ function frame(timestamp) {
     if (snapshot.completed && !engagement.hasRecovery) beginAttackRecovery(selectedDirection);
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
 
+    const playerFrame = playerEngagement?.contactHandoff.updateCombatBeforeGuard({
+      deltaSeconds, deltaMs, selectedDirection: playerDirection,
+      hasAttackerRecovery: playerEngagement.hasRecovery,
+      beginAttackRecovery: (direction) => playerEngagement.beginRecovery(direction),
+    });
+    if (playerSnapshot?.completed && !playerEngagement.hasRecovery) playerEngagement.beginRecovery(playerDirection);
+
     laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active, // R20W.2: and whether
       selectedMode !== 'block' || defenderStance.report.guardActive === true); // the guard owns the torso
     guardRuntime.update(deltaMs, camera);
     neutralStance.sample(deltaMs); // R19I.1: no-op unless the guard is neutral
     laneController.overlayDefenderWalkLegs(); laneController.overlayDefenderDodge(); // R20F.1 dodge outranks the guard, a landed blade outranks the dodge
     bodyStrikeReaction.sample(deltaMs); // R19K.1: last writer - a landed blade owns the fighter
+    // R23G.1: and after all of it, the player's own swing, because a body that is swinging is not
+    // also standing in its guard. Inert on every frame the player is not swinging: sampleBase does
+    // nothing without an action or a recovery, which is what keeps the three gates unmoved.
+    if (playerEngagement && (playerSnapshot?.action || playerEngagement.hasRecovery)) {
+      if (!playerFrame?.handledCombat) playerEngagement.sampleBase(playerSnapshot, deltaMs, null);
+    }
     contactHandoffController.updateDefenderDeflectReleaseGate();
+    playerEngagement?.contactHandoff.updateDefenderDeflectReleaseGate();
+    playerEngagement?.contactHandoff.updateLiveConstraintAfterGuard({
+      deltaSeconds, selectedDirection: playerDirection, needsUpdate: playerFrame?.liveConstraintNeedsUpdate,
+    });
     contactHandoffController.updateLiveConstraintAfterGuard({
       deltaSeconds,
       selectedDirection,
@@ -635,6 +749,15 @@ function frame(timestamp) {
       preContactController.update(snapshot, currentBlade, deltaSeconds);
       resolveContact(snapshot, currentBlade, deltaSeconds);
       engagement.rememberBlade(currentBlade);
+    }
+    // The same three steps the other way. Guarded on an action rather than on firstContact alone so
+    // an idle player never samples a blade or runs a probe - the golden grid replays with this
+    // branch never taken, which is the measurement that says a second engagement is free.
+    if (playerEngagement && playerSnapshot?.action && !playerEngagement.exchangeState.firstContact) {
+      const playerBlade = playerEngagement.captureBlade();
+      playerEngagement.preContact.update(playerSnapshot, playerBlade, deltaSeconds);
+      resolvePlayerContact(playerSnapshot, playerBlade, deltaSeconds);
+      playerEngagement.rememberBlade(playerBlade);
     }
     // R21D.1: after contact resolution, so a confirmation landing this frame still wins. An
     // accepted attempt whose attack has ended can never be confirmed - letting it stay armed
@@ -712,6 +835,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     parryTally,
     opponentDriveController,
     get weaponMount() { return weaponMount; }, // a getter: built after the load, so a captured null would never update
+    playerEngagement: () => playerEngagement, // R23G.1: same reason, and a thunk so the facade holds no stale null
   },
   debugMode: DEBUG_MODE,
   getDebugStanceProfile: () => debugStanceProfile,
