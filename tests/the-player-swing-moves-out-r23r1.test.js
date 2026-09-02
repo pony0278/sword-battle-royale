@@ -6,7 +6,6 @@ import { createPlayerAttackController } from '../tools/action-studio/shield-parr
 
 // R23R.1 - the player's swing moves out of the entry, whole and unchanged, to make room for step 6.
 
-const src = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 function harness({ ready = true, opponentMidExchange = false, accepted = true } = {}) {
   const calls = [];
@@ -67,7 +66,7 @@ test('R23R.1 resolving the player\'s contact settles the lane and spends the exc
 });
 
 test('R23R.1 the entry builds the controller and no longer carries the swing itself', () => {
-  const entry = src('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js');
+  const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
   assert.match(entry, /const playerAttack = createPlayerAttackController\(\{/);
   assert.doesNotMatch(codeOnly(entry), /function startPlayerAttack|function resolvePlayerContact|let playerAttackRefusal/);
 });

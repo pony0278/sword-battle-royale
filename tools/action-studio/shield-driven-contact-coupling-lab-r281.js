@@ -250,13 +250,14 @@ const engagement = createEngagement(THREE, {
     slowReviewChecked: slowReview.checked,
     defenderSword,
     debugStanceProfile,
-    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, lateGuardRaise, // R19N.1 + R19Z.1 + R20F.1 + R20G.1 + R20J.1 read the live lane
+    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, lateGuardRaise, aimedSector: guardSector.sector, // R23T.1: the block reads the aim too // R19N.1 + R19Z.1 + R20F.1 + R20G.1 + R20J.1 read the live lane
   }),
   callbacks: {
     // R23J.1: the flinch AND the wound. onBodyStruck is the one signal that means a blade genuinely
     // landed - latestBodyHit also holds near-misses - so it is the only honest place to spend health.
     onBodyStruck: (bodyContact) => { bodyStrikeReaction.start(bodyContact); duel.landBlowOn(defenderFighter.condition); laneController.settle('hit'); }, // R23P.1: and the ground readDodgeReport: () => laneController.dodgeReport,
     readGuardActive: () => selectedMode !== 'block' || defenderStance.report.guardActive === true, // R20G.1: parry mode keeps its armed guard
+    readAimedSector: () => guardSector.sector, // R23T.1: the shield guards one sector
     updateLiveContactMarkers: (report) => inspectionOverlay.update(report),
     formatInspectionFailureSummary,
     publishStatus({ text, className }) { status.textContent = text; status.className = className; },
@@ -349,9 +350,9 @@ const opponentDriveController = createOpponentDriveController({
   toggle: opponentDrive, laneController, startAttack, tally: parryTally,
   readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !engagement.hasRecovery,
   // R23S.1: the shield answers the PLAYER's swing, and is read off the player's runtime.
-  readThreat: () => { const s = playerEngagement?.attackRuntime.snapshot; return s?.action ? { active: true, sequence: s.sequence, elapsedSeconds: s.elapsedSeconds } : null; },
+  readThreat: () => { const s = playerEngagement?.attackRuntime.snapshot; return s?.action ? { active: true, sequence: s.sequence, elapsedSeconds: s.elapsedSeconds, direction: s.direction } : null; }, // R23T.1: with the direction, which is what the shield answers
   readOwnSwinging: () => combat.active || attackRuntime.active,
-  applyGuardHeld: (held) => syncOpponentGuard(held),
+  applyGuard: ({ held, sector }) => { attackerFighter.guardSector.select(sector); syncOpponentGuard(held); }, // R23T.1: the sector first, so the guard that rises is already pointed
 });
 // R23S.1: the opponent's guard, driven by the stance the way the player's is (syncGuardToStance)
 // and entered the way enterGuard enters it - one machine, one presentation, both already theirs.
@@ -363,7 +364,9 @@ function syncOpponentGuard(held) {
 }
 // Named so the frame reads as two fighters' pipelines rather than one call twice - R18M.C6 pins the
 // player's writer order by the text of the player's calls, and this is not one of them.
-function sampleOpponentGuard(deltaMs) { return attackerFighter.guardRuntime.update(deltaMs, camera); }
+function sampleOpponentGuard(deltaMs) { // R23T.1: with the legs of the walk laid back over the guard, as the player's are
+  laneController.captureAttackerWalkLegs(); const report = attackerFighter.guardRuntime.update(deltaMs, camera); laneController.overlayAttackerWalkLegs(); return report;
+}
 
 function enterGuard() {
   guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera);
@@ -616,12 +619,13 @@ async function main() {
     readContext: () => ({
       selectedMode: 'block', slowReviewChecked: false, defenderSword: attackerSword, debugStanceProfile,
       separationMeters: laneController.separationMeters, defenderFacingErrorRadians: 0,
-      dodgeReport: null, stanceReport: attackerFighter.stance.report, lateGuardRaise: false,
+      dodgeReport: null, stanceReport: attackerFighter.stance.report, lateGuardRaise: false, aimedSector: attackerFighter.guardSector.sector, // R23T.1
     }),
     callbacks: {
       onBodyStruck: (bodyContact) => { attackerFighter.bodyStrikeReaction.start(bodyContact); duel.landBlowOn(attackerFighter.condition); laneController.settle('hit'); }, // R23P.1
       readDodgeReport: () => null,
       readGuardActive: () => attackerFighter.stance.report.guardActive === true, // R23S.1
+      readAimedSector: () => attackerFighter.guardSector.sector, // R23T.1
       updateLiveContactMarkers: () => {},
       formatInspectionFailureSummary,
       publishStatus: () => {},
@@ -821,6 +825,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     resetDebugStanceDefaults,
     triggerParryNow,
     dispatchParryInput,
+    selectGuardSector: (sector) => guardSector.select(sector), // R23T.1: the golden grid points the shield the way a person does, without a pointer
     setGuardHeld, setFixedStepMs: (ms) => frameClock.setFixedStep(ms), // R20G.1 + R20K.1: drivers hold the guard, harnesses pin the clock
     tryDodge: requestDodge, // R20G.1: same gate as the keys - the facade may not skip the stance
     forceOldTwoActorB3,

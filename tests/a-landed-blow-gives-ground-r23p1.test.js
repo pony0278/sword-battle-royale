@@ -12,7 +12,6 @@ import { ENGAGEMENT_GROUND_TRANSFERS, createEngagementGround, resolveGroundTrans
 
 const FACING = 0; // radians: the attacker faces down the lane; the defender faces back up it at Math.PI
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
-const src = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 test('R23P.1 a hit is a transfer: the swinger keeps the step, the receiver gives it back over time', () => {
   const hit = resolveGroundTransfer('hit');
@@ -100,8 +99,9 @@ test('R23P.1 a reset forgets ground still owed, and a second blow replaces the f
 
 test('R23P.1 the lane pays the debt each frame and both body-struck hooks settle the ground', () => {
   // Composition, read rather than run: the lane is built on a scene and the hooks live in the entry.
-  assert.match(src('../src/game/lane-controller.js'), /ground\.advanceYield\(deltaSeconds\);[^\n]*\n\s*const dodgeStep = dodge\.advance\(deltaSeconds\);/);
-  const entry = src('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js');
+  const lane = readFileSync(new URL('../src/game/lane-controller.js', import.meta.url), 'utf8');
+  assert.match(lane, /ground\.advanceYield\(deltaSeconds\);[^\n]*\n\s*const dodgeStep = dodge\.advance\(deltaSeconds\);/);
+  const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
   assert.match(entry, /duel\.landBlowOn\(defenderFighter\.condition\); laneController\.settle\('hit'\);/);
   assert.match(entry, /duel\.landBlowOn\(attackerFighter\.condition\); laneController\.settle\('hit'\);/);
 });

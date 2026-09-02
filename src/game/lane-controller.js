@@ -53,6 +53,7 @@ export function createShieldParryLaneController({
   // being looked at, and leaving it on the walk keeps a side-by-side in one frame.
   const defenderGait = createLaneWalkCycle({ wholeBodyRun, runPlaybackAuthored });
   let pendingDefenderLegPose = null;
+  let pendingAttackerLegPose = null; // R23T.1: the opponent's walk, read off the rig before their guard rebuilds it
   // R20W.2: the last overlay decision, kept for the HUD and for probes - which of the fighter the
   // walk got this frame, and why it did not get any of them when it did not.
   let lastWalkOverlayPlan = null;
@@ -410,6 +411,22 @@ export function createShieldParryLaneController({
     },
     get dodgeReport() { return dodge.report; },
     // Second slice: after the guard has rebuilt the whole rig, lay the walk's legs back on top.
+    // R23T.1: the opponent walks in guard now, the way the player has since R19E. Their walk is
+    // already on the rig - the engagement's sampleBase wrote it - so the legs are read off the rig
+    // after that write and laid back after the guard's, rather than sampled a second time.
+    captureAttackerWalkLegs() {
+      pendingAttackerLegPose = null;
+      const attacker = labScene.attacker;
+      if (!walkSampleFor(attackerGait.report) || !attacker?.rig || !services?.captureRigPose) return false;
+      pendingAttackerLegPose = filterPoseToWalkOverlay(services.captureRigPose(attacker.rig));
+      return true;
+    },
+    overlayAttackerWalkLegs() {
+      if (!pendingAttackerLegPose) return false;
+      services.applyRigPose(labScene.attacker.rig, pendingAttackerLegPose);
+      pendingAttackerLegPose = null;
+      return true;
+    },
     overlayDefenderWalkLegs() {
       if (!pendingDefenderLegPose) return false;
       services.applyRigPose(labScene.defender.rig, pendingDefenderLegPose);

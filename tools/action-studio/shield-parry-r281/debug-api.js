@@ -141,6 +141,7 @@ export function createShieldParryDebugApi({
     triggerParryNow: actions.triggerParryNow,
     dispatchParryInput: actions.dispatchParryInput,
     setGuardHeld: actions.setGuardHeld, // R20G.1: probes and drivers hold the guard directly
+    selectGuardSector: actions.selectGuardSector, // R23T.1: and point it
     // R20K.1 (B6e): a harness pins the frame step so a cell's trajectory is reproducible, and
     // counts frames instead of milliseconds. setFixedStepMs(null) hands the clock back to the wall.
     setFixedStepMs: actions.setFixedStepMs,
@@ -175,6 +176,7 @@ export function createShieldParryDebugApi({
     get latestSwingInnerReach() { return getExchangeState().latestSwingInnerReach; }, // R20T.2
     get latestCloseRangePosture() { return getExchangeState().latestCloseRangePosture; },
     get latestConeGate() { return getExchangeState().latestConeGate; },
+    get latestSectorGate() { return getExchangeState().latestSectorGate; }, // R23T.1
     get latestDodge() { return getExchangeState().latestDodge; },
     tryDodge: (direction) => actions.tryDodge?.(direction) ?? null, // R20G.1: routed through the stance gate
     get latestHiltClang() { return getExchangeState().latestHiltClang; },

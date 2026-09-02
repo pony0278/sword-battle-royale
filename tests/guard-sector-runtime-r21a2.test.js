@@ -48,6 +48,9 @@ test('R21C.2 the indicator shows one thing: where the player is pointing', () =>
   assert.doesNotThrow(() => createGuardSectorIndicator(null).update({ sector: 'top' }));
 });
 
+// R23T.1 ended the 'yet': R21P measured that people read an attack and point at it in time, the
+// parry read the aim from R21C.1, and step 6b made the block read it too, for both fighters. The
+// structural check stays, inverted in meaning: exactly these rules read the aim, and no others.
 test('R21A.2 no rule consults the sector yet', () => {
   // Step one is that the direction exists and is visible, so that whether a human can read an
   // attack and point at it in time is answered by hands rather than by argument. If a rule started
@@ -59,7 +62,10 @@ test('R21A.2 no rule consults the sector yet', () => {
   // aim, and it is checked below that it takes nothing else from the module.
     // R21Q.1 joins them: it imports the three names to build the mirror between the attacker's
   // frame and the defender's. It writes no aim and reads none - it restates an ATTACK.
-  const vocabularyOnly = ['guard-sector.js', 'directional-parry-input.js', 'attack-direction-as-defended.js'];
+  const vocabularyOnly = ['guard-sector.js', 'directional-parry-input.js', 'attack-direction-as-defended.js',
+    'guard-sector-gate.js', // R23T.1: the block's sector gate - the one rule that reads the aim
+    'opponent-guard.js', // R23T.1: the opponent's aim WRITER, validating against the vocabulary as the input does
+  ];
   const offenders = readdirSync(combatDir)
     .filter((name) => name.endsWith('.js') && !vocabularyOnly.includes(name))
     .filter((name) => readFileSync(join(combatDir, name), 'utf8').includes("from './guard-sector.js'"));
@@ -69,8 +75,10 @@ test('R21A.2 no rule consults the sector yet', () => {
   assert.doesNotMatch(directionalInput, /planGuardSector/);
 
   // The parry path specifically - the one it will eventually join.
+  // R23T.1: the lifecycle reads the aim now, through guard-sector-gate - the block took direction
+  // for both fighters in step 6b. The rest of the parry path still does not read it directly.
   for (const name of ['parry-gate-verdict.js', 'predictive-intercept-parry.js', 'guard-cone-gate.js',
-    'guard-coverage-director.js', 'contact-lifecycle-director.js']) {
+    'guard-coverage-director.js']) {
     const source = readFileSync(join(combatDir, name), 'utf8');
     assert.ok(!source.includes('guard-sector'), `${name} must not read the aim yet`);
   }
