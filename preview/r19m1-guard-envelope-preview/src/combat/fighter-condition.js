@@ -16,12 +16,13 @@ export const FIGHTER_CONDITION_STAGE = 'R23J.1';
 // Two numbers and a rule, and only one of the numbers is a preference.
 export const DUEL_MAX_HEALTH = 100;
 
-// CHOSEN, and the reasoning is about the fight rather than about the number: 20 makes it five
-// blows, and one parry is worth exactly one of them, so a parry costs 20% of a health bar. Three
-// blows would end a duel before the thing this game is actually about - reading which way the
-// other one is swinging, measured at 23/25 legible in R21C.2 - had happened three times. Ten blows
-// runs past half a minute. Five is where a duel is long enough to be read and short enough to lose.
-export const BODY_HIT_DAMAGE = 20;
+// CHOSEN, and the reasoning is about the fight rather than about the number. R23J.1 picked 20 -
+// five blows to a kill, one parry worth exactly one of them - on the argument that ten blows runs
+// past half a minute. R23Y.1 overturned it on playtest: several testers said a blow of 20 ends the
+// duel too fast, now that the opponent blocks, parries and punishes (R23S.1-R23X.1) and a lost
+// read costs a blow either way. Ten is one cell of the ten-cell bar per blow and ten blows to a
+// kill; the half-minute concern stands as a thing to measure, not a reason to keep five.
+export const BODY_HIT_DAMAGE = 10;
 
 // NOT chosen, derived - and this is the one number in the stage that the project had already
 // decided without noticing. parry-advantage.js has always described the enemy response as an
