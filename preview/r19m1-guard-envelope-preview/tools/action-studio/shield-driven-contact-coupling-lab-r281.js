@@ -1,4 +1,5 @@
 import { GUARD_INTENT_AGE_MS } from '../../src/combat/contact-lifecycle-director.js';
+import { GUARD_COVERAGE } from '../../src/combat/guard-sector-gate.js'; // R23Z.1: the player's block is a wall, the opponent's guards one sector
 import { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } from '../../src/combat/guard-state-machine.js';
 import { createGuardPresentationRuntime } from '../../src/combat/guard-presentation-runtime.js';
 import { createLongswordDirectionalAttackRuntime, LONGSWORD_ATTACK_PHASES } from '../../src/combat/longsword-directional-attack-runtime.js';
@@ -252,14 +253,14 @@ const engagement = createEngagement(THREE, {
     slowReviewChecked: slowReview.checked,
     defenderSword,
     debugStanceProfile,
-    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, lateGuardRaise, aimedSector: guardSector.sector, // R23T.1: the block reads the aim too // R19N.1 + R19Z.1 + R20F.1 + R20G.1 + R20J.1 read the live lane
+    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, lateGuardRaise, aimedSector: guardSector.sector, guardCoverage: GUARD_COVERAGE.OMNIDIRECTIONAL, // R23T.1: the block reads the aim too // R19N.1 + R19Z.1 + R20F.1 + R20G.1 + R20J.1 read the live lane
   }),
   callbacks: {
     // R23J.1: the flinch AND the wound. onBodyStruck is the one signal that means a blade genuinely
     // landed - latestBodyHit also holds near-misses - so it is the only honest place to spend health.
     onBodyStruck: (bodyContact) => { bodyStrikeReaction.start(bodyContact); duel.landBlowOn(defenderFighter.condition); laneController.settle('hit'); }, // R23P.1: and the ground readDodgeReport: () => laneController.dodgeReport,
     readGuardActive: () => selectedMode !== 'block' || defenderStance.report.guardActive === true, // R20G.1: parry mode keeps its armed guard
-    readAimedSector: () => guardSector.sector, // R23T.1: the shield guards one sector
+    guardCoverage: GUARD_COVERAGE.OMNIDIRECTIONAL, readAimedSector: () => guardSector.sector, // R23Z.1: your shield covers every sector (R18R, R21C.1, task #8); the aim is the parry's
     updateLiveContactMarkers: (report) => inspectionOverlay.update(report),
     formatInspectionFailureSummary,
     publishStatus({ text, className }) { status.textContent = text; status.className = className; },
@@ -641,13 +642,13 @@ async function main() {
     readContext: () => ({
       selectedMode: 'block', slowReviewChecked: false, defenderSword: attackerSword, debugStanceProfile,
       separationMeters: laneController.separationMeters, defenderFacingErrorRadians: 0,
-      dodgeReport: null, stanceReport: attackerFighter.stance.report, lateGuardRaise: false, aimedSector: attackerFighter.guardSector.sector, // R23T.1
+      dodgeReport: null, stanceReport: attackerFighter.stance.report, lateGuardRaise: false, aimedSector: attackerFighter.guardSector.sector, guardCoverage: GUARD_COVERAGE.ONE_SECTOR, // R23T.1; R23Z.1: theirs guards one sector
     }),
     callbacks: {
       onBodyStruck: (bodyContact) => { attackerFighter.bodyStrikeReaction.start(bodyContact); duel.landBlowOn(attackerFighter.condition); laneController.settle('hit'); }, // R23P.1
       readDodgeReport: () => null,
       readGuardActive: () => attackerFighter.stance.report.guardActive === true && !attackRuntime.active, // R23S.1; R23U.1: a body mid-swing guards nothing, even with the machine still in HOLD
-      readAimedSector: () => attackerFighter.guardSector.sector, // R23T.1
+      guardCoverage: GUARD_COVERAGE.ONE_SECTOR, readAimedSector: () => attackerFighter.guardSector.sector, // R23T.1; R23Z.1
       updateLiveContactMarkers: () => {},
       formatInspectionFailureSummary,
       publishStatus: () => {},
