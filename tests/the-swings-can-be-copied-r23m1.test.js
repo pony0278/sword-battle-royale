@@ -60,5 +60,5 @@ test('R23M.1 the button is a required element and the UI binds it to the same co
   // and the browser probe boots the page, so a missing button cannot reach a green gate.
   // Composition of browser UI, read rather than run: one copier, two buttons.
   const ui = readFileSync(new URL('../tools/action-studio/shield-parry-r281/lab-ui.js', import.meta.url), 'utf8');
-  assert.match(ui, /bindCopyButton\(copySwings, \(\) => copyableSwings/);
+  assert.match(ui, /bindCopyButton\(copySwings, duelLogText\)/); // R23Y.1: the text got a name so a second button could share it
 });

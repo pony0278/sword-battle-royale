@@ -39,7 +39,9 @@ export function createSwingLedger({ capacity = 40, shown = 6 } = {}) {
   }
 
   function recordSwing({ who = 'player', direction = null, separationMeters = null, mount = null, mode = null, locked = null } = {}) {
-    if (open) settle({});
+    // R23X.1: a swing that was never settled is closed as superseded, not dressed as a whiff at
+    // 0.00m - which is what the line read while two swings could overlap on the lane.
+    if (open) settle({ superseded: true });
     count += 1;
     open = { n: count, who: whose(who), direction, started: true, separationAtPress: separationMeters, mountAtPress: mount, mode, locked };
   }
@@ -54,11 +56,12 @@ export function createSwingLedger({ capacity = 40, shown = 6 } = {}) {
     return true;
   }
 
-  function settle({ bodyHit = null, outcome = null, separationMeters = null, receiverStaggered = false } = {}) {
+  function settle({ bodyHit = null, outcome = null, separationMeters = null, receiverStaggered = false, superseded = false } = {}) {
     if (!open) return false;
     const approach = bodyHit?.closestApproach || {};
     push(Object.freeze({
       ...open,
+      superseded: superseded === true,
       separationAtEnd: separationMeters,
       mountInFlight: open.mountInFlight ?? null,
       receiverStaggered: receiverStaggered === true,
@@ -91,6 +94,7 @@ export function createSwingLedger({ capacity = 40, shown = 6 } = {}) {
     const span = `${meters(entry.separationAtPress)}→${meters(entry.separationAtEnd)}`;
     const mount = entry.who !== 'opponent' && entry.mountInFlight ? ` 掛點 ${String(entry.mountInFlight).split('-')[0]}` : '';
     const stagger = entry.receiverStaggered ? (entry.who === 'opponent' ? '（對手暈眩）' : '（你暈眩）') : '';
+    if (entry.superseded) return `#${entry.n} ${who} ${dir} ${meters(entry.separationAtPress)} 沒結算: 下一刀先開始了`;
     const verdict = shieldVerdict(entry);
     if (verdict) return `#${entry.n} ${who} ${dir} ${span} ${verdict}${stagger}${mount}`;
     if (entry.hit) return `#${entry.n} ${who} ${dir} ${span} ${entry.who === 'opponent' ? '打中你' : '命中'} ${entry.band}${mount}`;

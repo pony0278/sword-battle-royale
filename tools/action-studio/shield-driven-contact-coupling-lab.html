@@ -105,7 +105,9 @@
     <div id="guardSector" class="guard-sector"><div data-sector="left">&#9664;<small>J</small></div><div data-sector="top">&#9650;<small>I</small></div><div data-sector="right">&#9654;<small>L</small></div></div>
     <div class="hud">
       <b>Step 3A · Live Shield → Sword → Arm → OLD B3 · BUILD R18I5 TOP/RIGHT</b>
-      <div id="hudDuel" style="font:700 14px/1.5 ui-monospace,monospace;color:#dceaff;white-space:pre-line">你 ·········· —   對手 ·········· —</div>
+      <!-- R23Y.1: the HUD is pointer-events:none so its text cannot be selected; the log gets its
+           own copy button here, next to the lines it copies, sharing the panel button's copier. -->
+      <div style="display:flex;align-items:flex-start;gap:8px"><div id="hudDuel" style="flex:1;font:700 14px/1.5 ui-monospace,monospace;color:#dceaff;white-space:pre-line">你 ·········· —   對手 ·········· —</div><button id="copyDuelLog" type="button" style="pointer-events:auto;padding:4px 8px;font-size:12px">複製戰鬥紀錄</button></div>
       <div id="hudAttack">Attack commitment / TTC: loading…</div>
       <div id="hudInput">Input capture: click the scene, then press F</div>
       <div id="hudContact">REAL Sword × Shield: —</div>
@@ -158,7 +160,7 @@
     </div>
 
     <label class="toggle"><input id="opponentDrive" type="checkbox"> 對手自動化：自己走位到量測帶 + 三方向輪流出手（Parry 輸入仍然是你的）</label>
-    <div class="row"><button id="copyTally" type="button">複製統計</button><button id="copySwings" type="button">複製出刀紀錄</button></div>
+    <div class="row"><button id="copyTally" type="button">複製統計</button><button id="copySwings" type="button">複製戰鬥紀錄</button></div>
     <label class="toggle"><input id="autoRepeat" type="checkbox"> Auto repeat attack (Parry input stays manual)</label>
     <!-- R21P.1: off by default. It rescales the pre-contact phase to 0.12x and freezes the sim for
          1.5s when the window opens, which is the thing every measurement here is timing - and it
@@ -231,6 +233,6 @@
       });
     })();
   </script>
-  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-the-fight-keeps-a-log-r23w1"></script>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-your-shield-covers-every-sector-r23z1"></script>
 </body>
 </html>

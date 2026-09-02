@@ -116,7 +116,19 @@ function census() {
 // guards nothing), and the R23S.1 'drops the shield' claim became an absence. KEEP.
 // R23W.1: two composition claims on the entry - the opponent's swing is recorded when it starts and
 // settled on its falling edge. KEEP; the lines themselves are called.
-const BASELINE = Object.freeze({ total: 1185, srcText: 364, toolsText: 656, html: 157, absence: 149 });
+// R23X.1: four composition claims - the opponent's arm mirrors the player's raise and the intercept
+// and presentation follow it (read off opponent-parry.js), the drive's verb reaches it and the
+// threat carries the TTC (read off the entry). KEEP.
+// R23X.1 (found while measuring the parry): two more composition claims - both start gates wait for the
+// other swing's action to be gone (and its falling edge processed), not merely for `active` to end. KEEP.
+// R23Y.1: one composition claim (the HUD's copy button shares the panel button's text), two html
+// claims (that button opts back into pointer events, or the HUD swallows the click; and the absence below,
+// which the census counts under html too) and one absence
+// (the panel button is no longer named for the player's swings). KEEP.
+// R23Z.1: five composition claims - the entry tells both readers of each exchange whose shield it
+// is (four), and the pre-contact controller hands that word to the gate (one). KEEP; the gate's
+// two rules are called.
+const BASELINE = Object.freeze({ total: 1199, srcText: 365, toolsText: 667, html: 159, absence: 150 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

@@ -45,7 +45,7 @@ test('R23T.1 the lifecycle: a shield contact in another sector guards nothing, a
   assert.equal(gate.covers, false);
   assert.equal(gate.reason, 'shield-in-another-sector-guards-nothing');
   const source = readFileSync(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
-  assert.match(source, /if \(contactEvaluation\.contact && typeof readAimedSector === 'function'\) \{\n\s*const sectorGate = planGuardSectorGate\(\{ direction: attackSnapshot\?\.direction, aimedSector: readAimedSector\(\) \}\);/);
+  assert.match(source, /if \(contactEvaluation\.contact && typeof readAimedSector === 'function'\) \{\n\s*const sectorGate = planGuardSectorGate\(\{ direction: attackSnapshot\?\.direction, aimedSector: readAimedSector\(\), coverage: guardCoverage \}\);/);
 });
 
 test('R23T.1 coverage does not engage for a sector the shield is not in', () => {
@@ -127,7 +127,7 @@ test('R23T.1 the lab points the opponent\'s guard before it rises, keeps their l
   assert.match(entry, /readAimedSector: \(\) => guardSector\.sector,/);
   // Measured the hard way: without the direction in the threat the opponent 'read' every swing
   // and the shield never left TOP - defendedSectorFor(undefined) is nothing, and nothing kept it.
-  assert.match(entry, /elapsedSeconds: s\.elapsedSeconds, direction: s\.direction \}/);
+  assert.match(entry, /elapsedSeconds: s\.elapsedSeconds, direction: s\.direction, timeToContactSeconds/); // R23X.1 added the TTC after it
   assert.match(entry, /readAimedSector: \(\) => attackerFighter\.guardSector\.sector,/);
   const golden = readFileSync(new URL('../tools/action-studio/b1-golden/capture-golden-grid.mjs', import.meta.url), 'utf8');
   assert.match(golden, /selectGuardSector\(\{ top: 'top', right: 'left', left: 'right' \}\[d\]\)/);

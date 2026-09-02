@@ -18,25 +18,28 @@ import {
 // victory condition" and translates its question into a mechanical asymmetry instead. A blade
 // landing on a chest produced a flinch and nothing else.
 
-test('R23J.1 five blows end a duel, and the health says so on the way', () => {
+// R23Y.1: the count is derived, not written - the blow was 20 (five to a kill) and is now 10.
+const BLOWS_TO_KILL = Math.ceil(DUEL_MAX_HEALTH / BODY_HIT_DAMAGE);
+
+test('R23J.1 the blows to a kill end a duel, and the health says so on the way', () => {
   const fighter = createFighterCondition();
   assert.equal(fighter.report.health, DUEL_MAX_HEALTH);
   assert.equal(fighter.report.alive, true);
   const healths = [];
-  for (let blow = 1; blow <= 5; blow += 1) healths.push(fighter.takeBodyHit().health);
-  assert.deepEqual(healths, [80, 60, 40, 20, 0]);
+  for (let blow = 1; blow <= BLOWS_TO_KILL; blow += 1) healths.push(fighter.takeBodyHit().health);
+  assert.deepEqual(healths, [90, 80, 70, 60, 50, 40, 30, 20, 10, 0]);
   assert.equal(fighter.report.alive, false);
-  assert.equal(fighter.report.blowsTaken, 5);
-  // Five, not four and not six: 100 / 20. Stated as arithmetic so a change to either number has to
+  assert.equal(fighter.report.blowsTaken, BLOWS_TO_KILL);
+  // Ten, not nine and not eleven: 100 / 10. Stated as arithmetic so a change to either number has to
   // face this line.
-  assert.equal(Math.ceil(DUEL_MAX_HEALTH / BODY_HIT_DAMAGE), 5);
+  assert.equal(BLOWS_TO_KILL, 10);
 });
 
 test('R23J.1 a dead fighter takes no more damage and cannot be revived by being hit', () => {
   const fighter = createFighterCondition();
-  for (let blow = 0; blow < 8; blow += 1) fighter.takeBodyHit();
+  for (let blow = 0; blow < BLOWS_TO_KILL + 3; blow += 1) fighter.takeBodyHit();
   assert.equal(fighter.report.health, 0);
-  assert.equal(fighter.report.blowsTaken, 5, 'blows after the last one are not counted as landing');
+  assert.equal(fighter.report.blowsTaken, BLOWS_TO_KILL, 'blows after the last one are not counted as landing');
 });
 
 test('R23J.1 the stagger is long enough for the follow-up the game already authored', () => {
@@ -83,7 +86,7 @@ test('R23J.1 two parries in a second do not stack into a fighter who never moves
 test('R23J.1 dying ends the stagger, because a fighter at zero is not waiting to recover', () => {
   const fighter = createFighterCondition();
   fighter.stagger();
-  for (let blow = 0; blow < 5; blow += 1) fighter.takeBodyHit();
+  for (let blow = 0; blow < BLOWS_TO_KILL; blow += 1) fighter.takeBodyHit();
   assert.equal(fighter.report.staggered, false);
   assert.equal(fighter.report.canAct, false, 'still cannot act - being dead outranks being ready');
 });
@@ -95,7 +98,7 @@ test('R23J.1 the duel is judged from the two fighters and holds no state of its 
     { over: judgeDuel({ playerCondition: player, opponentCondition: opponent }).over },
     { over: false },
   );
-  for (let blow = 0; blow < 5; blow += 1) opponent.takeBodyHit();
+  for (let blow = 0; blow < BLOWS_TO_KILL; blow += 1) opponent.takeBodyHit();
   const won = judgeDuel({ playerCondition: player, opponentCondition: opponent });
   assert.equal(won.over, true);
   assert.equal(won.winner, 'player');
@@ -103,7 +106,7 @@ test('R23J.1 the duel is judged from the two fighters and holds no state of its 
 
   // Both at zero is a real outcome rather than an impossible one - nothing stops two blows landing
   // on the same frame, and calling it for whoever is checked first would be a lie.
-  for (let blow = 0; blow < 5; blow += 1) player.takeBodyHit();
+  for (let blow = 0; blow < BLOWS_TO_KILL; blow += 1) player.takeBodyHit();
   const drawn = judgeDuel({ playerCondition: player, opponentCondition: opponent });
   assert.equal(drawn.over, true);
   assert.equal(drawn.winner, null);

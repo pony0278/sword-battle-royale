@@ -21,6 +21,7 @@ export function createOpponentDriveController({
   readThreat = () => null,
   readOwnSwinging = () => false,
   applyGuard = () => {},
+  applyParry = () => null, // R23X.1: arm the opponent's parry against the player's swing
 }) {
   if (!laneController || typeof startAttack !== 'function' || typeof readAttackAvailable !== 'function') {
     throw new Error('R21E.1 opponent drive needs the lane, the attack verb and the availability read');
@@ -53,6 +54,7 @@ export function createOpponentDriveController({
       if (plan.attack && startAttack(plan.attack)) runtime.commit(plan.attack);
       const guard = guardRuntime.frame({ threat: readThreat(), ownSwinging: readOwnSwinging() === true });
       applyGuard({ held: guard.hold === true, sector: guard.sector });
+      if (guardRuntime.parry?.arm === true) applyParry();
       return plan;
     },
     setEnabled(on) { if (toggle) toggle.checked = on === true; return enabled(); },
@@ -75,7 +77,7 @@ export function createOpponentDriveController({
         ? '—'
         : `${report.offsetMeters >= 0 ? '+' : ''}${report.offsetMeters.toFixed(2)}m`;
       const guard = guardRuntime.report;
-      return `seed ${report.seed} · 下一刀 ${String(report.upcoming).toUpperCase()} · ${report.reason} · 距離差 ${gap} · 已出 ${report.attacksServed} · 盾${guard.hold ? '→' + String(guard.sector).toUpperCase() : '↓'} 讀到 ${guard.swingsRead}/${guard.swingsSeen}`;
+      return `seed ${report.seed} · 下一刀 ${String(report.upcoming).toUpperCase()} · ${report.reason} · 距離差 ${gap} · 已出 ${report.attacksServed} · 盾${guard.hold ? '→' + String(guard.sector).toUpperCase() : '↓'} 讀到 ${guard.swingsRead}/${guard.swingsSeen} parry ${guard.parriesArmed}`;
     },
   });
 }

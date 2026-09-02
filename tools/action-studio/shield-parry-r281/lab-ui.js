@@ -17,7 +17,7 @@ export function createShieldParryLabUi(elements) {
   const {
     hudDuel, hudAttack, hudInput, parryCue, parryCueMain, parryCueDetail, hudContact, hudCoupling,
     hudShield, hudWeapon, hudSeparation, hudLineClearance, hudRecoil, hudDiagnostic, hudParryTally, hudOpponent,
-    parryNow, retryAttack, copyTally, copySwings,
+    parryNow, retryAttack, copyTally, copySwings, copyDuelLog,
   } = elements;
 
   // R21G.2: the tally lives in the HUD, and the HUD folds to its title bar with the state
@@ -54,7 +54,11 @@ export function createShieldParryLabUi(elements) {
     });
   }
   bindCopyButton(copyTally, () => [`build ${buildVersion()}`, ...(copyableReport || ['(尚未有任何攻擊)'])].join('\n'));
-  bindCopyButton(copySwings, () => copyableSwings || formatSwingLedgerReport({ context: { build: buildVersion() } }));
+  // R23Y.1: one text, two buttons - the panel's and the one beside the log in the HUD. Both sides'
+  // lines are in it (R23W.1), so it is the fight's log, not the player's swings.
+  const duelLogText = () => copyableSwings || formatSwingLedgerReport({ context: { build: buildVersion() } });
+  bindCopyButton(copySwings, duelLogText);
+  bindCopyButton(copyDuelLog, duelLogText);
 
   let parryCueState = null;
   let parryCueMainText = null;
