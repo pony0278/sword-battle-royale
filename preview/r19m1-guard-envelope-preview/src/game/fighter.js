@@ -11,6 +11,7 @@ import { createDefenderStanceRuntime } from '../combat/defender-stance.js';
 import { createGuardSectorRuntime } from './guard-sector-runtime.js';
 import { createNeutralStanceController } from './neutral-stance.js';
 import { createBodyStrikeReactionController } from './body-strike-reaction-controller.js';
+import { createFighterCondition } from '../combat/fighter-condition.js';
 
 export const FIGHTER_STAGE = 'R23A.1';
 
@@ -68,6 +69,10 @@ export function createFighter(THREE, {
     defender: character, camera, readGuardState: () => guardMachine.state,
   });
   const bodyStrikeReaction = createBodyStrikeReactionController({ defender: character, camera });
+  // R23J.1: what this body has left and whether it may act. Per fighter because it is a property of
+  // a body, not of an exchange - a fighter carries their wounds between exchanges, which is the
+  // whole difference between a lab and a duel.
+  const condition = createFighterCondition();
 
   return Object.freeze({
     stage: FIGHTER_STAGE,
@@ -86,6 +91,7 @@ export function createFighter(THREE, {
     guardSector,
     neutralStance,
     bodyStrikeReaction,
+    condition,
     authority: 'composition-only-no-contact-authority',
   });
 }

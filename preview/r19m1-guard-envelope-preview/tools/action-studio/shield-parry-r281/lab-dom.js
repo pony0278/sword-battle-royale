@@ -1,6 +1,7 @@
 // R18M.3 — DOM lookup only. No gameplay/runtime authority lives here.
 
 const REQUIRED_IDS = Object.freeze([
+  'hudDuel',
   'hudAttack',
   'hudInput',
   'parryCue',

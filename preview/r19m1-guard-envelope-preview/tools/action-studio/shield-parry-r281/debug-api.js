@@ -83,6 +83,11 @@ export function createShieldParryDebugApi({
           defender: clipInventory(runtimes.defenderFighter?.character),
           attacker: clipInventory(runtimes.attackerFighter?.character),
         }),
+        // R23J.1: what each of them has left, and whether they may act at all.
+        condition: Object.freeze({
+          defender: runtimes.defenderFighter?.condition?.report ?? null,
+          attacker: runtimes.attackerFighter?.condition?.report ?? null,
+        }),
       });
     },
     // R20X.1: which way the body is travelling in its own frame, and how far the stride is turned.
@@ -95,6 +100,7 @@ export function createShieldParryDebugApi({
     // R23G.1: the player's own swing, from the outside. Whether it is live, where its blade got to
     // and what its exchange concluded - the same three questions the opponent's side already
     // answers, now askable of the half a person is driving.
+    get playerAttackRefusal() { return runtimes.playerAttackRefusal?.() ?? null; }, // R23J.1
     get playerSwing() {
       const player = runtimes.playerEngagement?.();
       if (!player) return null;
@@ -137,6 +143,7 @@ export function createShieldParryDebugApi({
     get frameClock() { return runtimes.frameClock?.report ?? null; },
     get defenderStance() { return runtimes.defenderStance?.report ?? null; },
     forceOldTwoActorB3: actions.forceOldTwoActorB3,
+    resetDuel: actions.resetDuel, // R23J.1: both fighters back to full
     get directOldB3Diagnostic() { return getExchangeState().directOldB3Diagnostic; },
     get latestPredictiveReport() { return getExchangeState().latestPredictiveReport; },
     get latestShieldLeadMotion() { return getExchangeState().latestShieldLeadMotion; },

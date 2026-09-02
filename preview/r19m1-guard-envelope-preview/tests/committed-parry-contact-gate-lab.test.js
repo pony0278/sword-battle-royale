@@ -54,7 +54,7 @@ test('Step 2 exposes one manual Parry and removes Perfect from the Lab', () => {
   assert.doesNotMatch(html, /id="slowReview"[^>]*checked/);
   assert.match(html, />PARRY NOW \(F\)</);
   assert.doesNotMatch(html, /data-mode="perfect"/);
-  assert.match(html, /g43b5r281-the-attack-is-the-left-button-r23h1/);
+  assert.match(html, /g43b5r281-a-duel-can-be-lost-r23j1/);
 });
 
 test('Step 2 does not auto-start Parry from predictive timing', () => {
@@ -117,7 +117,7 @@ test('Step 2 previews the live gate without consuming input and gives an explici
   assert.match(frameReportingSource, /parryAttempt: parryGate\.attempt/);
   assert.match(source, /function restartAttack/);
   assert.match(labUiSource, /elements\.retryAttack\.addEventListener\('click', handlers\.onRetryAttack\)/);
-  assert.match(source, /onRetryAttack: \(\) => restartAttack\(selectedDirection\)/);
+  assert.match(source, /onRetryAttack: \(\) => \{ if \(duel\.verdict\.over\) duel\.reset\(\); return restartAttack\(selectedDirection\); \}/);
 });
 
 test('Step 2 keeps original Block at 1x while Parry review holds a valid prompt', () => {

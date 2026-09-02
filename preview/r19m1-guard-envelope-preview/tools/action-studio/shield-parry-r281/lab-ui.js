@@ -13,7 +13,7 @@ import {
 
 export function createShieldParryLabUi(elements) {
   const {
-    hudAttack, hudInput, parryCue, parryCueMain, parryCueDetail, hudContact, hudCoupling,
+    hudDuel, hudAttack, hudInput, parryCue, parryCueMain, parryCueDetail, hudContact, hudCoupling,
     hudShield, hudWeapon, hudSeparation, hudLineClearance, hudRecoil, hudDiagnostic, hudParryTally, hudOpponent,
     parryNow, retryAttack, copyTally,
   } = elements;
@@ -295,6 +295,17 @@ export function createShieldParryLabUi(elements) {
     // swing was unreadable, a wrong moment says the window is tight, and they want opposite fixes.
     if (hudParryTally && model.parryTally) hudParryTally.textContent = `Parry 命中: ${model.parryTally}`;
     if (hudOpponent && model.opponent) hudOpponent.textContent = `對手: ${model.opponent}`;
+    // R23J.1: the duel itself. A fight nobody can see the health of is a fight nobody can play, and
+    // this is the first stage in which there is any health to show.
+    if (hudDuel && model.duel) {
+      const bar = (fraction) => {
+        const filled = Math.max(0, Math.min(10, Math.round(fraction * 10)));
+        return '█'.repeat(filled) + '·'.repeat(10 - filled);
+      };
+      const flag = (side) => (side.staggered ? ' 暈眩' : side.alive ? '' : ' 倒下');
+      hudDuel.textContent = `你 ${bar(model.duel.player.fraction)} ${model.duel.player.health}${flag(model.duel.player)}`
+        + `   對手 ${bar(model.duel.opponent.fraction)} ${model.duel.opponent.health}${flag(model.duel.opponent)}`;
+    }
     // Kept current here rather than assembled on the click, so the button copies exactly the run
     // the tester is looking at even if the HUD is folded away.
     if (model.parryTallyReport) {
