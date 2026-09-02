@@ -348,7 +348,22 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
 const opponentDriveController = createOpponentDriveController({
   toggle: opponentDrive, laneController, startAttack, tally: parryTally,
   readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !engagement.hasRecovery,
+  // R23S.1: the shield answers the PLAYER's swing, and is read off the player's runtime.
+  readThreat: () => { const s = playerEngagement?.attackRuntime.snapshot; return s?.action ? { active: true, sequence: s.sequence, elapsedSeconds: s.elapsedSeconds } : null; },
+  readOwnSwinging: () => combat.active || attackRuntime.active,
+  applyGuardHeld: (held) => syncOpponentGuard(held),
 });
+// R23S.1: the opponent's guard, driven by the stance the way the player's is (syncGuardToStance)
+// and entered the way enterGuard enters it - one machine, one presentation, both already theirs.
+function syncOpponentGuard(held) {
+  attackerFighter.stance.update({ guardKeyHeld: held === true, dodgeRunning: false, defenceCommitted: false });
+  const active = attackerFighter.stance.report.guardActive === true; const machine = attackerFighter.guardMachine; const presentation = attackerFighter.guardRuntime;
+  if (active && machine.state === GUARD_STATES.NEUTRAL) { machine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); machine.send(GUARD_EVENTS.GUARD_PRESS, { stage: LAB_STAGE }); presentation.sync(camera); presentation.update(180, camera); }
+  else if (!active && machine.state !== GUARD_STATES.NEUTRAL) { machine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); presentation.sync(camera); }
+}
+// Named so the frame reads as two fighters' pipelines rather than one call twice - R18M.C6 pins the
+// player's writer order by the text of the player's calls, and this is not one of them.
+function sampleOpponentGuard(deltaMs) { return attackerFighter.guardRuntime.update(deltaMs, camera); }
 
 function enterGuard() {
   guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera);
@@ -469,6 +484,7 @@ function startAttack(direction = selectedDirection) {
   // B6c: parry mode keeps its armed guard; block mode raises only what the held key says.
   if ((selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
   selectedDirection = direction;
+  syncOpponentGuard(false); // R23S.1: a body that swings is not holding a shield
   resetExchange();
   engagement.rememberBlade(captureBladePolyline());
   repeatCooldownMs = 0;
@@ -595,17 +611,17 @@ async function main() {
       sampleActiveShieldLeadMotion, compactInterceptDriveTraceFrame, compactInterceptDriveTelemetry,
     },
     contactServices: { measureAttackerRecoilWorldSilhouette },
-    // The opponent does not defend yet - step 6 is what gives them a guard - so this says so
-    // explicitly rather than letting an absent stance read as a raised one.
+    // R23S.1: the opponent's stance is read, not written in - with the drive off it reads neutral,
+    // which is what R23G.1 hard-coded here, and with the drive on it is whatever the shield decided.
     readContext: () => ({
       selectedMode: 'block', slowReviewChecked: false, defenderSword: attackerSword, debugStanceProfile,
       separationMeters: laneController.separationMeters, defenderFacingErrorRadians: 0,
-      dodgeReport: null, stanceReport: { guardActive: false }, lateGuardRaise: false,
+      dodgeReport: null, stanceReport: attackerFighter.stance.report, lateGuardRaise: false,
     }),
     callbacks: {
       onBodyStruck: (bodyContact) => { attackerFighter.bodyStrikeReaction.start(bodyContact); duel.landBlowOn(attackerFighter.condition); laneController.settle('hit'); }, // R23P.1
       readDodgeReport: () => null,
-      readGuardActive: () => false,
+      readGuardActive: () => attackerFighter.stance.report.guardActive === true, // R23S.1
       updateLiveContactMarkers: () => {},
       formatInspectionFailureSummary,
       publishStatus: () => {},
@@ -713,6 +729,7 @@ function frame(timestamp) {
     // why the snap appeared exactly when a player FAILED to answer a swing.
     if (snapshot.completed && !engagement.hasRecovery) beginAttackRecovery(selectedDirection);
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
+    sampleOpponentGuard(deltaMs); // R23S.1: the opponent's shield, over their base pose; a no-op in NEUTRAL, which is every frame the drive is off
     attackerFighter.bodyStrikeReaction.sample(deltaMs); // R23Q.1: last writer on the opponent - R23J.1 started this reaction and nothing ever sampled it
 
     const playerFrame = playerEngagement?.contactHandoff.updateCombatBeforeGuard({
