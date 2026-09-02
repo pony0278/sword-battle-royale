@@ -256,7 +256,7 @@ const engagement = createEngagement(THREE, {
   callbacks: {
     // R23J.1: the flinch AND the wound. onBodyStruck is the one signal that means a blade genuinely
     // landed - latestBodyHit also holds near-misses - so it is the only honest place to spend health.
-    onBodyStruck: (bodyContact) => { bodyStrikeReaction.start(bodyContact); duel.landBlowOn(defenderFighter.condition); }, readDodgeReport: () => laneController.dodgeReport,
+    onBodyStruck: (bodyContact) => { bodyStrikeReaction.start(bodyContact); duel.landBlowOn(defenderFighter.condition); laneController.settle('hit'); }, // R23P.1: and the ground readDodgeReport: () => laneController.dodgeReport,
     readGuardActive: () => selectedMode !== 'block' || defenderStance.report.guardActive === true, // R20G.1: parry mode keeps its armed guard
     updateLiveContactMarkers: (report) => inspectionOverlay.update(report),
     formatInspectionFailureSummary,
@@ -629,7 +629,7 @@ async function main() {
       dodgeReport: null, stanceReport: { guardActive: false }, lateGuardRaise: false,
     }),
     callbacks: {
-      onBodyStruck: (bodyContact) => { attackerFighter.bodyStrikeReaction.start(bodyContact); duel.landBlowOn(attackerFighter.condition); },
+      onBodyStruck: (bodyContact) => { attackerFighter.bodyStrikeReaction.start(bodyContact); duel.landBlowOn(attackerFighter.condition); laneController.settle('hit'); }, // R23P.1
       readDodgeReport: () => null,
       readGuardActive: () => false,
       updateLiveContactMarkers: () => {},

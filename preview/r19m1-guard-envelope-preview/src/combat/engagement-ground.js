@@ -50,6 +50,28 @@ export const ENGAGEMENT_GROUND_TRANSFERS = Object.freeze({
     receiverMeters: PARRY_ROOT_DISPLACEMENT_PROFILES.defender.peakMeters,
     authority: 'a-parry-throws-the-swinger-and-costs-the-one-who-answered-little',
   }),
+  // R23P.1 - a landed blow gives ground. Measured before this existed, from the swing ledger a
+  // person pasted back and again in the lab: a blow that reached the body banked the swinger's
+  // step (TOP 0.86m, RIGHT 0.66m, LEFT 0.45m) and moved the one it struck by nothing - the Hit_B
+  // reaction shifts the hips 5cm in place - so two landed blows took a 2.40m stance to the 0.90m
+  // floor and every swing after that was thrown from the floor. A parry, by comparison, throws
+  // the swinger back 0.16m; a block 0.07m.
+  //
+  // The one who was struck gives back the ground the step took, so the exchange ends where it
+  // began: the fight stays in the 2.4m band every gate is measured in, and the next swing has to
+  // earn its step again. At the floor a step has nowhere to go and would give back nothing, so
+  // the blow always pushes at least the smallest step any swing takes - a fight that has reached
+  // the floor comes off it. Given over the reaction rather than at once: 0.86m in a frame is a
+  // teleport, and the parry's 0.16m only got away with it by being small.
+  hit: Object.freeze({
+    outcome: 'hit',
+    swingerMeters: 0,
+    receiverMeters: null,
+    receiverGivesBackTheStep: true,
+    minimumReceiverMeters: 0.45,
+    yieldSeconds: 0.35,
+    authority: 'a-landed-blow-gives-back-the-ground-the-step-took',
+  }),
 });
 
 function finite(value, fallback = 0) {
@@ -100,6 +122,8 @@ export function createEngagementGround(options = {}) {
   // The swing's lateral component, alongside its z component above: a swing along a frozen
   // off-axis facing spends its metres in both. On the axis this stays exactly zero.
   const swingLateralMeters = { attacker: 0, defender: 0 };
+  // R23P.1: ground still owed to a blow, given over time. One per slot; a new one replaces it.
+  const yields = { attacker: null, defender: null };
   // Which fighter a blow's other half lands on. The two slots are POSITIONS - who stands where -
   // and they never change hands; what changes hands is the ROLE, one exchange at a time.
   const otherSlot = (slot) => (slot === 'defender' ? 'attacker' : 'defender');
@@ -153,7 +177,12 @@ export function createEngagementGround(options = {}) {
     // Bearing from each fighter to the other, from the same exact gap parts separation uses; at
     // zero range the last honest answer is the lane's.
     const facingDefined = gap.separation > 1e-9;
+    const yieldMeters = Object.freeze({
+      attacker: yields.attacker ? yields.attacker.totalMeters - yields.attacker.appliedMeters : 0,
+      defender: yields.defender ? yields.defender.totalMeters - yields.defender.appliedMeters : 0,
+    }); // R23P.1: ground a blow is still owed, by the slot that owes it
     return Object.freeze({
+      yieldMeters,
       stage: ENGAGEMENT_GROUND_STAGE,
       attackerMeters,
       defenderMeters,
@@ -408,9 +437,13 @@ export function createEngagementGround(options = {}) {
     // copy of the arithmetic.
     const sign = swinger === 'defender' ? -1 : 1;
     const gap = gapParts();
+    // R23P.1: what the receiver gives is either the transfer's own number or the step that was
+    // just taken at them, floored so a blow from the floor still moves somebody.
+    const receiverMeters = transfer.receiverGivesBackTheStep
+      ? Math.max(Math.hypot(swingMeters[swinger], swingLateralMeters[swinger]), finite(transfer.minimumReceiverMeters))
+      : finite(transfer.receiverMeters);
     if (gap.lateral === 0 || !(gap.separation > 1e-9)) {
       groundMeters[swinger] += swingMeters[swinger] + transfer.swingerMeters * sign;
-      groundMeters[receiver] += transfer.receiverMeters * sign;
     } else {
       // The blow's throw is along the line between them at the moment it lands, wherever that
       // line points: the swinger is thrown back down it, the one who answered gives ground up it.
@@ -418,14 +451,40 @@ export function createEngagementGround(options = {}) {
         + transfer.swingerMeters * sign * (gap.longitudinal / gap.separation);
       lateralMeters[swinger] += swingLateralMeters[swinger]
         + transfer.swingerMeters * sign * (gap.lateral / gap.separation);
-      groundMeters[receiver] += transfer.receiverMeters * sign * (gap.longitudinal / gap.separation);
-      lateralMeters[receiver] += transfer.receiverMeters * sign * (gap.lateral / gap.separation);
     }
     if (gap.lateral === 0) lateralMeters[swinger] += swingLateralMeters[swinger];
+    const along = gap.lateral === 0 || !(gap.separation > 1e-9)
+      ? { longitudinal: 1, lateral: 0 }
+      : { longitudinal: gap.longitudinal / gap.separation, lateral: gap.lateral / gap.separation };
+    if (finite(transfer.yieldSeconds) > 0) {
+      yields[receiver] = { totalMeters: receiverMeters, appliedMeters: 0, seconds: finite(transfer.yieldSeconds), elapsed: 0, sign, along };
+    } else {
+      groundMeters[receiver] += receiverMeters * sign * along.longitudinal;
+      lateralMeters[receiver] += receiverMeters * sign * along.lateral;
+    }
     swingMeters[swinger] = 0;
     swingLateralMeters[swinger] = 0;
     holdMinimumSeparation(swinger);
     return Object.freeze({ ...report(), transfer });
+  }
+
+  // R23P.1: pays out what a blow is still owed. Eased out - the shove is hardest at the moment of
+  // the blow - and finished exactly, so the total given is the total owed and not a sum of steps.
+  function advanceYield(deltaSeconds = 0) {
+    const dt = Math.max(0, finite(deltaSeconds));
+    for (const slot of ['attacker', 'defender']) {
+      const owed = yields[slot];
+      if (!owed) continue;
+      owed.elapsed = Math.min(owed.seconds, owed.elapsed + dt);
+      const t = owed.seconds > 0 ? owed.elapsed / owed.seconds : 1;
+      const eased = owed.totalMeters * (1 - (1 - t) * (1 - t));
+      const delta = eased - owed.appliedMeters;
+      owed.appliedMeters = eased;
+      groundMeters[slot] += delta * owed.sign * owed.along.longitudinal;
+      lateralMeters[slot] += delta * owed.sign * owed.along.lateral;
+      if (owed.elapsed >= owed.seconds) yields[slot] = null;
+    }
+    return report();
   }
 
   // R19B.2: a swing that hit nothing. The step is banked all the same, so a fighter who lunges at
@@ -445,6 +504,8 @@ export function createEngagementGround(options = {}) {
   function reset() {
     groundMeters.attacker = 0;
     groundMeters.defender = 0;
+    yields.attacker = null; // R23P.1: ground still owed to a blow is forgotten with the fight
+    yields.defender = null;
     swingMeters.attacker = 0;
     swingLateralMeters.attacker = 0;
     // R23C.1: the defender has a swing of their own to forget now. Nothing wrote these before
@@ -484,6 +545,7 @@ export function createEngagementGround(options = {}) {
     setSwing,
     settleImpact,
     settleWhiff,
+    advanceYield, // R23P.1
     reset,
     rebase,
     get report() { return report(); },
