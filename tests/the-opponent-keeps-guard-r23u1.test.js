@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
 
 test('R23U.1 the swing and its recovery own the opponent\'s body; the guard presentation waits underneath', () => {
-  assert.match(entry, /function sampleOpponentGuard\(deltaMs\) \{[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*if \(attackRuntime\.active \|\| engagement\.hasRecovery\) return null;/);
+  assert.match(entry, /function sampleOpponentGuard\(deltaMs, bodyOwnedByContact = false\) \{[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*if \(attackRuntime\.active \|\| engagement\.hasRecovery \|\| bodyOwnedByContact === true \|\| attackerFighter\.condition\.report\.staggered\) return null;/);
 });
 
 test('R23U.1 a body mid-swing guards nothing even with the machine in HOLD', () => {

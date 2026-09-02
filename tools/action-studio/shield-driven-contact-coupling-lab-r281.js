@@ -364,12 +364,17 @@ function syncOpponentGuard(held) {
 }
 // Named so the frame reads as two fighters' pipelines rather than one call twice - R18M.C6 pins the
 // player's writer order by the text of the player's calls, and this is not one of them.
-function sampleOpponentGuard(deltaMs) { // R23T.1: with the legs of the walk laid back over the guard, as the player's are
+function sampleOpponentGuard(deltaMs, bodyOwnedByContact = false) { // R23T.1: with the legs of the walk laid back over the guard, as the player's are
   // R23U.1: the swing and its recovery own the body, as the player's own them - the guard machine
   // stays HOLD underneath and the presentation resumes when the recovery hands the body back.
   // Measured before: leaving and re-entering the guard around the swing put a 1.16m one-frame
   // jump on the frame the shield came back; the fastest frame of the swing itself moves 0.61m.
-  if (attackRuntime.active || engagement.hasRecovery) return null;
+  // R23V.1: and so do the contact stack (the frames it handled combat on) and the stagger. Measured
+  // before this line: with the drive on, a parried opponent's bones sat 1.19m from the parry pose
+  // from the very next frame and never moved again - the guard had painted over the whole
+  // losing-their-footing reaction; with the drive off the same parry moved them 0.37, 0.99, 0.92,
+  // 0.87, 0.83, 1.28m over 1.2s. A person saw an opponent who did not react to being parried.
+  if (attackRuntime.active || engagement.hasRecovery || bodyOwnedByContact === true || attackerFighter.condition.report.staggered) return null;
   laneController.captureAttackerWalkLegs(); const report = attackerFighter.guardRuntime.update(deltaMs, camera); laneController.overlayAttackerWalkLegs(); return report;
 }
 
@@ -737,7 +742,7 @@ function frame(timestamp) {
     // why the snap appeared exactly when a player FAILED to answer a swing.
     if (snapshot.completed && !engagement.hasRecovery) beginAttackRecovery(selectedDirection);
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
-    sampleOpponentGuard(deltaMs); // R23S.1: the opponent's shield, over their base pose; a no-op in NEUTRAL, which is every frame the drive is off
+    sampleOpponentGuard(deltaMs, contactFrame.handledCombat); // R23S.1: the opponent's shield, over their base pose; a no-op in NEUTRAL, which is every frame the drive is off
     attackerFighter.bodyStrikeReaction.sample(deltaMs); // R23Q.1: last writer on the opponent - R23J.1 started this reaction and nothing ever sampled it
 
     const playerFrame = playerEngagement?.contactHandoff.updateCombatBeforeGuard({
