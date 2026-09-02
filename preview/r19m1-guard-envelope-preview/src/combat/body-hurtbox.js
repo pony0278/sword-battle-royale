@@ -1,6 +1,6 @@
 import { probeSweptSwordBucklerContact } from './swept-sword-buckler-contact.js';
 
-export const BODY_HURTBOX_STAGE = 'R18U.1';
+export const BODY_HURTBOX_STAGE = 'R23N.1';
 
 // R18U.1: What a sword can hit when nothing blocks it.
 //
@@ -21,9 +21,31 @@ export const BODY_HURTBOX_STAGE = 'R18U.1';
 // Half-widths and depths of a blocky fighter, measured off the rig rather than authored: each
 // band's radius covers the silhouette at that height, and the thickness gives the torso the depth
 // a flat disc otherwise lacks.
+//
+// R23N.1 - the belly. The radii were measured off the rig; the HEIGHTS were assumed, and the
+// assumption was a person-shaped skeleton with its hips at the waist. This rig's are not. World
+// heights of the bones, read live off both fighters in the running lab (the opponent stands in a
+// lower idle than the player, which is why there are two columns):
+//
+//   bone        opponent   player
+//   head        0.93       1.13
+//   chest       0.66       0.86
+//   spine       0.32       0.50
+//   hips        0.14       0.31
+//   lowerleg    0.06-0.18  0.23-0.29
+//
+// `hips` sits at the bottom of the pelvis, so the waist disc (radius 0.20) reaches up to 0.34 on
+// the opponent and the chest disc (radius 0.22) starts at 0.44: ten centimetres of belly with no
+// disc in it, and less than that at the disc edges, where a circle covers least. The player's LEFT
+// is a low sweep, and at the 0.90m stance floor it crossed the opponent at exactly 0.477 -
+// planeGap 0.00, radialGap 0.01 to 0.04, contact false - which a person playing reported as
+// "LEFT does no damage", and a probe swinging at 2.4m could not see because from there the same
+// sweep arrives at the knees. spine is the bone at belly height on both rigs, so it carries the
+// disc that closes the crack. Measured after: every direction, both fighters, 0.9m to 2.6m, lands.
 export const BODY_HURTBOX_BANDS = Object.freeze([
   Object.freeze({ id: 'head', bone: 'head', radius: 0.13, thickness: 0.22 }),
   Object.freeze({ id: 'chest', bone: 'chest', radius: 0.22, thickness: 0.30 }),
+  Object.freeze({ id: 'belly', bone: 'spine', radius: 0.22, thickness: 0.28 }),
   Object.freeze({ id: 'waist', bone: 'hips', radius: 0.20, thickness: 0.28 }),
   // The legs have no single bone at the height that matters, so the knee band is taken from the
   // lower-leg pair and sits between them.

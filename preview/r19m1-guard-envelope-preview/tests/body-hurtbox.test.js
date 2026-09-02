@@ -12,6 +12,7 @@ import {
 const BONES = Object.freeze({
   head: { x: 0, y: 1.62, z: 0 },
   chest: { x: 0, y: 1.30, z: 0 },
+  spine: { x: 0, y: 1.10, z: 0 }, // R23N.1: the belly band's bone
   hips: { x: 0, y: 0.92, z: 0 },
   'lowerleg.l': { x: 0.17, y: 0.48, z: 0 },
   'lowerleg.r': { x: -0.17, y: 0.46, z: 0 },
@@ -30,9 +31,9 @@ function sweepAt(y, x = 0) {
 }
 
 test('R18U.1 the body is built from the rig, so it moves with the fighter', () => {
-  assert.equal(BODY_HURTBOX_STAGE, 'R18U.1');
+  assert.equal(BODY_HURTBOX_STAGE, 'R23N.1');
   assert.equal(hurtbox.discs.length, BODY_HURTBOX_BANDS.length);
-  assert.deepEqual(hurtbox.discs.map((d) => d.id), ['head', 'chest', 'waist', 'knees']);
+  assert.deepEqual(hurtbox.discs.map((d) => d.id), ['head', 'chest', 'belly', 'waist', 'knees']);
   // The chest band sits on the chest bone, not at an authored height over a root.
   const chest = hurtbox.discs.find((d) => d.id === 'chest');
   assert.equal(chest.center.y, BONES.chest.y);
