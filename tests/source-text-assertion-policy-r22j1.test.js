@@ -121,7 +121,11 @@ function census() {
 // threat carries the TTC (read off the entry). KEEP.
 // R23X.1 (found while measuring the parry): two more composition claims - both start gates wait for the
 // other swing's action to be gone (and its falling edge processed), not merely for `active` to end. KEEP.
-const BASELINE = Object.freeze({ total: 1191, srcText: 364, toolsText: 662, html: 157, absence: 149 });
+// R23Y.1: one composition claim (the HUD's copy button shares the panel button's text), two html
+// claims (that button opts back into pointer events, or the HUD swallows the click; and the absence below,
+// which the census counts under html too) and one absence
+// (the panel button is no longer named for the player's swings). KEEP.
+const BASELINE = Object.freeze({ total: 1194, srcText: 364, toolsText: 663, html: 159, absence: 150 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

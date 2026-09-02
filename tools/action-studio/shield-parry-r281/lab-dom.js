@@ -23,6 +23,7 @@ const REQUIRED_IDS = Object.freeze([
   'opponentDrive',
   'copyTally',
   'copySwings', // R23M.1
+  'copyDuelLog', // R23Y.1: the same log, copied from where it is shown
   'slowReview',
   'showSurface',
   'forceOldB3',
