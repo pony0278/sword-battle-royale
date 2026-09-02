@@ -223,6 +223,7 @@ export function createShieldParryLaneController({
       // R20F.1: a running dodge owns the defender's movement outright - held walk keys wait.
       // The authored travel goes into the ledger through the same verbs the feet use, so every
       // clamp the ground enforces on walking holds for dodging too.
+      ground.advanceYield(deltaSeconds); // R23P.1: ground owed to a blow is paid before anybody's feet read the gap
       const dodgeStep = dodge.advance(deltaSeconds);
       if (dodgeStep.direction === 'back') ground.moveDefender(dodgeStep.displacementMeters);
       else if (dodgeStep.direction === 'forward') ground.moveDefender(-dodgeStep.displacementMeters);
