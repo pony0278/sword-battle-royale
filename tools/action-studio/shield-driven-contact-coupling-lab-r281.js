@@ -86,6 +86,8 @@ import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-report
 import { createShieldParryPlayerController } from '../../src/game/player-controller.js';
 import { createWeaponMountController } from '../../src/game/weapon-mount-controller.js';
 import { createEngagement } from '../../src/game/engagement.js';
+import { createDuel } from '../../src/game/duel.js';
+import { planSwingPermission } from '../../src/combat/swing-permission.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
@@ -250,7 +252,9 @@ const engagement = createEngagement(THREE, {
     separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, lateGuardRaise, // R19N.1 + R19Z.1 + R20F.1 + R20G.1 + R20J.1 read the live lane
   }),
   callbacks: {
-    onBodyStruck: (bodyContact) => bodyStrikeReaction.start(bodyContact), readDodgeReport: () => laneController.dodgeReport, // R19K.1 + R20F.1
+    // R23J.1: the flinch AND the wound. onBodyStruck is the one signal that means a blade genuinely
+    // landed - latestBodyHit also holds near-misses - so it is the only honest place to spend health.
+    onBodyStruck: (bodyContact) => { bodyStrikeReaction.start(bodyContact); duel.landBlowOn(defenderFighter.condition); }, readDodgeReport: () => laneController.dodgeReport,
     readGuardActive: () => selectedMode !== 'block' || defenderStance.report.guardActive === true, // R20G.1: parry mode keeps its armed guard
     updateLiveContactMarkers: (report) => inspectionOverlay.update(report),
     formatInspectionFailureSummary,
@@ -329,6 +333,8 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     sprintReport: () => ({ ...playerController.sprintReport, armClip: laneController.defenderSprintArmClip, gait: laneController.defenderGait }), // R20U.1
     parryTally: () => parryTally.summary, // R21C.2
     opponent: () => opponentDriveController.summary, // R21E.1
+    // R23J.1: the duel, for the one HUD line a player actually needs.
+    duel: () => duel.report,
     parryTallyReport: () => parryTally.reportText, // R21G.2: the whole run, pasteable
   },
 });
@@ -454,7 +460,9 @@ function startAttack(direction = selectedDirection) {
   if (!ready || combat.active || attackRuntime.active || engagement.hasRecovery) return false;
   // R23G.1: and not into the player's swing either. One advance runtime, one swinging slot - the
   // refusal is symmetric because the ledger underneath is.
-  if (playerEngagement?.attackRuntime.active || playerEngagement?.combat.active) return false;
+  // R23J.1: and a parried or downed opponent does not swing - what makes the stagger a RULE.
+  if (playerEngagement?.attackRuntime.active || playerEngagement?.combat.active
+    || !attackerFighter.condition.report.canAct) return false;
   // B6c: parry mode keeps its armed guard; block mode raises only what the held key says.
   if ((selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
   selectedDirection = direction;
@@ -522,27 +530,41 @@ function isParryPreContactReviewActive(snapshot = attackRuntime.snapshot) {
 // Refused while either engagement is live, and that is the LEDGER's rule surfacing rather than a
 // new one: engagement-ground holds one advance runtime and one swinging slot, so two swings at once
 // would not be a harder fight, it would be one swing wearing the other's arithmetic.
+let playerAttackRefusal = null; // R23J.1: a refusal a player cannot see is a bug they cannot report
 function startPlayerAttack() {
-  if (!ready || !playerEngagement) return false;
-  if (combat.active || attackRuntime.active || playerEngagement.combat.active
-    || playerEngagement.attackRuntime.active || playerEngagement.hasRecovery) return false;
+  const permission = planSwingPermission({ ready: ready && Boolean(playerEngagement),
+    opponentMidExchange: combat.active || attackRuntime.active, ownExchangeUncleared: playerEngagement?.combat.active,
+    alreadySwinging: playerEngagement?.attackRuntime.active, stillRecovering: playerEngagement?.hasRecovery,
+    canAct: defenderFighter.condition.report.canAct });
+  if (!permission.allowed) { playerAttackRefusal = permission.reason; return false; }
   const aimed = guardSector.sector;
   playerDirection = aimed || 'top';
-  playerEngagement.resetExchangeState({ previousShieldLeadSurface: null });
+  // R23J.1: the two-actor integration refuses a second attack until its last one is cleared - the
+  // opponent's restartAttack has always done this and the player's path never did, so the second
+  // swing of a session was silently refused with every guard above it reading clear.
+  playerEngagement.combat.reset();
+  playerEngagement.resetExchange();
   playerEngagement.rememberBlade(playerEngagement.captureBlade());
   const started = playerEngagement.combat.startAttack(playerDirection);
-  if (!started.accepted) return false;
+  if (!started.accepted) { playerAttackRefusal = `combat-refused-${started.reason || 'unknown'}`; return false; }
   laneController.startAttack(playerDirection, playerEngagement.attackRuntime.snapshot?.action?.runtime?.contactSeconds, { swinger: 'defender' });
   status.textContent = `YOU SWING ${playerDirection.toUpperCase()}${aimed ? '' : ' · nothing aimed yet, so TOP'}`;
   status.className = 'warn';
   return true;
 }
+// R23J.1: the result layer. Its rule is in src/combat/fighter-condition.js and its two-fighter
+// half in src/game/duel.js; what stays here is the page it publishes to.
+const duel = createDuel({
+  playerCondition: defenderFighter.condition, opponentCondition: attackerFighter.condition,
+  publishStatus({ text, className }) { status.textContent = text; status.className = className; },
+});
 function resolvePlayerContact(snapshot, currentBlade, deltaSeconds) {
   const resolved = playerEngagement.contactHandoff.resolveContact(snapshot, currentBlade, deltaSeconds, {
     previousBlade: playerEngagement.previousBlade, selectedMode: 'block', selectedDirection: playerDirection,
   });
   const settled = laneController.settle(playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome);
   if (settled) playerEngagement.exchangeState.latestEngagementGround = settled;
+  duel.spendExchangeOn(playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, defenderFighter.condition);
   return resolved;
 }
 function resolveContact(snapshot, currentBlade, deltaSeconds) {
@@ -556,6 +578,7 @@ function resolveContact(snapshot, currentBlade, deltaSeconds) {
   parryTally.recordOutcome(selectedDirection, snapshot?.sequence, exchangeState.latestCombatResult?.resolution?.outcome, exchangeState.latestBodyHit?.contact === true);
   const settled = laneController.settle(exchangeState.latestCombatResult?.resolution?.outcome);
   if (settled) exchangeState.latestEngagementGround = settled;
+  duel.spendExchangeOn(exchangeState.latestCombatResult?.resolution?.outcome, attackerFighter.condition); // they swung, so a parry staggers them
   return resolved;
 }
 
@@ -601,7 +624,7 @@ async function main() {
       dodgeReport: null, stanceReport: { guardActive: false }, lateGuardRaise: false,
     }),
     callbacks: {
-      onBodyStruck: (bodyContact) => attackerFighter.bodyStrikeReaction.start(bodyContact),
+      onBodyStruck: (bodyContact) => { attackerFighter.bodyStrikeReaction.start(bodyContact); duel.landBlowOn(attackerFighter.condition); },
       readDodgeReport: () => null,
       readGuardActive: () => false,
       updateLiveContactMarkers: () => {},
@@ -631,7 +654,7 @@ bindShieldParryLabUiEvents({
     onView: (view) => setView(view),
     onForceOldB3: () => forceOldTwoActorB3(selectedDirection),
     onParryInput: (inputSource, event) => dispatchParryInput(inputSource, event),
-    onRetryAttack: () => restartAttack(selectedDirection),
+    onRetryAttack: () => { if (duel.verdict.over) duel.reset(); return restartAttack(selectedDirection); },
     onDebugApplyRetry: () => restartAttack(selectedDirection),
     onDebugResetDefaults: resetDebugStanceDefaults,
     onDefenderIntent: (intent) => laneController.setDefenderIntent(intent), onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
@@ -741,6 +764,9 @@ function frame(timestamp) {
       selectedDirection,
       needsUpdate: contactFrame.liveConstraintNeedsUpdate,
     });
+    // R23J.1: the stagger burns down on the wall clock, not the review-slowed one - a second taken
+    // out of the fight is a second the player waits through, whatever the tempo dial is set to.
+    duel.advance(rawDeltaMs);
     weaponMount?.frame(); // R23E.1: before the swords redraw, so a changed mount is what they draw
     attackerSword.update(); defenderSword?.update(); contactHandoffController.recordVisibleOldB3Sample(exchangeState.latestCombatUpdate);
 
@@ -801,6 +827,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     setGuardHeld, setFixedStepMs: (ms) => frameClock.setFixedStep(ms), // R20G.1 + R20K.1: drivers hold the guard, harnesses pin the clock
     tryDodge: requestDodge, // R20G.1: same gate as the keys - the facade may not skip the stance
     forceOldTwoActorB3,
+    resetDuel: () => duel.reset(), // R23J.1: both fighters back to full, for a probe or a second duel
     resetLane: () => (combat.active || attackRuntime.active ? null : laneController.resetLane()),
     captureBladeGeometry: () => ({ blade: captureBladePolyline(), surface: buckler.getWorldParrySurface() }),
     // R21A.1: the passive half of the call above, safe to read mid-swing. captureBladePolyline only
@@ -836,6 +863,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     opponentDriveController,
     get weaponMount() { return weaponMount; }, // a getter: built after the load, so a captured null would never update
     playerEngagement: () => playerEngagement, // R23G.1: same reason, and a thunk so the facade holds no stale null
+    playerAttackRefusal: () => playerAttackRefusal, // R23J.1
   },
   debugMode: DEBUG_MODE,
   getDebugStanceProfile: () => debugStanceProfile,
