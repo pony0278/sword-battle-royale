@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { codeOnly } from './support/source-text.js';
 import { createAttackerPresentationAdapter } from '../src/game/attacker-presentation.js';
 
 const entrySource = readFileSync(
@@ -11,6 +12,7 @@ const presentationSource = readFileSync(
   new URL('../src/game/attacker-presentation.js', import.meta.url),
   'utf8',
 );
+const engagementSource = readFileSync(new URL('../src/game/engagement.js', import.meta.url), 'utf8');
 
 function createHarness(exchangeStateOverrides = {}) {
   const calls = [];
@@ -65,13 +67,17 @@ function createHarness(exchangeStateOverrides = {}) {
   return { adapter, attacker, exchangeState, calls };
 }
 
-test('R18M.C2 entry delegates attacker pose sampling while retaining lifecycle authority', () => {
-  assert.match(entrySource, /createAttackerPresentationAdapter/);
+test('R18M.C2 the engagement owns the swinger\'s presentation, the entry keeps the lifecycle', () => {
+  // R23F.1: the adapter and the recovery/idle clock it carries between frames moved into the
+  // engagement, which is what made a second exchange possible. The entry still decides WHEN a
+  // recovery begins and when a base pose is sampled, which is the authority half of this claim.
+  assert.match(engagementSource, /createAttackerPresentationAdapter/);
   assert.doesNotMatch(entrySource, /function captureAttackerWorldSilhouette\(/);
   assert.doesNotMatch(entrySource, /function sampleCanonicalInterruptionPose\(/);
   assert.doesNotMatch(entrySource, /function sampleOriginalContactPose\(/);
-  assert.match(entrySource, /let attackerRecovery = null/);
-  assert.match(entrySource, /let attackerIdleClockSeconds = 0/);
+  assert.match(engagementSource, /let recovery = null/);
+  assert.match(engagementSource, /let idleClockSeconds = 0/);
+  assert.doesNotMatch(codeOnly(entrySource), /let attackerRecovery/, 'the entry no longer holds it loose');
   assert.match(entrySource, /function beginAttackRecovery\(direction\)/);
   assert.match(entrySource, /function sampleAttackerBase\(snapshot, deltaMs\)/);
   assert.match(entrySource, /function frame\(timestamp\)/);

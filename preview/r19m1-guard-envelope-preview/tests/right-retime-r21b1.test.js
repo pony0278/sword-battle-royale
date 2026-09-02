@@ -171,9 +171,11 @@ test('R21J.1 a swing that nobody answered still gets a recovery', () => {
   // an exchange, got no recovery at all. The snap therefore appeared exactly when a player FAILED
   // to answer - which is why it read as RIGHT's problem while RIGHT was the one being missed.
   const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-  assert.match(entry, /if \(snapshot\.completed && !attackerRecovery\) beginAttackRecovery\(/);
+  // R23F.1 moved the recovery state into the engagement; the ORDERING claim is the substance and
+  // is unchanged, so it is re-spelled rather than dropped.
+  assert.match(entry, /if \(snapshot\.completed && !engagement\.hasRecovery\) beginAttackRecovery\(/);
   // It has to run before the base pose is sampled, or the frame it is created on renders unblended.
-  const begins = entry.indexOf('if (snapshot.completed && !attackerRecovery) beginAttackRecovery(');
+  const begins = entry.indexOf('if (snapshot.completed && !engagement.hasRecovery) beginAttackRecovery(');
   const samples = entry.indexOf('if (!contactFrame.handledCombat) sampleAttackerBase(');
   assert.ok(begins > 0 && samples > begins);
   // Every other lab in the repo already did this; this entry was the outlier.

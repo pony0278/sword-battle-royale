@@ -24,7 +24,6 @@ import { createActiveParryInterceptIntent } from '../../src/combat/active-parry-
 import {
   TWO_ACTOR_PARRY_REACTION_CHANNELS,
   TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES,
-  createTwoActorCombatIntegration,
 } from '../../src/combat/two-actor-combat-integration.js';
 import {
   LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE,
@@ -37,7 +36,6 @@ import {
 } from '../../src/combat/committed-parry-contact-gate.js';
 import {
   LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE,
-  createLiveShieldSwordGripContactRuntime,
 } from '../../src/combat/live-shield-sword-grip-contact-constraint.js';
 import {
   sampleLiveParryOldB3ReleaseBlend,
@@ -69,20 +67,15 @@ import { readLabExperimentParameters } from './shield-parry-r281/lab-experiment-
 import { createOpponentDriveController } from './shield-parry-r281/opponent-drive-controller.js'; // R21E.1
 import { createGuardSectorRuntime } from '../../src/game/guard-sector-runtime.js';
 import {
-  createShieldParryExchangeState,
-  resetShieldParryExchangeState,
 } from '../../src/game/exchange-state.js';
-import { createShieldParryPreContactController } from '../../src/game/pre-contact-controller.js';
 import { createVisualOwnershipRuntimeTaps } from './shield-parry-r281/visual-ownership-runtime-taps.js';
-import { createShieldParryContactHandoffController } from '../../src/game/contact-handoff-controller.js';
 import { createCombatScene } from '../../src/game/scene.js';
 import { createFreeInspectionCameraControls } from './free-inspection-camera-controls.js';
-import { cloneSurface, magnitude, createBladePolylineSampler } from '../../src/game/geometry.js';
+import { cloneSurface, magnitude } from '../../src/game/geometry.js';
 import { createShieldParryFrameReporting } from './shield-parry-r281/frame-reporting.js';
 import { createShieldParryLaneController } from '../../src/game/lane-controller.js';
 import { createDefenderStanceRuntime } from '../../src/combat/defender-stance.js';
 import { createShieldParryInspectionOverlay } from './shield-parry-r281/inspection-overlay.js';
-import { createAttackerPresentationAdapter } from '../../src/game/attacker-presentation.js';
 import { createDirectOldB3DiagnosticController } from './shield-parry-r281/direct-old-b3-diagnostic.js';
 import { LANE_WALK_CLIPS, bootstrapShieldParryLabAssets } from '../../src/game/bootstrap.js';
 import { createNeutralStanceController } from '../../src/game/neutral-stance.js';
@@ -92,6 +85,7 @@ import { createFrameClock } from '../../src/game/frame-clock.js';
 import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-reporter.js';
 import { createShieldParryPlayerController } from '../../src/game/player-controller.js';
 import { createWeaponMountController } from '../../src/game/weapon-mount-controller.js';
+import { createEngagement } from '../../src/game/engagement.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
@@ -150,7 +144,6 @@ const playerController = createShieldParryPlayerController({ // R20S.3: feet, lo
   camera, laneController, freeCamera, inspectionCamera: INSPECTION_CAMERA, // R20U.1: running is refused by these two
   // R21V.1: the sprint's ground speed is a playtest dial; with no ?sprint= this is the shipped seed.
   readGuardActive: () => defenderStance.report.guardActive === true, readAttacking: () => attackRuntime.active === true, sprintSpeedMps: EXPERIMENT.sprintSpeedMps });
-const exchangeState = createShieldParryExchangeState();
 // R20G.1 (B6c): defence is a choice - in block mode the guard (and the whole measured defence
 // behind it) exists only while the key is held; the machine follows this input, never auto-raises.
 let guardKeyHeld = false; let lateGuardRaise = false; // R20J.1 (B6d): raised before the swing, or into it?
@@ -190,40 +183,6 @@ function requestDodge(direction) {
   return laneController.tryDodge(direction);
 }
 
-const attackerPresentation = createAttackerPresentationAdapter({
-  THREE,
-  attacker,
-  camera,
-  exchangeState,
-  services: {
-    captureRigPose,
-    applyRigPose,
-    blendRecoveryPose,
-    sampleLongswordAttackRecovery,
-    sampleLiveParryOldB3ReleaseBlend,
-  },
-});
-
-const combat = createTwoActorCombatIntegration({
-  THREE,
-  attackerCharacter: attacker,
-  attackRuntime,
-  guardMachine,
-  parrySync: {
-    presentationOffsetSeconds: 0.205,
-    parryAttackerRecoilDelayMs: 0,
-  },
-  sampleFrozenContactPose(interruption) {
-    attackerPresentation.sampleFrozenContactPose(interruption, {
-      ownsLiveContact: contactHandoffController.ownsLiveContact(),
-    });
-  },
-});
-const swordGripConstraint = createLiveShieldSwordGripContactRuntime(THREE, {
-  attackerRig: attacker.rig,
-  attackerSword,
-});
-
 const uiElements = createShieldParryLabDom(document);
 const { status, reportNode, autoRepeat, opponentDrive, slowReview, showSurface } = uiElements;
 const stanceDebug = createStanceDebugController({
@@ -245,91 +204,57 @@ const labUi = createShieldParryLabUi(uiElements);
 const guardSectorIndicator = createGuardSectorIndicator(document.getElementById('guardSector'));
 // R21C.2: counts what the attempts did, so a play test produces numbers rather than impressions.
 const parryTally = createParryAttemptTally({ conditions: () => ({ tempoScale: EXPERIMENT.tempoScale, slowReview: slowReview.checked, sprint: EXPERIMENT }) });
-const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
 let ready = false;
 let selectedDirection = 'right';
 let selectedMode = null; // R19I.1: chosen, never assumed
 const frameClock = createFrameClock(); // R20K.1: the wall clock, until a harness pins it
-let attackerIdleDuration = 1;
-let attackerIdleClockSeconds = 0;
-let attackerRecovery = null;
 let repeatCooldownMs = 0;
-let previousBlade = null;
 let hudClockMs = HUD_INTERVAL_MS;
 let reportClockMs = REPORT_INTERVAL_MS;
 
-const preContactController = createShieldParryPreContactController({
+// R23F.1: one direction of the fight, as a unit. Nine constructions and four pieces of
+// between-frame state used to sit loose in this file; the second exchange is now one more call
+// rather than another hundred lines. The functions below still own the UI and the orchestration -
+// that is the boundary, and it is why readContext and callbacks are still handed in from here.
+const engagement = createEngagement(THREE, {
+  swinger: attacker, swingerSword: attackerSword, receiver: defender, receiverBuckler: buckler,
+  receiverFighter: defenderFighter, camera, attackRuntime,
   createOwnershipTaps: createVisualOwnershipRuntimeTaps, // R20Z.3: the lab supplies its own watcher
-  exchangeState,
-  buckler,
-  defender,
-  camera,
-  bracingRuntime,
-  fineTrackingRuntime,
-  residualBodyReachRuntime,
-  residualStanceReachRuntime,
-  predictivePresentation,
-  activeInterceptIntent: activeParryInterceptIntent,
-  parryGate,
-  longswordAttackPhases: LONGSWORD_ATTACK_PHASES,
-  promptHoldMs: PARRY_PROMPT_HOLD_MS,
-  debugMode: DEBUG_MODE,
+  longswordAttackPhases: LONGSWORD_ATTACK_PHASES, promptHoldMs: PARRY_PROMPT_HOLD_MS, debugMode: DEBUG_MODE,
+  presentationServices: {
+    captureRigPose, applyRigPose, blendRecoveryPose,
+    sampleLongswordAttackRecovery, sampleLiveParryOldB3ReleaseBlend,
+  },
+  preContactServices: {
+    cloneSurface, magnitude, planArticulatedImpactBracing, planFineGuardTracking,
+    analyzePredictiveInterceptParry, evaluateCommittedParryInput,
+    measureSweptSwordBucklerClosestApproach, planGuardThreatCorrection,
+    sampleActiveShieldLeadMotion, compactInterceptDriveTraceFrame, compactInterceptDriveTelemetry,
+  },
+  contactServices: { measureAttackerRecoilWorldSilhouette },
   readContext: () => ({
     selectedMode,
     slowReviewChecked: slowReview.checked,
-    previousBlade,
     defenderSword,
     debugStanceProfile,
     separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, lateGuardRaise, // R19N.1 + R19Z.1 + R20F.1 + R20G.1 + R20J.1 read the live lane
   }),
-  services: {
-    cloneSurface,
-    magnitude,
-    planArticulatedImpactBracing,
-    planFineGuardTracking,
-    analyzePredictiveInterceptParry,
-    evaluateCommittedParryInput,
-    measureSweptSwordBucklerClosestApproach,
-    planGuardThreatCorrection,
-    sampleActiveShieldLeadMotion,
-    compactInterceptDriveTraceFrame,
-    compactInterceptDriveTelemetry,
-  },
-});
-
-const contactHandoffController = createShieldParryContactHandoffController({
-  exchangeState,
-  buckler,
-  attacker,
-  defender,
-  attackerSword,
-  camera,
-  combat,
-  swordGripConstraint,
-  guardRuntime,
-  predictivePresentation,
-  parryGate,
-  preContactController,
-  fineTrackingRuntime,
-  residualBodyReachRuntime,
-  residualStanceReachRuntime,
-  services: {
-    measureAttackerRecoilWorldSilhouette,
-  },
   callbacks: {
     onBodyStruck: (bodyContact) => bodyStrikeReaction.start(bodyContact), readDodgeReport: () => laneController.dodgeReport, // R19K.1 + R20F.1
     readGuardActive: () => selectedMode !== 'block' || defenderStance.report.guardActive === true, // R20G.1: parry mode keeps its armed guard
-    captureCanonicalAttackerOldB3Base: () => attackerPresentation.captureCanonicalOldB3Base(attackRuntime.snapshot.interruption),
-    captureAttackerWorldSilhouette: () => attackerPresentation.captureWorldSilhouette(),
     updateLiveContactMarkers: (report) => inspectionOverlay.update(report),
     formatInspectionFailureSummary,
-    publishStatus({ text, className }) {
-      status.textContent = text;
-      status.className = className;
-    },
+    publishStatus({ text, className }) { status.textContent = text; status.className = className; },
   },
 });
+const {
+  exchangeState, combat, presentation: attackerPresentation, gripConstraint: swordGripConstraint,
+  preContact: preContactController, contactHandoff: contactHandoffController,
+  captureBlade: captureBladePolyline, readBladeForMeasurement: readBladePolylineForMeasurement,
+} = engagement;
+// After the engagement, because the blackboard it reports on is the engagement's now.
+const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
 const directOldB3DiagnosticController = createDirectOldB3DiagnosticController({
   THREE,
@@ -349,7 +274,7 @@ const directOldB3DiagnosticController = createDirectOldB3DiagnosticController({
   readContext: () => ({ ready, selectedDirection }),
   callbacks: {
     disableAutoRepeat: () => { autoRepeat.checked = false; },
-    clearAttackerRecovery: () => { attackerRecovery = null; },
+    clearAttackerRecovery: () => engagement.clearRecovery(),
     enterGuard,
     setSelectedDirection: (direction) => { selectedDirection = direction; },
     resetExchange,
@@ -364,13 +289,6 @@ const directOldB3DiagnosticController = createDirectOldB3DiagnosticController({
     buildReport: (combatSnapshot) => buildReport(combatSnapshot),
   },
 });
-
-const captureBladePolyline = createBladePolylineSampler(THREE, attackerSword);
-// R21A.1: a SECOND sampler for measurement reads. The sampler alternates between two buffers so the
-// frame loop can hold last frame's blade and this frame's at once, and the swept contact probe
-// compares exactly those two - so an extra read from outside the loop does not just return a value,
-// it rotates the buffer the fight is using. Its own instance, its own buffers, nothing shared.
-const readBladePolylineForMeasurement = createBladePolylineSampler(THREE, attackerSword);
 
 // Gathering only, and constructed here because every accessor below reads a `let` this file owns.
 const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporting({
@@ -411,7 +329,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
 // of which drive attacks by hand at fixed separations) untouched with the toggle off.
 const opponentDriveController = createOpponentDriveController({
   toggle: opponentDrive, laneController, startAttack, tally: parryTally,
-  readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !attackerRecovery,
+  readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !engagement.hasRecovery,
 });
 
 function enterGuard() {
@@ -420,21 +338,16 @@ function enterGuard() {
   const report = guardRuntime.update(180, camera);
   if (report.snapshot.state !== GUARD_STATES.HOLD) throw new Error(`Expected Guard Hold, got ${report.snapshot.state}`);
 }
+// R23F.1: the recovery, the idle clock and their two-way handoff live in the engagement now. These
+// stay as names because a dozen call sites read like sentences with them and like plumbing without,
+// and stay as DECLARATIONS because two of those call sites are construction arguments evaluated
+// above this line - a const arrow would be in its temporal dead zone there, which is exactly the
+// error this refactor produced before it was one.
 function beginAttackRecovery(direction) {
-  attackerRecovery = attackerPresentation.createRecovery(direction);
-  attackerIdleClockSeconds = 0;
+  return engagement.beginRecovery(direction);
 }
 function sampleAttackerBase(snapshot, deltaMs) {
-  const presentationState = attackerPresentation.sampleBase({
-    snapshot,
-    deltaMs,
-    recovery: attackerRecovery,
-    idleClockSeconds: attackerIdleClockSeconds,
-    idleDuration: attackerIdleDuration,
-    walkSample: laneController.attackerWalkSample,
-  });
-  attackerRecovery = presentationState.recovery;
-  attackerIdleClockSeconds = presentationState.idleClockSeconds;
+  return engagement.sampleBase(snapshot, deltaMs, laneController.attackerWalkSample);
 }
 function resetExchange() {
   laneController.endExchange(); lateGuardRaise = false; // R20J.1: the next swing asks again
@@ -444,9 +357,7 @@ function resetExchange() {
   residualBodyReachRuntime.reset(); residualStanceReachRuntime.reset();
   predictivePresentation.reset(); contactHandoffController.resetRootDisplacement();
   preContactController.resetActiveIntercept();
-  resetShieldParryExchangeState(exchangeState, {
-    previousShieldLeadSurface: cloneSurface(buckler.getWorldParrySurface()),
-  });
+  engagement.resetExchangeState({ previousShieldLeadSurface: cloneSurface(buckler.getWorldParrySurface()) });
   inspectionOverlay.clear();
 }
 
@@ -531,12 +442,12 @@ function forceOldTwoActorB3(direction = selectedDirection) {
   return directOldB3DiagnosticController.run(direction);
 }
 function startAttack(direction = selectedDirection) {
-  if (!ready || combat.active || attackRuntime.active || attackerRecovery) return false;
+  if (!ready || combat.active || attackRuntime.active || engagement.hasRecovery) return false;
   // B6c: parry mode keeps its armed guard; block mode raises only what the held key says.
   if ((selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
   selectedDirection = direction;
   resetExchange();
-  previousBlade = captureBladePolyline();
+  engagement.rememberBlade(captureBladePolyline());
   repeatCooldownMs = 0;
   const started = combat.startAttack(direction);
   if (!started.accepted) return false;
@@ -556,7 +467,7 @@ function restartAttack(direction = selectedDirection) {
     return false;
   }
   combat.reset();
-  attackerRecovery = null;
+  engagement.clearRecovery();
   if (selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) enterGuard();
   else if (selectedMode === 'block') { guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera); }
   const started = startAttack(direction);
@@ -592,7 +503,7 @@ function isParryPreContactReviewActive(snapshot = attackRuntime.snapshot) {
 
 function resolveContact(snapshot, currentBlade, deltaSeconds) {
   const resolved = contactHandoffController.resolveContact(snapshot, currentBlade, deltaSeconds, {
-    previousBlade,
+    previousBlade: engagement.previousBlade,
     selectedMode,
     selectedDirection,
   });
@@ -612,7 +523,7 @@ async function main() {
     defender,
     labStage: LAB_STAGE,
   });
-  attackerIdleDuration = bootstrap.attackerIdleDuration;
+  engagement.setIdleDuration(bootstrap.attackerIdleDuration);
   laneController.setWalkDurations(bootstrap.locomotionClipDurations);
   neutralStance.setIdleDuration(bootstrap.defenderIdleDuration);
   defenderSword = bootstrap.defenderSword;
@@ -692,7 +603,7 @@ function frame(timestamp) {
       deltaSeconds,
       deltaMs,
       selectedDirection,
-      hasAttackerRecovery: Boolean(attackerRecovery),
+      hasAttackerRecovery: engagement.hasRecovery,
       beginAttackRecovery,
     });
     // R21J.1: a swing that ends without the combat path completing it - the blade missed, or it
@@ -701,7 +612,7 @@ function frame(timestamp) {
     // frames, then moved 0.011m in the next. Every other lab in this repo already begins the
     // recovery on the attack's own completion; only this one relied on the combat path, which is
     // why the snap appeared exactly when a player FAILED to answer a swing.
-    if (snapshot.completed && !attackerRecovery) beginAttackRecovery(selectedDirection);
+    if (snapshot.completed && !engagement.hasRecovery) beginAttackRecovery(selectedDirection);
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
 
     laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active, // R20W.2: and whether
@@ -723,7 +634,7 @@ function frame(timestamp) {
       const currentBlade = captureBladePolyline();
       preContactController.update(snapshot, currentBlade, deltaSeconds);
       resolveContact(snapshot, currentBlade, deltaSeconds);
-      previousBlade = currentBlade;
+      engagement.rememberBlade(currentBlade);
     }
     // R21D.1: after contact resolution, so a confirmation landing this frame still wins. An
     // accepted attempt whose attack has ended can never be confirmed - letting it stay armed
@@ -736,7 +647,7 @@ function frame(timestamp) {
     if (hudClockMs >= HUD_INTERVAL_MS) { hudClockMs %= HUD_INTERVAL_MS; updateHud(snapshot, combatSnapshot); }
     if (reportClockMs >= REPORT_INTERVAL_MS) { reportClockMs %= REPORT_INTERVAL_MS; buildReport(combatSnapshot); }
 
-    if (!combat.active && !attackRuntime.active && !attackerRecovery && (guardMachine.state === GUARD_STATES.HOLD || selectedMode === 'block') && autoRepeat.checked && !opponentDrive?.checked) { // R21E.1: the drive owns the cadence when it is on
+    if (!combat.active && !attackRuntime.active && !engagement.hasRecovery && (guardMachine.state === GUARD_STATES.HOLD || selectedMode === 'block') && autoRepeat.checked && !opponentDrive?.checked) { // R21E.1: the drive owns the cadence when it is on
       repeatCooldownMs += deltaMs;
       if (repeatCooldownMs >= 700) startAttack(selectedDirection);
     }
