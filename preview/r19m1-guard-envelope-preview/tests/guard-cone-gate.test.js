@@ -58,7 +58,8 @@ test('R19Z.1 the gate is decided at commitment and stands the whole response dow
   assert.match(controller, /exchangeState\.latestConeGate = coneGate\.plan/);
   // Folded into the one commitment flag, and into the guard turn's - the sweep measured turn
   // and coverage running together, so they stand down together.
-  const engagedFlag = controller.indexOf('&& coneGate.plan.engaged\n      && !dodgeGuardDown\n      && closeRangePosture.plan.posture');
+  // R23T.1: the sector gate sits between the cone and the dodge in the same commitment.
+  const engagedFlag = controller.indexOf('&& coneGate.plan.engaged\n      && sectorGate.covers\n      && !dodgeGuardDown\n      && closeRangePosture.plan.posture');
   assert.ok(engagedFlag >= 0, 'coverage commitment carries the cone gate and the dodge cost');
   assert.match(controller, /relevance\.relevant && coneGate\.plan\.engaged && !dodgeGuardDown,\n\s+posture:/);
 });

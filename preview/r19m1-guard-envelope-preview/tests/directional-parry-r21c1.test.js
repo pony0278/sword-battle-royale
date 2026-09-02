@@ -87,7 +87,8 @@ test('R21C.1 both doors into the gate carry the aim, and the CI probe points bef
   const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
   const armCalls = entry.split('parryGate.arm(').length - 1;
   assert.equal(armCalls, 2, 'the guard-raise edge and the manual input');
-  assert.equal(entry.split('aimedSector: guardSector.sector').length - 1, 2,
+  // R23T.1: a third reader - the block gate reads the aim through the engagement's context now.
+  assert.equal(entry.split('aimedSector: guardSector.sector').length - 1, 3,
     'a door into the gate that does not carry the aim is a parry without one');
 
   // The gate that verifies parries in CI drives them through triggerParryNow, which never touched

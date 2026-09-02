@@ -1,4 +1,5 @@
 import { createBoundedShieldArmAdditiveRuntime } from '../combat/predictive-parry-arm-additive.js';
+import { planGuardSectorGate } from '../combat/guard-sector-gate.js';
 import { createTopPrepReadabilityHoldRuntime } from '../combat/parry-top-prep-readability-hold.js';
 import { createGuardCoverageDirector } from '../combat/guard-coverage-director.js';
 import { assessSwingThreatRelevance } from '../combat/swing-threat-relevance.js';
@@ -90,7 +91,7 @@ export function createShieldParryPreContactController({
   let innerReach = null; // R20T.2, cached the same way and for the same reason
   let coneGate = null;
   function updateBlockPreContact(snapshot, currentBlade, deltaSeconds, context) {
-    const { previousBlade, defenderSword, separationMeters, defenderFacingErrorRadians, dodgeReport, stanceReport } = context;
+    const { previousBlade, defenderSword, separationMeters, defenderFacingErrorRadians, dodgeReport, stanceReport, aimedSector = null } = context;
     // R20F.1: a dodge's cost is its guard. Read per frame rather than latched per exchange,
     // because the dodge can begin or end mid-swing and the exposure must follow it exactly.
     // R20G.1 (B6c): and the guard itself is now an input - no held key, no committed defence.
@@ -143,10 +144,15 @@ export function createShieldParryPreContactController({
       });
     }
     exchangeState.latestConeGate = coneGate.plan;
+    // R23T.1: the sector gate. Re-planned every frame rather than latched per sequence, because
+    // the shield can be moved into the sector mid-swing - that is the whole of the direction game.
+    const sectorGate = planGuardSectorGate({ direction: snapshot.direction, aimedSector });
+    exchangeState.latestSectorGate = sectorGate;
     const baselineSurface = buckler.getWorldParrySurface();
     const engaged = snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
       && relevance.relevant
       && coneGate.plan.engaged
+      && sectorGate.covers
       && !dodgeGuardDown
       && closeRangePosture.plan.posture !== 'hold-at-neutral';
     // R19Q.1: a fresh plan object every frame is the liveness signal the facing integrator keys

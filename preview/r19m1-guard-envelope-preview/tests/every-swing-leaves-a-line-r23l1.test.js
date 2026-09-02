@@ -10,7 +10,6 @@ import { createSwingLedger, SWING_LEDGER_STAGE } from '../src/game/swing-ledger.
 // looking at can record what actually happened. This file proves the record says what happened,
 // in the words a person reads between exchanges, and that the lab writes it at the right moments.
 
-const src = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 test('R23L.1 a refused swing is a line that says why, with the stance it was refused at', () => {
   const ledger = createSwingLedger();
@@ -72,8 +71,8 @@ test('R23L.1 the ledger is a ring: newest first, the oldest falls off, the numbe
 test('R23L.1 the lab settles a swing on its falling edge and the HUD shows the lines', () => {
   // Composition claims about browser code, so they are read rather than run. The falling edge is
   // the one frame on which the swing's body hit is final and the lane has not yet been rebased.
-  const entry = src('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js');
+  const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
   assert.match(entry, /playerWasSwinging = false; swingLedger\.settle\(\{ bodyHit: playerEngagement\.exchangeState\.latestBodyHit/);
-  const ui = src('../tools/action-studio/shield-parry-r281/lab-ui.js');
+  const ui = readFileSync(new URL('../tools/action-studio/shield-parry-r281/lab-ui.js', import.meta.url), 'utf8');
   assert.match(ui, /model\.swingLedger\.hudLines\.join\('\\n'\)/);
 });
