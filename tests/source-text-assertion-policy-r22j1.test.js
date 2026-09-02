@@ -98,7 +98,9 @@ function census() {
 // R23L.1 raised toolsText and total by two: the entry settles the ledger on the swing's falling
 // edge and the HUD joins its lines - both composition claims about browser code. KEEP.
 // R23M.1 raised toolsText and total by one: the copy button is bound in browser UI code. KEEP.
-const BASELINE = Object.freeze({ total: 1161, srcText: 361, toolsText: 635, html: 157, absence: 146 });
+// R23P.1 raised srcText by one and toolsText by two: the lane pays the ground a blow owes before
+// the feet read the gap, and both body-struck hooks in the entry settle the ground. KEEP.
+const BASELINE = Object.freeze({ total: 1164, srcText: 362, toolsText: 637, html: 157, absence: 146 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();
