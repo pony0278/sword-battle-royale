@@ -86,9 +86,9 @@ import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-report
 import { createShieldParryPlayerController } from '../../src/game/player-controller.js';
 import { createWeaponMountController } from '../../src/game/weapon-mount-controller.js';
 import { createSwingLedger } from '../../src/game/swing-ledger.js';
+import { createPlayerAttackController } from './shield-parry-r281/player-attack-controller.js';
 import { createEngagement } from '../../src/game/engagement.js';
 import { createDuel } from '../../src/game/duel.js';
-import { planSwingPermission } from '../../src/combat/swing-permission.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
@@ -125,7 +125,6 @@ let playerEngagement = null;
 // R23G.1: which way the player swung. Taken from the aim they are already holding rather than from
 // keys of its own - the sector is set by the mouse, drawn by the HUD indicator, and was already the
 // thing they point with to defend. One aim, both verbs.
-let playerDirection = 'top';
 let playerWasSwinging = false; // R23G.1: the falling edge is what banks the step
 
 // The two dials a playtest may turn, both defaulting to what ships: how long a swing takes
@@ -534,44 +533,19 @@ function isParryPreContactReviewActive(snapshot = attackRuntime.snapshot) {
 // Refused while either engagement is live, and that is the LEDGER's rule surfacing rather than a
 // new one: engagement-ground holds one advance runtime and one swinging slot, so two swings at once
 // would not be a harder fight, it would be one swing wearing the other's arithmetic.
-let playerAttackRefusal = null; // R23J.1: a refusal a player cannot see is a bug they cannot report
-function startPlayerAttack() {
-  const permission = planSwingPermission({ ready: ready && Boolean(playerEngagement),
-    opponentMidExchange: combat.active || attackRuntime.active, ownExchangeUncleared: playerEngagement?.combat.active,
-    alreadySwinging: playerEngagement?.attackRuntime.active, stillRecovering: playerEngagement?.hasRecovery,
-    beingStruck: bodyStrikeReaction.active, canAct: defenderFighter.condition.report.canAct }); // R23Q.1: beingStruck
-  const aimed = guardSector.sector;
-  if (!permission.allowed) { playerAttackRefusal = permission.reason; swingLedger.recordRefusal({ direction: aimed || 'top', reason: permission.reason, separationMeters: laneController.separationMeters }); return false; }
-  playerDirection = aimed || 'top';
-  // R23J.1: the two-actor integration refuses a second attack until its last one is cleared - the
-  // opponent's restartAttack has always done this and the player's path never did, so the second
-  // swing of a session was silently refused with every guard above it reading clear.
-  playerEngagement.combat.reset();
-  playerEngagement.resetExchange();
-  playerEngagement.rememberBlade(playerEngagement.captureBlade());
-  const started = playerEngagement.combat.startAttack(playerDirection);
-  if (!started.accepted) { playerAttackRefusal = `combat-refused-${started.reason || 'unknown'}`; swingLedger.recordRefusal({ direction: playerDirection, reason: playerAttackRefusal, separationMeters: laneController.separationMeters }); return false; }
-  swingLedger.recordSwing({ direction: playerDirection, separationMeters: laneController.separationMeters, mount: weaponMount?.report.applied, mode: selectedMode, locked: playerController?.locked });
-  laneController.startAttack(playerDirection, playerEngagement.attackRuntime.snapshot?.action?.runtime?.contactSeconds, { swinger: 'defender' });
-  status.textContent = `YOU SWING ${playerDirection.toUpperCase()}${aimed ? '' : ' · nothing aimed yet, so TOP'}`;
-  status.className = 'warn';
-  return true;
-}
 // R23J.1: the result layer. Its rule is in src/combat/fighter-condition.js and its two-fighter
 // half in src/game/duel.js; what stays here is the page it publishes to.
 const duel = createDuel({
   playerCondition: defenderFighter.condition, opponentCondition: attackerFighter.condition,
   publishStatus({ text, className }) { status.textContent = text; status.className = className; },
 });
-function resolvePlayerContact(snapshot, currentBlade, deltaSeconds) {
-  const resolved = playerEngagement.contactHandoff.resolveContact(snapshot, currentBlade, deltaSeconds, {
-    previousBlade: playerEngagement.previousBlade, selectedMode: 'block', selectedDirection: playerDirection,
-  });
-  const settled = laneController.settle(playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome);
-  if (settled) playerEngagement.exchangeState.latestEngagementGround = settled;
-  duel.spendExchangeOn(playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, defenderFighter.condition);
-  return resolved;
-}
+// R23R.1: the player's swing, moved out whole for room - see player-attack-controller.js.
+const playerAttack = createPlayerAttackController({
+  laneController, guardSector, swingLedger, duel, status, playerFighter: defenderFighter,
+  readPlayerEngagement: () => playerEngagement, readWeaponMount: () => weaponMount, readReady: () => ready,
+  readSelectedMode: () => selectedMode, readOpponentMidExchange: () => combat.active || attackRuntime.active,
+  readLocked: () => playerController?.locked,
+});
 function resolveContact(snapshot, currentBlade, deltaSeconds) {
   const resolved = contactHandoffController.resolveContact(snapshot, currentBlade, deltaSeconds, {
     previousBlade: engagement.previousBlade,
@@ -664,7 +638,7 @@ bindShieldParryLabUiEvents({
     onDebugResetDefaults: resetDebugStanceDefaults,
     onDefenderIntent: (intent) => laneController.setDefenderIntent(intent), onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
     onDefenderLateralIntent: (intent) => laneController.setDefenderLateralIntent(intent), onGuardKey: (held) => setGuardHeld(held), // R19V.1 + R20G.1
-    onAttack: () => startPlayerAttack(), // R23G.1 the player's own swing
+    onAttack: () => playerAttack.start(), // R23G.1 the player's own swing
     onDodge: (direction) => requestDodge(direction), // R20F.1 through the stance gate
     onMoveIntent: (moveIntent) => playerController.setMoveIntent(moveIntent), // R20S.3 WASD, world frame
     onLockToggle: () => playerController.toggleLock(), // R20S.3 Tab
@@ -742,11 +716,11 @@ function frame(timestamp) {
     attackerFighter.bodyStrikeReaction.sample(deltaMs); // R23Q.1: last writer on the opponent - R23J.1 started this reaction and nothing ever sampled it
 
     const playerFrame = playerEngagement?.contactHandoff.updateCombatBeforeGuard({
-      deltaSeconds, deltaMs, selectedDirection: playerDirection,
+      deltaSeconds, deltaMs, selectedDirection: playerAttack.direction,
       hasAttackerRecovery: playerEngagement.hasRecovery,
       beginAttackRecovery: (direction) => playerEngagement.beginRecovery(direction),
     });
-    if (playerSnapshot?.completed && !playerEngagement.hasRecovery) playerEngagement.beginRecovery(playerDirection);
+    if (playerSnapshot?.completed && !playerEngagement.hasRecovery) playerEngagement.beginRecovery(playerAttack.direction);
 
     laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active, // R20W.2: and whether
       selectedMode !== 'block' || defenderStance.report.guardActive === true); // the guard owns the torso
@@ -763,7 +737,7 @@ function frame(timestamp) {
     contactHandoffController.updateDefenderDeflectReleaseGate();
     playerEngagement?.contactHandoff.updateDefenderDeflectReleaseGate();
     playerEngagement?.contactHandoff.updateLiveConstraintAfterGuard({
-      deltaSeconds, selectedDirection: playerDirection, needsUpdate: playerFrame?.liveConstraintNeedsUpdate,
+      deltaSeconds, selectedDirection: playerAttack.direction, needsUpdate: playerFrame?.liveConstraintNeedsUpdate,
     });
     contactHandoffController.updateLiveConstraintAfterGuard({
       deltaSeconds,
@@ -788,7 +762,7 @@ function frame(timestamp) {
     if (playerEngagement && playerSnapshot?.action && !playerEngagement.exchangeState.firstContact) {
       const playerBlade = playerEngagement.captureBlade();
       playerEngagement.preContact.update(playerSnapshot, playerBlade, deltaSeconds);
-      resolvePlayerContact(playerSnapshot, playerBlade, deltaSeconds);
+      playerAttack.resolveContact(playerSnapshot, playerBlade, deltaSeconds);
       playerEngagement.rememberBlade(playerBlade);
     }
     // R21D.1: after contact resolution, so a confirmation landing this frame still wins. An
@@ -869,7 +843,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     opponentDriveController,
     get weaponMount() { return weaponMount; }, // a getter: built after the load, so a captured null would never update
     playerEngagement: () => playerEngagement, // R23G.1: same reason, and a thunk so the facade holds no stale null
-    playerAttackRefusal: () => playerAttackRefusal, // R23J.1
+    playerAttackRefusal: () => playerAttack.refusal, // R23J.1
     swingLedger, // R23L.1
   },
   debugMode: DEBUG_MODE,
