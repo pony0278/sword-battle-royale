@@ -1,7 +1,7 @@
 import { GUARD_STATES } from './guard-state-machine.js';
 import { GUARD_WEAPON_MOUNT_PROFILE_IDS } from './guard-counter-presentation.js';
 
-export const WEAPON_MOUNT_POLICY_STAGE = 'R23E.1';
+export const WEAPON_MOUNT_POLICY_STAGE = 'R23K.1';
 
 // R23E.1 — which way the sword sits in the hand, and why one answer cannot be right for both
 // things a fighter does.
@@ -32,18 +32,34 @@ export const WEAPON_MOUNT_POLICY_STAGE = 'R23E.1';
 // WHAT THIS DELIBERATELY DOES NOT DO: touch the attacker. Their blade is the measured contact
 // surface - createBladePolylineSampler reads it and measureSweptSwordBucklerClosestApproach decides
 // outcomes from it - and swapping their mount mid-swing moves the polyline's far point 0.608m,
-// against a buckler of 27.5cm radius. That is not a look change, it is a different fight. The
-// defender's sword is only ever .update()d for its own line geometry and is measured by nothing,
-// which is why it is the one that may be experimented on.
+// against a buckler of 27.5cm radius. That is not a look change, it is a different fight.
+//
+// R23K.1 - the player's sword stopped being "measured by nothing" at R23G.1, when the player got a
+// swing of their own and the same sampler started reading THEIR blade. That is where the 24.98
+// degrees became a fight rather than a look. Measured in the running lab, pinned at 1/60, the
+// farthest stance from which a player's swing still reaches the opponent's body:
+//
+//   player, Skyrim mount        TOP 2.6m   RIGHT 2.6m   LEFT 2.4m   (2.5m misses by 0.07m)
+//   player, KayKit mount        TOP 2.7m   RIGHT 2.6m   LEFT 2.6m
+//   opponent (KayKit, always)   TOP 2.8m   RIGHT 2.6m   LEFT 2.6m
+//
+// The stance the lab opens at, and the one the automated opponent walks back to, is 2.38-2.40m.
+// TOP and RIGHT had 0.2m to spare under the Skyrim mount and LEFT had seven centimetres, so LEFT
+// landed 3 swings in 7 in a real session and was decided by frame phase. The low sweep is the one
+// pose in which a 25-degree turn of the blade pulls the far point in the most. Under the KayKit
+// mount the player's LEFT lands 6 in 7 - the seventh at a stance the opponent's LEFT misses too.
+//
+// So the mount follows the hand, and a swing counts as the hand being posed by a UAL clip even
+// while the guard machine still reads HOLD - which in parry mode it does for the whole swing.
 export const WEAPON_MOUNT_MODES = Object.freeze({
-  // What ships: the Skyrim-calibrated mount, all the time, on a fighter who only ever guards.
+  // The Skyrim-calibrated mount, all the time: what shipped from R23E.1 to R23J.1, kept as a dial.
   SKYRIM: 'skyrim',
   KAYKIT: 'kaykit',
-  // The rule this stage exists to put in front of a person: the mount follows the family.
+  // What ships from R23K.1: the mount follows whichever family is posing the hand this frame.
   FOLLOW: 'follow',
 });
 
-export const WEAPON_MOUNT_MODE_DEFAULT = WEAPON_MOUNT_MODES.SKYRIM;
+export const WEAPON_MOUNT_MODE_DEFAULT = WEAPON_MOUNT_MODES.FOLLOW;
 
 export function resolveWeaponMountMode(value) {
   // Absent is not a typo, and this distinction has bitten this project before: R21V.1's ?sprint=
@@ -66,15 +82,21 @@ export function resolveWeaponMountMode(value) {
 
 // Which family is posing this hand right now. The guard presentation owns the rig in every state
 // but NEUTRAL - that is what GUARD_STATES.NEUTRAL carrying clipId: null means - so neutral is
-// exactly the window in which a UAL clip is what a fighter is wearing: the idle they stand in, and
-// the swing they will throw once one exists.
+// exactly the window in which a UAL clip is what a fighter is wearing: the idle they stand in.
+// The swing is the other UAL window, and it is not a guard state: measured in the lab, the guard
+// machine reads guard_hold from the first frame of a player's swing to the last when parry mode is
+// on, because the swing borrows the arm without telling the machine. So `swinging` is its own
+// input, and it wins - strictly `true`, so a runtime object handed in by mistake is not a swing.
 export function planWeaponMount(input = {}) {
-  const { mode = WEAPON_MOUNT_MODE_DEFAULT, guardState = null } = input;
+  const { mode = WEAPON_MOUNT_MODE_DEFAULT, guardState = null, swinging = false } = input;
   if (mode === WEAPON_MOUNT_MODES.KAYKIT) {
     return frozen(GUARD_WEAPON_MOUNT_PROFILE_IDS.KAYKIT_DEFAULT, mode, 'held-at-kaykit');
   }
   if (mode !== WEAPON_MOUNT_MODES.FOLLOW) {
     return frozen(GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD, mode, 'held-at-skyrim');
+  }
+  if (swinging === true) {
+    return frozen(GUARD_WEAPON_MOUNT_PROFILE_IDS.KAYKIT_DEFAULT, mode, 'a-ual-swing-is-posing-the-hand');
   }
   const guardOwnsTheHand = guardState != null && guardState !== GUARD_STATES.NEUTRAL;
   return frozen(

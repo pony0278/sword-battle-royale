@@ -23,27 +23,32 @@ import { readLabExperimentParameters } from '../tools/action-studio/shield-parry
 const SKYRIM = GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD;
 const KAYKIT = GUARD_WEAPON_MOUNT_PROFILE_IDS.KAYKIT_DEFAULT;
 
-test('R23E.1 nothing ships changed: with no ?mount= the sword stays where it was mounted', () => {
-  assert.equal(WEAPON_MOUNT_MODE_DEFAULT, WEAPON_MOUNT_MODES.SKYRIM);
+// R23E.1 shipped SKYRIM as the default and pinned it here as "nothing ships changed". R23K.1
+// changed what ships - the reason is measured in src/combat/weapon-mount-policy.js and asserted in
+// the-mount-follows-the-swing-r23k1.test.js - so this test keeps only the half that is still
+// R23E.1's: absent is not a typo, and the default holds through every guard state.
+test('R23E.1 with no ?mount= the sword gets the shipped default, and absent is not a typo', () => {
+  assert.ok(Object.values(WEAPON_MOUNT_MODES).includes(WEAPON_MOUNT_MODE_DEFAULT));
   for (const absent of [undefined, null, '', '   ']) {
-    assert.equal(resolveWeaponMountMode(absent).mode, WEAPON_MOUNT_MODES.SKYRIM);
+    assert.equal(resolveWeaponMountMode(absent).mode, WEAPON_MOUNT_MODE_DEFAULT);
     // Absent is not a typo. R21V.1's ?sprint= made exactly this mistake in the other direction -
     // a missing parameter read as a value - and a URL that asked for nothing must not be reported
     // as having asked for something wrong.
     assert.equal(resolveWeaponMountMode(absent).reason, 'not-asked-for', `${JSON.stringify(absent)}`);
   }
-  // And the default holds through every guard state, so no state can quietly move it.
+  // And whatever the default is, planning under it agrees with planning under its name, so no
+  // state can quietly move it somewhere the named mode would not.
   for (const state of Object.values(GUARD_STATES)) {
-    assert.equal(planWeaponMount({ guardState: state }).profileId, SKYRIM, `${state} under the default`);
+    assert.equal(planWeaponMount({ guardState: state }).profileId,
+      planWeaponMount({ mode: WEAPON_MOUNT_MODE_DEFAULT, guardState: state }).profileId, `${state} under the default`);
   }
 });
 
 test('R23E.1 a typo is named rather than silently taken as the default', () => {
   assert.equal(resolveWeaponMountMode('kaykit').reason, 'asked-for');
-  assert.equal(resolveWeaponMountMode('follow').reason, 'asked-for');
-  assert.equal(resolveWeaponMountMode('skyrim').reason, 'shipped-default');
+  assert.equal(resolveWeaponMountMode(WEAPON_MOUNT_MODE_DEFAULT).reason, 'shipped-default');
   const typo = resolveWeaponMountMode('kaykot');
-  assert.equal(typo.mode, WEAPON_MOUNT_MODES.SKYRIM, 'an unknown mode falls back');
+  assert.equal(typo.mode, WEAPON_MOUNT_MODE_DEFAULT, 'an unknown mode falls back');
   assert.equal(typo.reason, 'unknown-mode', 'and says it fell back');
   // Case and spacing are a person typing, not a different request.
   assert.equal(resolveWeaponMountMode(' FOLLOW ').mode, WEAPON_MOUNT_MODES.FOLLOW);
@@ -143,10 +148,11 @@ test('R23E.1 a controller with only one mount to reach for refuses to be built',
 
 test('R23E.1 the dial reaches the lab through the same reader as every other one', () => {
   const params = (search) => readLabExperimentParameters(new URLSearchParams(search));
-  assert.equal(params('').weaponMountMode, WEAPON_MOUNT_MODES.SKYRIM);
+  assert.equal(params('').weaponMountMode, WEAPON_MOUNT_MODE_DEFAULT);
   assert.equal(params('').weaponMountReason, 'not-asked-for');
-  assert.equal(params('mount=skyrim').weaponMountReason, 'shipped-default',
+  assert.equal(params(`mount=${WEAPON_MOUNT_MODE_DEFAULT}`).weaponMountReason, 'shipped-default',
     'asking for the default explicitly is a different fact from not asking');
+  assert.equal(params('mount=skyrim').weaponMountMode, WEAPON_MOUNT_MODES.SKYRIM);
   assert.equal(params('mount=follow').weaponMountMode, WEAPON_MOUNT_MODES.FOLLOW);
   assert.equal(params('mount=kaykit').weaponMountMode, WEAPON_MOUNT_MODES.KAYKIT);
   assert.equal(params('mount=nonsense').weaponMountReason, 'unknown-mode');
