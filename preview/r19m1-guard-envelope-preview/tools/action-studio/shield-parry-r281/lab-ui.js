@@ -505,11 +505,44 @@ function bindGuardAim(canvas, handlers) {
   });
 }
 
+// R23H.1 — the attack is the left mouse button, and free look moves out of its way.
+//
+// The aim was already on the mouse: bindGuardAim follows every pointermove and the HUD draws the
+// sector it picks. Putting the swing on a key left the hand holding the aim with nothing to press,
+// which is the shape of the question rather than an answer to it.
+//
+// WHY pointerdown rather than a click, which would be a drag-versus-click threshold and no conflict
+// at all: this is the most timing-sensitive input in the game. The parry window it has to be read
+// inside is 120ms, and waiting for a release adds a delay the PLAYER controls, so two identical
+// intentions would land at different times. An attack fires when the button goes down.
+//
+// WHICH MEANS free look gives up the left button. That costs nothing in a fight and it is measured
+// rather than assumed: free-movement-controller's look() returns immediately while locked, and
+// locked is the mode an exchange happens in - so in the fight the left button was already dead.
+// Right-drag looks now, which is the other half of the same convention.
+//
+// Touch keeps the drag it had. A finger has no buttons, and the on-screen pad already carries every
+// verb; giving touch an attack is its own change, and this one does not pretend to have made it.
+function bindAttack(canvas, handlers) {
+  if (!canvas || typeof handlers.onAttack !== 'function') return;
+  canvas.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'touch' || event.button !== 0) return;
+    event.preventDefault();
+    canvas.focus?.({ preventScroll: true });
+    handlers.onAttack();
+  });
+}
+
 function bindFreeLook(canvas, handlers) {
   if (!canvas || typeof handlers.onLook !== 'function') return;
   let dragging = false;
   let lastX = null;
-  canvas.addEventListener('pointerdown', (event) => { dragging = true; lastX = event.clientX; });
+  // The right button opens a context menu by default, which would eat the drag on the first frame.
+  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+  canvas.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch' && event.button !== 2) return;
+    dragging = true; lastX = event.clientX;
+  });
   canvas.addEventListener('pointermove', (event) => {
     if (!dragging || lastX == null) return;
     handlers.onLook(event.clientX - lastX);
@@ -528,6 +561,7 @@ export function bindShieldParryLabUiEvents({
   elements,
   handlers,
 }) {
+  bindAttack(canvas, handlers);
   bindFreeLook(canvas, handlers);
   bindGuardAim(canvas, handlers);
   bindDirectionalParry(documentRef, canvas, handlers);
@@ -619,9 +653,9 @@ export function bindShieldParryLabUiEvents({
       if (!event.repeat) handlers.onLockToggle?.();
       return;
     }
-    // R23G.1: the attack key. K, because I-J-L already carry the directional guard and K is the
-    // middle of that same inverted T - one hand aims and defends, the same hand strikes, and the
-    // direction comes from the aim rather than from three more keys.
+    // R23G.1: the attack, on a key. R23H.1 gave it the left mouse button, which is where the aim
+    // already was and where this genre puts it - K stays as the keyboard alternative, for a hand
+    // that is not on the mouse and for probes that would rather press a key than aim one.
     if (event.code === 'KeyK' && !event.repeat) {
       event.preventDefault();
       handlers.onAttack?.();
