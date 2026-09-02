@@ -114,7 +114,9 @@ function census() {
 // sector gate's composition - one is R23P.1's lane read, surfaced), toolsText 651, absence 148.
 // R23U.1: two composition claims on the entry (the guard sample waits for the swing; a swinging body
 // guards nothing), and the R23S.1 'drops the shield' claim became an absence. KEEP.
-const BASELINE = Object.freeze({ total: 1183, srcText: 364, toolsText: 654, html: 157, absence: 149 });
+// R23W.1: two composition claims on the entry - the opponent's swing is recorded when it starts and
+// settled on its falling edge. KEEP; the lines themselves are called.
+const BASELINE = Object.freeze({ total: 1185, srcText: 364, toolsText: 656, html: 157, absence: 149 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

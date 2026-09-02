@@ -39,15 +39,15 @@ test('R23M.1 the copied text carries the run around the swings, newest first lik
     'build g43b5r281-test',
     '模式 parry · 鎖定 是 · 掛點 follow(not-asked-for) 現在 skyrim · 對手 自動 · 2.38m',
     '血量 你 100 / 對手 80',
-    '出刀 2 次，最近 2 筆（新→舊）：',
-    '#2 LEFT 2.20m 沒出招: already-swinging',
-    '#1 RIGHT 2.40m→2.20m 命中 chest 掛點 kaykit',
+    '交鋒 2 次，最近 2 筆（新→舊）：',
+    '#2 你 LEFT 2.20m 沒出招: already-swinging',
+    '#1 你 RIGHT 2.40m→2.20m 命中 chest 掛點 kaykit',
   ]);
 });
 
 test('R23M.1 a copy before any swing still says which build and mode it was, and that nothing was thrown', () => {
   const text = formatSwingLedgerReport({ context: { build: 'b' } });
-  assert.deepEqual(text.split('\n'), ['build b', '模式 — · 鎖定 — · 掛點 — · 對手 手動', '血量 —', '出刀 0 次（尚未出刀）']);
+  assert.deepEqual(text.split('\n'), ['build b', '模式 — · 鎖定 — · 掛點 — · 對手 手動', '血量 —', '交鋒 0 次（尚未有人出刀）']);
   // Unknowns are shown as unknown, never guessed: a lock the page did not report is not "off".
   assert.match(formatSwingLedgerReport({ context: { locked: false } }), /鎖定 否/);
   assert.match(formatSwingLedgerReport({ context: {} }), /鎖定 —/);
