@@ -1,6 +1,7 @@
 import { clampAttackTempoScale } from '../../../src/combat/attack-tempo.js';
 import { SPRINT_SPEED_BRACKET_MPS, resolveSprintSpeed } from '../../../src/combat/sprint-locomotion.js';
 import { resolveSprintArmClip } from '../../../src/combat/sprint-arm-overlay.js';
+import { resolveWeaponMountMode } from '../../../src/combat/weapon-mount-policy.js';
 
 export const LAB_EXPERIMENT_PARAMETERS_STAGE = 'R21V.1';
 
@@ -41,6 +42,15 @@ export function readLabExperimentParameters(query) {
   // clip's authored speed and the game's. Only meaningful with ?wholebody=1, since without it the
   // legs are not wearing the run at all.
   const runPlaybackAuthored = wholeBodyRun && read('footslide') !== '0';
+  // R23E.1: how the PLAYER's sword sits in their hand. ?mount=kaykit holds it at the attacker's
+  // mount, ?mount=follow lets it change with whichever authoring family is posing the hand, and
+  // anything else - including absent - is the Skyrim-calibrated mount that ships.
+  //
+  // The player's, and only the player's. The attacker's blade is the surface every contact
+  // measurement is taken from, and swapping their mount moves the swept polyline's far point
+  // 0.608m against a 27.5cm shield - a different fight, not a different look. The defender's sword
+  // is measured by nothing, which is what makes it the one that can be experimented on.
+  const mount = resolveWeaponMountMode(read('mount'));
   return Object.freeze({
     stage: LAB_EXPERIMENT_PARAMETERS_STAGE,
     tempoScale: clampAttackTempoScale(read('tempo')),
@@ -56,6 +66,8 @@ export function readLabExperimentParameters(query) {
     sprintArmPhaseOffset: arms.phaseOffset,
     wholeBodyRun,
     runPlaybackAuthored,
+    weaponMountMode: mount.mode,
+    weaponMountReason: mount.reason,
     authority: 'playtest-parameters-only-no-contact-authority',
   });
 }

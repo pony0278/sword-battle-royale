@@ -79,11 +79,15 @@ export async function bootstrapShieldParryLabAssets({ THREE, attacker, defender,
   if (!bind?.correctionQuaternion) throw new Error(`${labStage} requires Skyrim Guard weapon bind calibration`);
 
   const defenderSword = createDebugSword(THREE);
-  mountDebugSword(
-    defender,
-    defenderSword,
-    composeSkyrimWeaponMountCalibration(THREE, DEFAULT_KAYKIT_SWORD_MOUNT, bind),
-  );
+  // R23E.1: both mounts, named and kept. The Skyrim one is what the defender is mounted with and
+  // what ships; the KayKit one is the attacker's, and the only reason to hold on to it is that a
+  // fighter who both guards and swings needs to be able to change between them. Composed once here
+  // because the correction is read out of the loaded clip and this is the only place that has it.
+  const defenderMounts = Object.freeze({
+    'skyrim-guard-calibrated': composeSkyrimWeaponMountCalibration(THREE, DEFAULT_KAYKIT_SWORD_MOUNT, bind),
+    'kaykit-default': DEFAULT_KAYKIT_SWORD_MOUNT,
+  });
+  mountDebugSword(defender, defenderSword, defenderMounts['skyrim-guard-calibrated']);
 
   const defenderIdleDuration = defender.getAnimationDuration(NEUTRAL_IDLE_CLIP_ID) || 1;
   // R20W.2: measured off the registered clips rather than restated, and keyed by clip id because
@@ -97,7 +101,7 @@ export async function bootstrapShieldParryLabAssets({ THREE, attacker, defender,
       .map((clipId) => [clipId, attacker.getAnimationDuration(clipId) || 1]),
   ));
   return Object.freeze({
-    attackerIdleDuration, defenderIdleDuration, locomotionClipDurations, defenderSword,
+    attackerIdleDuration, defenderIdleDuration, locomotionClipDurations, defenderSword, defenderMounts,
     // R23D.1: what was shared and on whose say-so, so the page can report it rather than the
     // reader having to trust this file.
     librarySharing: sharing,

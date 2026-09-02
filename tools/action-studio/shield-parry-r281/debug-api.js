@@ -89,6 +89,9 @@ export function createShieldParryDebugApi({
     get laneDefenderTravelPlan() { return runtimes.laneController?.defenderTravelPlan ?? null; },
     // R21A.2: where the player is pointing. Read-only, and nothing consults it to decide anything.
     get guardSector() { return runtimes.guardSector?.report ?? null; },
+    // R23E.1: which mount the player's sword is wearing and why. A dial nobody can read the state
+    // of is a dial nobody can tell was on.
+    get weaponMount() { return runtimes.weaponMount?.report ?? null; },
     // R21C.2: attempts per direction, split by why they missed.
     get parryTally() { return runtimes.parryTally?.rows ?? null; },
     // R21E.1: where the self-driving opponent thinks it is and what it will throw next.

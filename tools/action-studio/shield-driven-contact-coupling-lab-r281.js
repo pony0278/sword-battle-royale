@@ -91,6 +91,7 @@ import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
 import { createFrameClock } from '../../src/game/frame-clock.js';
 import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-reporter.js';
 import { createShieldParryPlayerController } from '../../src/game/player-controller.js';
+import { createWeaponMountController } from '../../src/game/weapon-mount-controller.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
@@ -118,6 +119,7 @@ const {
 const INSPECTION_CAMERA = DEBUG_QUERY.get('camera') === 'free';
 const inspectionOverlay = createShieldParryInspectionOverlay({ THREE, scene });
 let defenderSword = null;
+let weaponMount = null; // R23E.1: ?mount=, built once the load has both calibrations
 
 // The two dials a playtest may turn, both defaulting to what ships: how long a swing takes
 // (?tempo=, R21O.1 - the golden grid and the parry gate are a record of the exchange at 1x) and how
@@ -614,6 +616,9 @@ async function main() {
   laneController.setWalkDurations(bootstrap.locomotionClipDurations);
   neutralStance.setIdleDuration(bootstrap.defenderIdleDuration);
   defenderSword = bootstrap.defenderSword;
+  // R23E.1: ?mount=. The PLAYER's sword only - the attacker's blade is what every contact
+  // measurement is taken from, and moving it 0.608m is a different fight, not a different look.
+  weaponMount = createWeaponMountController({ weapon: defenderSword, mounts: bootstrap.defenderMounts, mode: EXPERIMENT.weaponMountMode, readGuardState: () => guardMachine.state });
   exchangeState.previousShieldLeadSurface = cloneSurface(buckler.getWorldParrySurface());
   ready = true;
   status.textContent = `${LAB_STAGE} READY · both fighters idle · choose BLOCK or PARRY, then an attack direction`;
@@ -711,6 +716,7 @@ function frame(timestamp) {
       selectedDirection,
       needsUpdate: contactFrame.liveConstraintNeedsUpdate,
     });
+    weaponMount?.frame(); // R23E.1: before the swords redraw, so a changed mount is what they draw
     attackerSword.update(); defenderSword?.update(); contactHandoffController.recordVisibleOldB3Sample(exchangeState.latestCombatUpdate);
 
     if (!exchangeState.firstContact) {
@@ -794,6 +800,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     guardSector,
     parryTally,
     opponentDriveController,
+    get weaponMount() { return weaponMount; }, // a getter: built after the load, so a captured null would never update
   },
   debugMode: DEBUG_MODE,
   getDebugStanceProfile: () => debugStanceProfile,
