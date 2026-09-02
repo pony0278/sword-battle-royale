@@ -85,7 +85,10 @@ import { createFrameClock } from '../../src/game/frame-clock.js';
 import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-reporter.js';
 import { createShieldParryPlayerController } from '../../src/game/player-controller.js';
 import { createWeaponMountController } from '../../src/game/weapon-mount-controller.js';
+import { createSwingLedger } from '../../src/game/swing-ledger.js';
 import { createEngagement } from '../../src/game/engagement.js';
+import { createDuel } from '../../src/game/duel.js';
+import { planSwingPermission } from '../../src/combat/swing-permission.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
@@ -114,6 +117,7 @@ const INSPECTION_CAMERA = DEBUG_QUERY.get('camera') === 'free';
 const inspectionOverlay = createShieldParryInspectionOverlay({ THREE, scene });
 let defenderSword = null;
 let weaponMount = null; // R23E.1: ?mount=, built once the load has both calibrations
+const swingLedger = createSwingLedger(); // R23L.1: every swing the player throws leaves a line on the HUD
 // R23G.1: the player's own engagement, swinging the other way. Built in main() rather than here
 // because it needs the defender's sword, and that sword's calibration is read out of a clip that
 // has not loaded yet. Null until then, and every frame call below is guarded on `ready`.
@@ -250,7 +254,9 @@ const engagement = createEngagement(THREE, {
     separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, lateGuardRaise, // R19N.1 + R19Z.1 + R20F.1 + R20G.1 + R20J.1 read the live lane
   }),
   callbacks: {
-    onBodyStruck: (bodyContact) => bodyStrikeReaction.start(bodyContact), readDodgeReport: () => laneController.dodgeReport, // R19K.1 + R20F.1
+    // R23J.1: the flinch AND the wound. onBodyStruck is the one signal that means a blade genuinely
+    // landed - latestBodyHit also holds near-misses - so it is the only honest place to spend health.
+    onBodyStruck: (bodyContact) => { bodyStrikeReaction.start(bodyContact); duel.landBlowOn(defenderFighter.condition); }, readDodgeReport: () => laneController.dodgeReport,
     readGuardActive: () => selectedMode !== 'block' || defenderStance.report.guardActive === true, // R20G.1: parry mode keeps its armed guard
     updateLiveContactMarkers: (report) => inspectionOverlay.update(report),
     formatInspectionFailureSummary,
@@ -329,6 +335,10 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     sprintReport: () => ({ ...playerController.sprintReport, armClip: laneController.defenderSprintArmClip, gait: laneController.defenderGait }), // R20U.1
     parryTally: () => parryTally.summary, // R21C.2
     opponent: () => opponentDriveController.summary, // R21E.1
+    // R23J.1: the duel, for the one HUD line a player actually needs.
+    duel: () => duel.report,
+    swingLedger: () => swingLedger.report, // R23L.1
+    weaponMount: () => weaponMount?.report ?? null, // R23M.1: for the copied run's header
     parryTallyReport: () => parryTally.reportText, // R21G.2: the whole run, pasteable
   },
 });
@@ -454,7 +464,9 @@ function startAttack(direction = selectedDirection) {
   if (!ready || combat.active || attackRuntime.active || engagement.hasRecovery) return false;
   // R23G.1: and not into the player's swing either. One advance runtime, one swinging slot - the
   // refusal is symmetric because the ledger underneath is.
-  if (playerEngagement?.attackRuntime.active || playerEngagement?.combat.active) return false;
+  // R23J.1: and a parried or downed opponent does not swing - what makes the stagger a RULE.
+  if (playerEngagement?.attackRuntime.active || playerEngagement?.combat.active
+    || !attackerFighter.condition.report.canAct) return false;
   // B6c: parry mode keeps its armed guard; block mode raises only what the held key says.
   if ((selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
   selectedDirection = direction;
@@ -522,27 +534,42 @@ function isParryPreContactReviewActive(snapshot = attackRuntime.snapshot) {
 // Refused while either engagement is live, and that is the LEDGER's rule surfacing rather than a
 // new one: engagement-ground holds one advance runtime and one swinging slot, so two swings at once
 // would not be a harder fight, it would be one swing wearing the other's arithmetic.
+let playerAttackRefusal = null; // R23J.1: a refusal a player cannot see is a bug they cannot report
 function startPlayerAttack() {
-  if (!ready || !playerEngagement) return false;
-  if (combat.active || attackRuntime.active || playerEngagement.combat.active
-    || playerEngagement.attackRuntime.active || playerEngagement.hasRecovery) return false;
+  const permission = planSwingPermission({ ready: ready && Boolean(playerEngagement),
+    opponentMidExchange: combat.active || attackRuntime.active, ownExchangeUncleared: playerEngagement?.combat.active,
+    alreadySwinging: playerEngagement?.attackRuntime.active, stillRecovering: playerEngagement?.hasRecovery,
+    canAct: defenderFighter.condition.report.canAct });
   const aimed = guardSector.sector;
+  if (!permission.allowed) { playerAttackRefusal = permission.reason; swingLedger.recordRefusal({ direction: aimed || 'top', reason: permission.reason, separationMeters: laneController.separationMeters }); return false; }
   playerDirection = aimed || 'top';
-  playerEngagement.resetExchangeState({ previousShieldLeadSurface: null });
+  // R23J.1: the two-actor integration refuses a second attack until its last one is cleared - the
+  // opponent's restartAttack has always done this and the player's path never did, so the second
+  // swing of a session was silently refused with every guard above it reading clear.
+  playerEngagement.combat.reset();
+  playerEngagement.resetExchange();
   playerEngagement.rememberBlade(playerEngagement.captureBlade());
   const started = playerEngagement.combat.startAttack(playerDirection);
-  if (!started.accepted) return false;
+  if (!started.accepted) { playerAttackRefusal = `combat-refused-${started.reason || 'unknown'}`; swingLedger.recordRefusal({ direction: playerDirection, reason: playerAttackRefusal, separationMeters: laneController.separationMeters }); return false; }
+  swingLedger.recordSwing({ direction: playerDirection, separationMeters: laneController.separationMeters, mount: weaponMount?.report.applied, mode: selectedMode, locked: playerController?.locked });
   laneController.startAttack(playerDirection, playerEngagement.attackRuntime.snapshot?.action?.runtime?.contactSeconds, { swinger: 'defender' });
   status.textContent = `YOU SWING ${playerDirection.toUpperCase()}${aimed ? '' : ' · nothing aimed yet, so TOP'}`;
   status.className = 'warn';
   return true;
 }
+// R23J.1: the result layer. Its rule is in src/combat/fighter-condition.js and its two-fighter
+// half in src/game/duel.js; what stays here is the page it publishes to.
+const duel = createDuel({
+  playerCondition: defenderFighter.condition, opponentCondition: attackerFighter.condition,
+  publishStatus({ text, className }) { status.textContent = text; status.className = className; },
+});
 function resolvePlayerContact(snapshot, currentBlade, deltaSeconds) {
   const resolved = playerEngagement.contactHandoff.resolveContact(snapshot, currentBlade, deltaSeconds, {
     previousBlade: playerEngagement.previousBlade, selectedMode: 'block', selectedDirection: playerDirection,
   });
   const settled = laneController.settle(playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome);
   if (settled) playerEngagement.exchangeState.latestEngagementGround = settled;
+  duel.spendExchangeOn(playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, defenderFighter.condition);
   return resolved;
 }
 function resolveContact(snapshot, currentBlade, deltaSeconds) {
@@ -556,6 +583,7 @@ function resolveContact(snapshot, currentBlade, deltaSeconds) {
   parryTally.recordOutcome(selectedDirection, snapshot?.sequence, exchangeState.latestCombatResult?.resolution?.outcome, exchangeState.latestBodyHit?.contact === true);
   const settled = laneController.settle(exchangeState.latestCombatResult?.resolution?.outcome);
   if (settled) exchangeState.latestEngagementGround = settled;
+  duel.spendExchangeOn(exchangeState.latestCombatResult?.resolution?.outcome, attackerFighter.condition); // they swung, so a parry staggers them
   return resolved;
 }
 
@@ -601,7 +629,7 @@ async function main() {
       dodgeReport: null, stanceReport: { guardActive: false }, lateGuardRaise: false,
     }),
     callbacks: {
-      onBodyStruck: (bodyContact) => attackerFighter.bodyStrikeReaction.start(bodyContact),
+      onBodyStruck: (bodyContact) => { attackerFighter.bodyStrikeReaction.start(bodyContact); duel.landBlowOn(attackerFighter.condition); },
       readDodgeReport: () => null,
       readGuardActive: () => false,
       updateLiveContactMarkers: () => {},
@@ -612,7 +640,7 @@ async function main() {
   playerEngagement.setIdleDuration(bootstrap.defenderIdleDuration);
   // R23E.1: ?mount=. The PLAYER's sword only - the attacker's blade is what every contact
   // measurement is taken from, and moving it 0.608m is a different fight, not a different look.
-  weaponMount = createWeaponMountController({ weapon: defenderSword, mounts: bootstrap.defenderMounts, mode: EXPERIMENT.weaponMountMode, readGuardState: () => guardMachine.state });
+  weaponMount = createWeaponMountController({ weapon: defenderSword, mounts: bootstrap.defenderMounts, mode: EXPERIMENT.weaponMountMode, readGuardState: () => guardMachine.state, readSwinging: () => playerEngagement?.attackRuntime.active === true }); // R23K.1: the swing is a UAL window the guard machine cannot see
   exchangeState.previousShieldLeadSurface = cloneSurface(buckler.getWorldParrySurface());
   ready = true;
   status.textContent = `${LAB_STAGE} READY · both fighters idle · choose BLOCK or PARRY, then an attack direction`;
@@ -631,7 +659,7 @@ bindShieldParryLabUiEvents({
     onView: (view) => setView(view),
     onForceOldB3: () => forceOldTwoActorB3(selectedDirection),
     onParryInput: (inputSource, event) => dispatchParryInput(inputSource, event),
-    onRetryAttack: () => restartAttack(selectedDirection),
+    onRetryAttack: () => { if (duel.verdict.over) duel.reset(); return restartAttack(selectedDirection); },
     onDebugApplyRetry: () => restartAttack(selectedDirection),
     onDebugResetDefaults: resetDebugStanceDefaults,
     onDefenderIntent: (intent) => laneController.setDefenderIntent(intent), onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
@@ -691,7 +719,7 @@ function frame(timestamp) {
     // nothing was telling it this one had stopped. The opponent's side banks at the START of its
     // next attack instead, which is what the golden grid was measured against and is therefore not
     // changed here; the two ought to agree, and that is its own change with its own evidence.
-    if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; }
+    if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; swingLedger.settle({ bodyHit: playerEngagement.exchangeState.latestBodyHit, outcome: playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.separationMeters }); }
     playerWasSwinging = Boolean(playerSnapshot?.action);
     const laneSwing = playerSnapshot?.action ? playerSnapshot : snapshot;
     laneController.update(laneSwing.elapsedSeconds, Boolean(laneSwing.action), laneSwing.phase); // R20B.1 phase rides along
@@ -741,7 +769,10 @@ function frame(timestamp) {
       selectedDirection,
       needsUpdate: contactFrame.liveConstraintNeedsUpdate,
     });
-    weaponMount?.frame(); // R23E.1: before the swords redraw, so a changed mount is what they draw
+    // R23J.1: the stagger burns down on the wall clock, not the review-slowed one - a second taken
+    // out of the fight is a second the player waits through, whatever the tempo dial is set to.
+    duel.advance(rawDeltaMs);
+    weaponMount?.frame(); if (playerEngagement?.attackRuntime.active) swingLedger.note({ mount: weaponMount?.report.applied }); // R23E.1: before the swords redraw, so a changed mount is what they draw; R23L.1: and the ledger sees the mount the blade is wearing
     attackerSword.update(); defenderSword?.update(); contactHandoffController.recordVisibleOldB3Sample(exchangeState.latestCombatUpdate);
 
     if (!exchangeState.firstContact) {
@@ -801,6 +832,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     setGuardHeld, setFixedStepMs: (ms) => frameClock.setFixedStep(ms), // R20G.1 + R20K.1: drivers hold the guard, harnesses pin the clock
     tryDodge: requestDodge, // R20G.1: same gate as the keys - the facade may not skip the stance
     forceOldTwoActorB3,
+    resetDuel: () => duel.reset(), // R23J.1: both fighters back to full, for a probe or a second duel
     resetLane: () => (combat.active || attackRuntime.active ? null : laneController.resetLane()),
     captureBladeGeometry: () => ({ blade: captureBladePolyline(), surface: buckler.getWorldParrySurface() }),
     // R21A.1: the passive half of the call above, safe to read mid-swing. captureBladePolyline only
@@ -836,6 +868,8 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     opponentDriveController,
     get weaponMount() { return weaponMount; }, // a getter: built after the load, so a captured null would never update
     playerEngagement: () => playerEngagement, // R23G.1: same reason, and a thunk so the facade holds no stale null
+    playerAttackRefusal: () => playerAttackRefusal, // R23J.1
+    swingLedger, // R23L.1
   },
   debugMode: DEBUG_MODE,
   getDebugStanceProfile: () => debugStanceProfile,

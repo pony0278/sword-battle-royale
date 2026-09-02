@@ -47,8 +47,17 @@ test('R18M.C6 leaves a deliberately thin authority entry without redundant contr
   // FOR. Raising the ceiling to fit that is honest; hiding wiring somewhere unnatural to fit under
   // it would not be. The headroom is real again, and the next thing to hit this should move code
   // out rather than move the number.
+  // R23J.1 raised it 700 -> 720, and moved code out FIRST rather than instead. The duel arrived at
+  // 726 with the result layer inline; src/game/duel.js took the two-fighter half (70 lines) and
+  // src/combat/swing-permission.js took the input gate (33), which is 103 lines of logic gone and
+  // still 706 left. What remains is one construction, four call sites, a HUD read and a recorded
+  // refusal - construction and wiring, which is what the entry is FOR. The headroom is 14 lines and
+  // step 6 has to extract again; there is nothing left here to raise the number over.
   const codeLines = countCodeLines(entrySource);
-  assert.ok(codeLines <= 700, `R281 entry should stay at or below 700 code lines, got ${codeLines}`);
+  assert.ok(codeLines <= 720, `R281 entry should stay at or below 720 code lines, got ${codeLines}`);
+  // A raise is only honest if the extraction is real, so the two modules it rests on are named.
+  assert.ok(!entrySource.includes('function announceDuel'), 'the duel judges in src/game/duel.js');
+  assert.ok(!entrySource.includes("=> refuse('"), 'the swing gate plans in src/combat/swing-permission.js');
   // A raise is only honest if it is not the whole story: the drive's own logic must be elsewhere.
   assert.ok(!entrySource.includes('planOpponentDrive'), 'the drive plans in src/combat, not here');
   assert.ok(!entrySource.includes('OPPONENT_ENGAGEMENT_BAND'), 'the entry holds no measured band');

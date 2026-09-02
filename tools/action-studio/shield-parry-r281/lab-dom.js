@@ -1,6 +1,7 @@
 // R18M.3 — DOM lookup only. No gameplay/runtime authority lives here.
 
 const REQUIRED_IDS = Object.freeze([
+  'hudDuel',
   'hudAttack',
   'hudInput',
   'parryCue',
@@ -21,6 +22,7 @@ const REQUIRED_IDS = Object.freeze([
   'autoRepeat',
   'opponentDrive',
   'copyTally',
+  'copySwings', // R23M.1
   'slowReview',
   'showSurface',
   'forceOldB3',

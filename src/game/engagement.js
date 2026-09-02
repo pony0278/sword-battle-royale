@@ -165,6 +165,28 @@ export function createEngagement(THREE, {
     captureBlade,
     readBladeForMeasurement,
     resetExchangeState(options) { return resetShieldParryExchangeState(exchangeState, options); },
+    // R23J.1: everything this engagement and its receiver carry between exchanges, cleared together.
+    //
+    // Added because the player's swing did not have it: R23G.1 reset the blackboard and nothing
+    // else, so the grip constraint, the intercept and the receiver's guard runtimes all stayed in
+    // the state the first blow left them in and no second blow ever resolved. The measurement was
+    // that health dropped once, from 100 to 80, and then never again however many times the swing
+    // was thrown - a duel that could only ever land its first hit.
+    //
+    // The opponent's side keeps its own hand-written reset for now: that path is what the golden
+    // grid replays, and moving it is a change with its own evidence rather than a tidy-up.
+    resetExchange({ previousShieldLeadSurface = null } = {}) {
+      gripConstraint.reset();
+      contactHandoff.resetRootDisplacement();
+      preContact.resetActiveIntercept();
+      receiverFighter.parryGate.reset();
+      receiverFighter.bracingRuntime.resetImpact();
+      receiverFighter.fineTrackingRuntime.reset();
+      receiverFighter.residualBodyReachRuntime.reset();
+      receiverFighter.residualStanceReachRuntime.reset();
+      receiverFighter.predictivePresentation.reset();
+      return resetShieldParryExchangeState(exchangeState, { previousShieldLeadSurface });
+    },
     // The swinger's recovery and idle, which are one clock between them: beginning a recovery
     // restarts the idle, because the idle is what the recovery eases back into.
     beginRecovery(direction) {
