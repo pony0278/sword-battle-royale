@@ -2,7 +2,7 @@ import { createSeededRandom } from './opponent-drive.js';
 import { GUARD_SECTORS } from './guard-sector.js';
 import { defendedSectorFor } from './attack-direction-as-defended.js';
 
-export const OPPONENT_GUARD_STAGE = 'R23T.1';
+export const OPPONENT_GUARD_STAGE = 'R23X.1';
 
 // R23T.1 — which sector the opponent's shield is in, and why that is the whole of step 6b.
 //
@@ -21,9 +21,20 @@ export const OPPONENT_GUARD_STAGE = 'R23T.1';
 // 180ms window gives a person. coverChance is what makes the duel winnable: a shield that reads
 // every swing is a wall. Between swings the shield stays where it last was, which is what a
 // person's shield does too; a swing into the sector it already holds is blocked without a read.
+// R23X.1 - and whether a read swing is parried rather than blocked. Measured with an armer that
+// fires on an exact sim frame: mirroring the player's block-mode raise (arm the opponent's parry
+// gate against the player's swing, then the intercept drive and the predictive presentation the
+// player's accepted arm sets in motion) resolves `parry` for all three directions when armed at
+// 0.12s before contact. The gate's window is [0.18, 0.06]; arming at 0.17 is refused as
+// not-yet-committed or lands anyway (RIGHT), arming at 0.07 still parries but leaves no margin.
+// Across 0.16-0.07 the rest of the cells were whiffs, never a hit on the opponent, so a parry
+// attempt that misses its frame costs the opponent nothing - which is why the chance can be
+// modest without being a wall: the read decides the sector, and a parry needs the sector first.
 export const OPPONENT_GUARD_PROFILE = Object.freeze({
   reactionSeconds: 0.18,
   coverChance: 0.6,
+  parryChance: 0.35,
+  parryArmTtcSeconds: 0.12,
   restSector: 'top',
   authority: 'decides-only-whether-the-shield-is-held-and-which-sector-no-contact-authority',
 });
@@ -46,11 +57,31 @@ function finite(value, fallback = 0) {
 // the same seed answers the same fight the same way - the R21E.1 property, kept.
 export function decideOpponentGuard(random, profile = OPPONENT_GUARD_PROFILE) {
   const roll = typeof random === 'function' ? finite(random()) : 1;
+  const willCover = roll < finite(profile.coverChance);
+  // A second draw for the parry, so the two chances are independent dials and a seed that used
+  // to answer "cover?" the same way still does - R23X.1 added a draw after it, not inside it.
+  const parryRoll = typeof random === 'function' ? finite(random()) : 1;
   return Object.freeze({
-    willCover: roll < finite(profile.coverChance),
+    willCover,
+    willParry: willCover && parryRoll < finite(profile.parryChance),
     reactionSeconds: Math.max(0, finite(profile.reactionSeconds)),
+    parryArmTtcSeconds: Math.max(0, finite(profile.parryArmTtcSeconds)),
     roll,
+    parryRoll,
   });
+}
+
+// Pure. Does the shield arm a parry THIS frame? Once per swing, only after the read has moved the
+// shield into the sector, only when the blade is inside the measured arming margin.
+export function planOpponentParry({ threat = null, decision = null, alreadyArmed = false, shieldInSector = false } = {}) {
+  const verdict = (arm, reason) => Object.freeze({ stage: OPPONENT_GUARD_STAGE, arm, reason });
+  if (threat?.active !== true) return verdict(false, 'no-swing-to-parry');
+  if (!decision?.willParry) return verdict(false, 'this-swing-is-blocked-not-parried');
+  if (alreadyArmed) return verdict(false, 'already-armed-for-this-swing');
+  if (!shieldInSector) return verdict(false, 'shield-not-yet-in-the-sector');
+  const ttc = finite(threat.timeToContactSeconds, Infinity);
+  if (ttc > decision.parryArmTtcSeconds) return verdict(false, 'blade-not-yet-inside-the-arming-margin');
+  return verdict(true, 'arm-the-parry-now');
 }
 
 // Pure. Given the swing coming at them (or none), what they decided about it, where the shield
