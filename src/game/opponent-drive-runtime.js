@@ -42,6 +42,7 @@ export function createOpponentDriveRuntime(options = {}) {
       intent: lastPlan?.intent ?? 0,
       reason: lastPlan?.reason ?? 'never-driven',
       inBand: lastPlan?.inBand ?? null,
+      underSwing: lastPlan?.underSwing ?? false, // R24A.1
       repositioning,
       offsetMeters: lastPlan?.offsetMeters ?? null,
       band,
@@ -52,7 +53,7 @@ export function createOpponentDriveRuntime(options = {}) {
   return Object.freeze({
     // deltaMs is real time, not the review-scaled clock: a tester slowing the review down is
     // slowing the fight they are watching, not asking the opponent to think more slowly.
-    frame({ deltaMs = 0, separationMeters = null, attackAvailable = false } = {}) {
+    frame({ deltaMs = 0, separationMeters = null, attackAvailable = false, underSwing = false } = {}) { // R24A.1
       const open = attackAvailable === true;
       // The rest is measured from the moment the gate opens, and re-drawn each time it does, so a
       // long exchange never banks credit toward the next swing.
@@ -62,7 +63,7 @@ export function createOpponentDriveRuntime(options = {}) {
 
       lastPlan = planOpponentDrive({
         separationMeters, attackAvailable: open, restedMs, restTargetMs,
-        nextDirection: sequence.upcoming, repositioning, profile, band,
+        nextDirection: sequence.upcoming, repositioning, profile, band, underSwing: underSwing === true,
       });
       repositioning = lastPlan.repositioning;
       return lastPlan;
