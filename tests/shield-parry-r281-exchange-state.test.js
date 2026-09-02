@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { codeOnly } from './support/source-text.js';
 import {
   SHIELD_PARRY_EXCHANGE_STATE_KEYS,
   SHIELD_PARRY_EXCHANGE_STATE_GROUPS,
@@ -14,7 +15,8 @@ const contactHandoffController = await readFile(new URL('../src/game/contact-han
 const visualOwnershipRuntimeTaps = await readFile(new URL('../tools/action-studio/shield-parry-r281/visual-ownership-runtime-taps.js', import.meta.url), 'utf8');
 const debugApi = await readFile(new URL('../tools/action-studio/shield-parry-r281/debug-api.js', import.meta.url), 'utf8');
 const frameReporting = await readFile(new URL('../tools/action-studio/shield-parry-r281/frame-reporting.js', import.meta.url), 'utf8');
-const exchangeOwnershipSources = `${entry}\n${preContactController}\n${contactHandoffController}\n${visualOwnershipRuntimeTaps}\n${debugApi}\n${frameReporting}`;
+const engagementSource = await readFile(new URL('../src/game/engagement.js', import.meta.url), 'utf8');
+const exchangeOwnershipSources = `${entry}\n${engagementSource}\n${preContactController}\n${contactHandoffController}\n${visualOwnershipRuntimeTaps}\n${debugApi}\n${frameReporting}`;
 
 // R20D.1: pasted literals, grouped. The groups are the map the eventual multiplayer split
 // follows - outcomes and handoffs are simulation, diagnostics and traces are client-side.
@@ -149,31 +151,35 @@ test('R18M.4 reset preserves state identity and restores the exact exchange defa
 });
 
 test('R18M.4 entry uses one explicit exchange owner while lab/runtime lifetime stays separate', () => {
-  assert.match(entry, /src\/game\/exchange-state\.js/);
-  assert.match(entry, /const exchangeState = createShieldParryExchangeState\(\);/);
-  assert.match(entry, /resetShieldParryExchangeState\(exchangeState, \{/);
-  assert.match(entry, /previousShieldLeadSurface: cloneSurface\(buckler\.getWorldParrySurface\(\)\)/);
+  // R23F.1: one owner still, one level down - the blackboard belongs to an exchange, and an
+  // exchange is now a unit. The entry still says when to reset it and with what.
+  assert.match(engagementSource, /const exchangeState = createShieldParryExchangeState\(\);/);
+  assert.match(engagementSource, /resetShieldParryExchangeState\(exchangeState, options\)/);
+  assert.doesNotMatch(codeOnly(entry), /createShieldParryExchangeState\(/, 'the entry builds no second blackboard');
+  assert.match(entry, /engagement\.resetExchangeState\(\{ previousShieldLeadSurface: cloneSurface\(buckler\.getWorldParrySurface\(\)\)/);
 
   for (const key of EXPECTED_EXCHANGE_KEYS) {
     assert.doesNotMatch(exchangeOwnershipSources, new RegExp('\\blet\\s+' + key + '\\b'), 'loose exchange let remains: ' + key);
     assert.match(exchangeOwnershipSources, new RegExp('exchangeState\\.' + key + '\\b'), 'exchange owner is not used for: ' + key);
   }
 
-  for (const persistentName of [
-    'ready',
-    'selectedDirection',
-    'selectedMode',
-    // R20K.1 moved the frame timestamp into frame-clock.js, where the pinned-step measurement
-    // mode lives with it. It is still persistent lab state, just no longer the entry's to hold.
-    'attackerIdleDuration',
-    'attackerIdleClockSeconds',
-    'attackerRecovery',
-    'repeatCooldownMs',
-    'previousBlade',
-    'hudClockMs',
-    'reportClockMs',
+  // R20K.1 moved the frame timestamp into frame-clock.js and R23F.1 moved the swinger's recovery,
+  // idle clock and blade memory into the engagement. The claim is unchanged and is the one that
+  // matters - none of this is a key on the exchange blackboard - so each is checked where it now
+  // lives, under the name it has there.
+  for (const [persistentName, source] of [
+    ['ready', entry],
+    ['selectedDirection', entry],
+    ['selectedMode', entry],
+    ['repeatCooldownMs', entry],
+    ['hudClockMs', entry],
+    ['reportClockMs', entry],
+    ['idleDuration', engagementSource],
+    ['idleClockSeconds', engagementSource],
+    ['recovery', engagementSource],
+    ['previousBlade', engagementSource],
   ]) {
-    assert.match(entry, new RegExp('\\blet\\s+' + persistentName + '\\b'), 'persistent lab/runtime state should stay outside exchange owner: ' + persistentName);
+    assert.match(source, new RegExp('\\blet\\s+' + persistentName + '\\b'), 'persistent lab/runtime state should stay outside exchange owner: ' + persistentName);
   }
 });
 
