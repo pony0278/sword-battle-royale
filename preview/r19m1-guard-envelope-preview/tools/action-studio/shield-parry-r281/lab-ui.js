@@ -303,8 +303,12 @@ export function createShieldParryLabUi(elements) {
         return '█'.repeat(filled) + '·'.repeat(10 - filled);
       };
       const flag = (side) => (side.staggered ? ' 暈眩' : side.alive ? '' : ' 倒下');
+      // R23L.1: and under the bars, the player's last swings - what each asked for and what it
+      // found - because a probe that lands every swing and a person whose swings do nothing are
+      // describing two different runs, and only the page they are both looking at can say which.
+      const ledger = model.swingLedger?.lines?.length ? `\n${model.swingLedger.lines.join('\n')}` : '';
       hudDuel.textContent = `你 ${bar(model.duel.player.fraction)} ${model.duel.player.health}${flag(model.duel.player)}`
-        + `   對手 ${bar(model.duel.opponent.fraction)} ${model.duel.opponent.health}${flag(model.duel.opponent)}`;
+        + `   對手 ${bar(model.duel.opponent.fraction)} ${model.duel.opponent.health}${flag(model.duel.opponent)}${ledger}`;
     }
     // Kept current here rather than assembled on the click, so the button copies exactly the run
     // the tester is looking at even if the HUD is folded away.

@@ -97,6 +97,7 @@ export function createShieldParryDebugApi({
     // R23E.1: which mount the player's sword is wearing and why. A dial nobody can read the state
     // of is a dial nobody can tell was on.
     get weaponMount() { return runtimes.weaponMount?.report ?? null; },
+    get swingLedger() { return runtimes.swingLedger?.report ?? null; }, // R23L.1
     // R23G.1: the player's own swing, from the outside. Whether it is live, where its blade got to
     // and what its exchange concluded - the same three questions the opponent's side already
     // answers, now askable of the half a person is driving.
