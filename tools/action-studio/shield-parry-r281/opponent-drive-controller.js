@@ -1,4 +1,5 @@
 import { createOpponentDriveRuntime } from '../../../src/game/opponent-drive-runtime.js';
+import { createOpponentGuardRuntime } from '../../../src/game/opponent-guard-runtime.js';
 
 // R21E.1 — composition only. This owns no authority: it reads two numbers off the lab and writes
 // back through the same two public verbs a tester's hands use, setAttackerIntent and startAttack.
@@ -13,6 +14,12 @@ export function createOpponentDriveController({
   readAttackAvailable,
   runtime = createOpponentDriveRuntime(),
   tally = null, // R21G.1: told when a run starts, so each run is read on its own sample
+  // R23S.1: the shield. The drive walks and swings; this decides whether the shield is up, and the
+  // lab is handed the verdict through one verb, the way the walk intent and the swing already are.
+  guardRuntime = createOpponentGuardRuntime({ seed: runtime.seed }),
+  readThreat = () => null,
+  readOwnSwinging = () => false,
+  applyGuardHeld = () => {},
 }) {
   if (!laneController || typeof startAttack !== 'function' || typeof readAttackAvailable !== 'function') {
     throw new Error('R21E.1 opponent drive needs the lane, the attack verb and the availability read');
@@ -43,10 +50,13 @@ export function createOpponentDriveController({
       });
       laneController.setAttackerIntent(plan.intent);
       if (plan.attack && startAttack(plan.attack)) runtime.commit(plan.attack);
+      const guard = guardRuntime.frame({ deltaMs: rawDeltaMs, threat: readThreat(), ownSwinging: readOwnSwinging() === true });
+      applyGuardHeld(guard.hold === true);
       return plan;
     },
     setEnabled(on) { if (toggle) toggle.checked = on === true; return enabled(); },
-    reseed: (seed) => runtime.reseed(seed),
+    reseed: (seed) => { guardRuntime.reseed(seed); return runtime.reseed(seed); },
+    get guardReport() { return guardRuntime.report; }, // R23S.1
     get enabled() { return enabled(); },
     get report() { return enabled() ? runtime.report : null; },
     // One HUD line: the seed a tester quotes in a bug report, what is coming, and why it is or is
@@ -63,7 +73,8 @@ export function createOpponentDriveController({
       const gap = report.offsetMeters == null
         ? '—'
         : `${report.offsetMeters >= 0 ? '+' : ''}${report.offsetMeters.toFixed(2)}m`;
-      return `seed ${report.seed} · 下一刀 ${String(report.upcoming).toUpperCase()} · ${report.reason} · 距離差 ${gap} · 已出 ${report.attacksServed}`;
+      const guard = guardRuntime.report;
+      return `seed ${report.seed} · 下一刀 ${String(report.upcoming).toUpperCase()} · ${report.reason} · 距離差 ${gap} · 已出 ${report.attacksServed} · 盾${guard.hold ? '↑' : '↓'} 擋 ${guard.swingsBlocked}/${guard.swingsSeen}`;
     },
   });
 }

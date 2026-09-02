@@ -93,6 +93,11 @@ export function createShieldParryDebugApi({
           defender: runtimes.defenderFighter?.bodyStrikeReaction?.active === true,
           attacker: runtimes.attackerFighter?.bodyStrikeReaction?.active === true,
         }),
+        // R23S.1: whether each shield is up, read off the stance the contact stack reads.
+        guarding: Object.freeze({
+          defender: runtimes.defenderFighter?.stance?.report?.guardActive === true,
+          attacker: runtimes.attackerFighter?.stance?.report?.guardActive === true,
+        }),
       });
     },
     // R20X.1: which way the body is travelling in its own frame, and how far the stride is turned.
@@ -127,6 +132,7 @@ export function createShieldParryDebugApi({
     get parryTally() { return runtimes.parryTally?.rows ?? null; },
     // R21E.1: where the self-driving opponent thinks it is and what it will throw next.
     get opponentDrive() { return runtimes.opponentDriveController?.report ?? null; },
+    get opponentGuard() { return runtimes.opponentDriveController?.guardReport ?? null; }, // R23S.1
     setOpponentDrive: (on) => runtimes.opponentDriveController?.setEnabled(on) ?? false,
     setOpponentSeed: (seed) => runtimes.opponentDriveController?.reseed(seed) ?? null,
     get laneAttackerWalkSample() { return runtimes.laneController?.attackerWalkSample ?? null; },

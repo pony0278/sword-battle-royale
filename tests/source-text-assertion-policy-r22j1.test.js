@@ -102,7 +102,11 @@ function census() {
 // the feet read the gap, and both body-struck hooks in the entry settle the ground. KEEP.
 // R23Q.1 raised toolsText and total by three: the opponent's reaction is sampled last among their
 // writers, and both fighters' attack gates read the reaction - composition of the entry. KEEP.
-const BASELINE = Object.freeze({ total: 1167, srcText: 362, toolsText: 640, html: 157, absence: 146 });
+// R23R.1 moved the player's swing out of the entry: one composition claim (the entry builds the
+// controller) and one absence (it no longer carries the swing) - KEEP; the behaviour is called.
+// R23S.1 raised toolsText by four and absence by one: the entry reads the opponent's stance (two
+// claims), drops the shield to swing, and no longer writes the stance in by hand. KEEP.
+const BASELINE = Object.freeze({ total: 1173, srcText: 362, toolsText: 645, html: 157, absence: 148 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

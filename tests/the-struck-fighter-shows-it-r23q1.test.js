@@ -28,7 +28,11 @@ test('R23Q.1 a fighter being struck may not swing, and is told so by name', () =
 test('R23Q.1 the opponent\'s reaction is sampled after their base pose, and both attack gates read the reaction', () => {
   // Composition of the browser entry, read rather than run.
   const entry = src('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js');
-  assert.match(entry, /sampleAttackerBase\(snapshot, deltaMs\);\n\s*attackerFighter\.bodyStrikeReaction\.sample\(deltaMs\);/);
+  // R23S.1 put the opponent's shield between the base pose and the reaction: base, then guard, then
+  // the blow - the same order the player's writers have run in since R19K.1.
+  assert.match(entry, /sampleAttackerBase\(snapshot, deltaMs\);\n\s*sampleOpponentGuard\(deltaMs\);[^\n]*\n\s*attackerFighter\.bodyStrikeReaction\.sample\(deltaMs\);/);
   assert.match(entry, /!attackerFighter\.condition\.report\.canAct \|\| attackerFighter\.bodyStrikeReaction\.active\) return false;/);
-  assert.match(entry, /beingStruck: bodyStrikeReaction\.active, canAct: defenderFighter\.condition\.report\.canAct/);
+  // R23R.1 moved the player's swing into its own controller; the gate moved with it.
+  const playerAttack = src('../tools/action-studio/shield-parry-r281/player-attack-controller.js');
+  assert.match(playerAttack, /beingStruck: playerFighter\.bodyStrikeReaction\.active, canAct: playerFighter\.condition\.report\.canAct/);
 });
