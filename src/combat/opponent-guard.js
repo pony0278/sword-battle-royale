@@ -29,7 +29,7 @@ export const OPPONENT_GUARD_PROFILE = Object.freeze({
 });
 
 export const OPPONENT_GUARD_REASONS = Object.freeze({
-  SWINGING: 'own-swing-owns-the-body',
+  SWINGING: 'own-swing-owns-the-body-shield-stays',
   STANDING: 'in-guard-where-the-shield-last-was',
   UNDECIDED: 'swing-not-yet-seen',
   DECLINED: 'did-not-read-this-one-shield-stays',
@@ -66,7 +66,10 @@ export function planOpponentGuard({
     ? String(currentSector).toLowerCase()
     : (GUARD_SECTORS.includes(profile.restSector) ? profile.restSector : GUARD_SECTORS[0]);
   const verdict = (hold, sector, reason) => Object.freeze({ stage: OPPONENT_GUARD_STAGE, hold, sector, reason, authority: profile.authority });
-  if (ownSwinging === true) return verdict(false, held, OPPONENT_GUARD_REASONS.SWINGING);
+  // R23U.1: held, not dropped. The player's guard machine stays HOLD through their own swing and
+  // the swing merely owns the pose; mirroring that is what removed the re-entry snap. What the
+  // swing does forbid is moving the shield - a body mid-swing reads nothing.
+  if (ownSwinging === true) return verdict(true, held, OPPONENT_GUARD_REASONS.SWINGING);
   if (threat?.active !== true) return verdict(true, held, OPPONENT_GUARD_REASONS.STANDING);
   if (!decision) return verdict(true, held, OPPONENT_GUARD_REASONS.UNDECIDED);
   if (decision.willCover !== true) return verdict(true, held, OPPONENT_GUARD_REASONS.DECLINED);

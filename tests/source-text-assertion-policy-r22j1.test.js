@@ -112,7 +112,9 @@ function census() {
 // R23S.1 were partly guesses. Every helper read is inlined now and the numbers below are the
 // census's own: srcText 363 (R23T.1 reads the lifecycle and the pre-contact controller for the
 // sector gate's composition - one is R23P.1's lane read, surfaced), toolsText 651, absence 148.
-const BASELINE = Object.freeze({ total: 1181, srcText: 364, toolsText: 652, html: 157, absence: 148 });
+// R23U.1: two composition claims on the entry (the guard sample waits for the swing; a swinging body
+// guards nothing), and the R23S.1 'drops the shield' claim became an absence. KEEP.
+const BASELINE = Object.freeze({ total: 1183, srcText: 364, toolsText: 654, html: 157, absence: 149 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

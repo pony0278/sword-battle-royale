@@ -18,16 +18,20 @@ test('R23S.1 the reaction beats the blade', () => {
     `reaction ${OPPONENT_GUARD_PROFILE.reactionSeconds} vs contact ${MEASURED_CONTACT_SECONDS}`);
 });
 
-test('R23S.1 a body that swings is not holding a shield', () => {
-  const plan = planOpponentGuard({ threat: { active: true, sequence: 1, elapsedSeconds: 0.4, direction: 'top' }, decision: { willCover: true, reactionSeconds: 0 }, ownSwinging: true });
-  assert.equal(plan.hold, false);
+test('R23S.1 a body that swings reads nothing: the shield stays where it was', () => {
+  // R23U.1 reshaped 6a's rule: the guard is held through the swing (the machine stays HOLD, as
+  // the player's does) and only the READ is forbidden - the shield does not move mid-swing.
+  const plan = planOpponentGuard({ threat: { active: true, sequence: 1, elapsedSeconds: 0.4, direction: 'top' }, decision: { willCover: true, reactionSeconds: 0 }, currentSector: 'left', ownSwinging: true });
+  assert.equal(plan.hold, true);
+  assert.equal(plan.sector, 'left');
   assert.equal(plan.reason, OPPONENT_GUARD_REASONS.SWINGING);
 });
 
-test('R23S.1 the lab reads the opponent\'s stance instead of writing it in, and drops the shield to swing', () => {
+test('R23S.1 the lab reads the opponent\'s stance instead of writing it in', () => {
   const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
   assert.match(entry, /stanceReport: attackerFighter\.stance\.report, lateGuardRaise: false,/);
-  assert.match(entry, /readGuardActive: \(\) => attackerFighter\.stance\.report\.guardActive === true,/);
-  assert.match(entry, /selectedDirection = direction;\n\s*syncOpponentGuard\(false\);/);
+  assert.match(entry, /readGuardActive: \(\) => attackerFighter\.stance\.report\.guardActive === true && !attackRuntime\.active,/); // R23U.1 widened it
+  // R23U.1: the shield is no longer dropped to swing - see the-opponent-keeps-guard-r23u1.test.js.
+  assert.doesNotMatch(entry, /syncOpponentGuard\(false\)/);
   assert.doesNotMatch(entry, /stanceReport: \{ guardActive: false \}/);
 });
