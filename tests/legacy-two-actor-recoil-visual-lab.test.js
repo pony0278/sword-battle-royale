@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 
 // R18M split the R281 lab entry into shield-parry-r281/ controllers. The
 // behaviours below are unchanged, but each now lives in the module that owns
@@ -33,7 +34,7 @@ function functionBody(source, name, nextName) {
 
 test('current R281 HTML runs the Step 3A shield to sword to hand entry', () => {
   assert.match(html, /Step 3A · Live Shield → Sword → Wrist-Grip Constraint/);
-  assert.match(html, /shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-running-at-three-r22g1/);
+  assert.match(html, /shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-the-attack-is-the-left-button-r23h1/);
   assert.match(html, /PARRY NOW \(F\)/);
   assert.doesNotMatch(html, /data-mode="perfect"/);
 });
@@ -79,7 +80,9 @@ test('current R281 keeps the verified legacy Two-Actor B3 plan unchanged behind 
 test('current R281 contains no legacy authored-offset coupling, release bridge, Perfect, or balance-break authority', () => {
   assert.doesNotMatch(labSurface, /createShieldDrivenContactCouplingRuntime/);
   assert.doesNotMatch(labSurface, /couplingRuntime\.start/);
-  assert.match(entry, /createLiveShieldSwordGripContactRuntime/);
+  // R23F.1: the grip constraint binds ONE swinger's sword, so it is built with the engagement.
+  assert.match(readFileSync(new URL('../src/game/engagement.js', import.meta.url), 'utf8'),
+    /createLiveShieldSwordGripContactRuntime/);
   assert.doesNotMatch(labSurface, /prepareLegacyReleaseBridge/);
   assert.doesNotMatch(labSurface, /perfect-parry/);
   assert.doesNotMatch(labSurface, /createParryBackwardBalanceBreakRuntime/);

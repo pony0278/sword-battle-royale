@@ -8,11 +8,13 @@ const controller = await readFile(new URL('../src/game/pre-contact-controller.js
 const lifecycleDirector = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
 const parryInterceptDirectorSource = await readFile(new URL('../src/combat/parry-intercept-director.js', import.meta.url), 'utf8');
 const contactHandoffController = await readFile(new URL('../src/game/contact-handoff-controller.js', import.meta.url), 'utf8');
+const engagementSource = await readFile(new URL('../src/game/engagement.js', import.meta.url), 'utf8');
 
 test('R18M.5 entry delegates pre-contact orchestration to one controller', () => {
   assert.equal(typeof createShieldParryPreContactController, 'function');
-  assert.match(entry, /src\/game\/pre-contact-controller\.js/);
-  assert.match(entry, /const preContactController = createShieldParryPreContactController\(\{/);
+  // R23F.1: built in the engagement, driven from the entry's frame - one controller either way.
+  assert.match(engagementSource, /from '\.\/pre-contact-controller\.js'/);
+  assert.match(engagementSource, /createShieldParryPreContactController\(\{/);
   assert.match(entry, /preContactController\.update\(snapshot, currentBlade, deltaSeconds\);/);
   assert.match(contactHandoffController, /preContactController\.recordWhiffProbe\(attackSnapshot, evaluation\)/);
   assert.doesNotMatch(entry, /function updateBlockPreContact\(/);

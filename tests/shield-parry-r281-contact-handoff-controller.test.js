@@ -7,6 +7,7 @@ const entry = await readFile(new URL('../tools/action-studio/shield-driven-conta
 const controller = await readFile(new URL('../src/game/contact-handoff-controller.js', import.meta.url), 'utf8');
 // R18S.4: the lifecycle state machine lives in src; the controller is its lab shell.
 const director = await readFile(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
+const engagementSource = await readFile(new URL('../src/game/engagement.js', import.meta.url), 'utf8');
 
 function indexOrder(source, markers) {
   let cursor = -1;
@@ -19,7 +20,8 @@ function indexOrder(source, markers) {
 
 test('R18M.6 entry delegates contact/release ownership while preserving frame order', () => {
   assert.equal(typeof createShieldParryContactHandoffController, 'function');
-  assert.match(entry, /src\/game\/contact-handoff-controller\.js/);
+  // R23F.1: constructed in the engagement now; the frame order below is still the entry's.
+  assert.match(engagementSource, /createShieldParryContactHandoffController\(\{/);
   assert.match(entry, /contactHandoffController\.updateCombatBeforeGuard\(/);
   assert.match(entry, /guardRuntime\.update\(deltaMs, camera\);/);
   assert.match(entry, /contactHandoffController\.updateDefenderDeflectReleaseGate\(\);/);

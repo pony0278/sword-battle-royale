@@ -9,6 +9,26 @@ import {
   wrapAngleRadians,
 } from '../src/combat/base-facing.js';
 
+import { createShieldParryLaneController } from '../src/game/lane-controller.js';
+import { LONGSWORD_ATTACK_PHASES } from '../src/combat/longsword-directional-attack-runtime.js';
+
+function laneHarness(separationMeters = 2.4) {
+  const stamped = [];
+  const labScene = {
+    engagementStance: { separationMeters },
+    setLanePositions: (report) => stamped.push(report),
+    setDefenderYawOffset: () => {},
+    defender: null,
+    camera: null,
+  };
+  const laneController = createShieldParryLaneController({
+    labScene,
+    walkClips: { forward: 'Walking_A', backward: 'Walking_Backwards' },
+    services: { captureRigPose: () => null, applyRigPose: () => {} },
+  });
+  return { laneController, stamped };
+}
+
 test('R19T.1 a body spawns facing its opponent and turns at a bounded rate after', () => {
   assert.equal(BASE_FACING_STAGE, 'R19T.1');
   const facing = createBaseFacingRuntime();
@@ -46,16 +66,36 @@ test('R19T.1 a frozen facing holds through anything the bearing does', () => {
   assert.ok(Math.abs(after - 1.0) < 1e-12, 'and it resumes chasing when the freeze lifts');
 });
 
-test('R19T.1 the lane controller integrates both facings and stamps them, attacker frozen by the swing', async () => {
-  const lane = await readFile(
-    new URL('../src/game/lane-controller.js', import.meta.url), 'utf8');
-  assert.match(lane, /attackerBaseFacing\.update\(bearings\.attackerFacingRadians, deltaSeconds, \{\n\s+frozen: facingPolicy\.mode === 'frozen',/);
-  assert.match(lane, /defenderBaseFacing\.update\(bearings\.defenderFacingRadians, deltaSeconds\)/);
+// R23C.1 converted this from six source-text matches to the behaviour they were standing in for.
+// They went red for a change that moved nothing: giving the freeze a subject turned one call's
+// options object into a variable, and the regex was pinned to the literal. R22J.1's rule says a
+// claim about behaviour is asserted by driving it, so this drives it.
+test('R19T.1 the lane controller integrates both facings and stamps them, the swinger frozen by the swing', () => {
+  const { laneController, stamped } = laneHarness();
+  // One neutral frame first: a body spawns facing its opponent, so the integrators snap to the
+  // bearing on their first reading and only start integrating from the second.
+  laneController.walk(1 / 60, null);
+  // Off the line, so there is a bearing to chase and a freeze that can be seen refusing to.
+  laneController.moveDefenderWorld(0.9, 0);
+  const beforeAttacker = laneController.attackerBaseFacingRadians;
+  const beforeDefender = laneController.defenderBaseFacingRadians;
+  for (let i = 0; i < 30; i += 1) {
+    laneController.update((i + 1) / 60, true, LONGSWORD_ATTACK_PHASES.ACTIVE);
+    laneController.walk(1 / 60, null);
+  }
+  assert.equal(laneController.attackerBaseFacingRadians, beforeAttacker,
+    'the attacker committed a swing, so their facing is frozen for the length of it');
+  assert.notEqual(laneController.defenderBaseFacingRadians, beforeDefender,
+    'the defender committed nothing, so theirs keeps chasing the bearing');
   // The stamp carries the integrated facings, never the raw bearings - the ledger keeps the
   // bearing as a fact, the scene shows the facing a body actually has.
-  assert.match(lane, /attackerFacingRadians: attackerBaseFacing\.facingRadians/);
-  assert.match(lane, /defenderFacingRadians: defenderBaseFacing\.facingRadians/);
+  const last = stamped.at(-1);
+  assert.equal(last.attackerFacingRadians, laneController.attackerBaseFacingRadians);
+  assert.equal(last.defenderFacingRadians, laneController.defenderBaseFacingRadians);
+  assert.notEqual(last.attackerFacingRadians, last.attackerBearingRadians,
+    'a frozen facing has come apart from the bearing, which is the whole point of integrating it');
   // And a lane reset teleports facing with the fighters.
-  assert.match(lane, /attackerBaseFacing\.snapTo\(0\)/);
-  assert.match(lane, /defenderBaseFacing\.snapTo\(Math\.PI\)/);
+  laneController.resetLane();
+  assert.equal(laneController.attackerBaseFacingRadians, 0);
+  assert.equal(laneController.defenderBaseFacingRadians, Math.PI);
 });

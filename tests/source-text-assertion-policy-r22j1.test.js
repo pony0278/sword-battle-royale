@@ -74,7 +74,26 @@ function census() {
 // Measured by the census() above, not by a script written alongside it - the first draft of this
 // baseline came from a separate classifier and was wrong by three, which is exactly the trap a
 // ratchet is supposed to avoid.
-const BASELINE = Object.freeze({ total: 1163, srcText: 359, toolsText: 639, html: 157, absence: 144 });
+// R23B.1 raised srcText and total by one. The scene grew a second buckler and the assertion that
+// broke ("the defender is equipped") was replaced by two that matter more once there are two
+// fighters: the calibration is the accepted one, and BOTH shields come from one recipe, because two
+// that drift apart is a fairness bug no eye would catch. There is no behavioural version - the
+// scene needs a WebGL canvas. A raise with its reason attached is what this ratchet is for; a raise
+// without one is the thing it exists to stop.
+// R23C.1 lowered srcText by 8 and total by 8, which is the direction this ratchet wants. Two
+// tests went red for a refactor that moved no behaviour - a facing freeze gained a subject, a feet
+// gate gained a second reason to hold - and both were rewritten to DRIVE the claim instead of
+// grepping for it: the freeze is now shown by a facing that refuses to chase while the other one
+// chases, and "a dodge owns the feet" by a held walk key taking a zero step. Both were checked
+// against a deliberately broken lane controller first, so they bite.
+// R23F.1 is a MIGRATION rather than growth, and the two halves say so: srcText rose 352 -> 361
+// while toolsText fell 639 -> 631. One direction of the fight moved out of the entry and into
+// src/game/engagement.js, and the assertions that say "this is composed once, by one owner" moved
+// with the code they are about - they are the KEEP pile, composition with no behaviour to observe
+// without a browser. Total rose by one and absence by two: the two new ones are this stage's own
+// claim, that the entry no longer holds the swinger's recovery or a second blackboard loose, and
+// both read codeOnly() so a comment cannot satisfy them.
+const BASELINE = Object.freeze({ total: 1157, srcText: 361, toolsText: 631, html: 157, absence: 146 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

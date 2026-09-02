@@ -58,14 +58,22 @@ function sliceFunction(text, startMarker) {
 test('R18M.1 baseline targets the actual R18I5 R281 browser entry', () => {
   assert.match(
     html,
-    /<script type="module" src="\.\/shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-running-at-three-r22g1"><\/script>/,
+    /<script type="module" src="\.\/shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-the-attack-is-the-left-button-r23h1"><\/script>/,
   );
   assert.match(html, /BUILD R18I5 TOP\/RIGHT/);
   assert.match(html, /LEFT release (?:仍)?(?:暫緩|deferred)/);
 });
 
 test('R18M.1 locks manual Parry input and authored commitment\/TTC authority', () => {
-  assert.match(source, /const parryGate = createCommittedParryContactGate\(\);/);
+  // R23A.1 deleted an assertion here that matched the literal line `const parryGate =
+  // createCommittedParryContactGate();` in the entry. The gate is assembled by createFighter now,
+  // and the move changed nothing about who owns manual parry authority - which the very next
+  // assertion covers, by checking the entry ARMS the gate manually. The construction site was
+  // never the claim.
+  //
+  // The first replacement was another source-text assertion pointed at fighter.js, and the R22J.1
+  // ratchet failed it. That is the ratchet doing its job on its author, four commits after it was
+  // written, so it stands rather than being argued with.
   assert.match(source, /(?:exchangeState\.)?latestParryInput = parryGate\.arm\(\{/);
   assert.match(source, /manual: true,/);
   // R18S.4: the confirmation decision lives in the lifecycle director; the lab injects the gate.

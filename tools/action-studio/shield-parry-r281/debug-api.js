@@ -3,6 +3,25 @@ import { buildActiveParryInterceptDiagnosis } from './active-parry-intercept-dia
 // R18M.C5 — debug facade composition only.
 // This module exposes injected actions/runtimes and read-only exchange getters; it owns no gameplay authority.
 
+// R23D.1 - the clips a mirror duel needs, named once. The three swings are the attack runtime's
+// own directional table and the guard hold is what a defence is presented from; a fighter missing
+// any of them cannot take that half of the duel, and before this stage each fighter was missing
+// the other's half entirely.
+export const MIRROR_DUEL_REQUIRED_CLIPS = Object.freeze({
+  top: 'UAL1/Sword_Attack',
+  right: 'UAL2/Sword_Regular_A',
+  left: 'UAL2/Sword_Regular_B',
+  guardHold: 'SKYRIM_GUARD/shd_blockidle',
+});
+
+export function clipInventory(character) {
+  if (!character?.hasAnimation) return null;
+  return Object.freeze(Object.fromEntries(
+    Object.entries(MIRROR_DUEL_REQUIRED_CLIPS)
+      .map(([role, clipId]) => [role, character.hasAnimation(clipId) === true]),
+  ));
+}
+
 export function createShieldParryDebugApi({
   actions,
   runtimes,
@@ -49,10 +68,49 @@ export function createShieldParryDebugApi({
     get laneDefenderSprintArmWeight() { return runtimes.laneController?.defenderSprintArmWeight ?? null; },
     // R21Y.1: which run those arms came from, and whether it was asked for or is the default.
     get laneDefenderSprintArmClip() { return runtimes.laneController?.defenderSprintArmClip ?? null; },
+    // R23B.1: proof from the live page that both fighters assembled. Reads the stage rather than the
+    // parts, because what is being checked is that the attacker's rig satisfied every guard runtime
+    // - a failure shows up as a load-time throw, and this is how a probe sees the success.
+    get fighters() {
+      return Object.freeze({
+        defender: runtimes.defenderFighter?.stage ?? null,
+        attacker: runtimes.attackerFighter?.stage ?? null,
+        // R23D.1: and what each of them can actually PLAY, which is a different question from
+        // whether their runtimes assembled and was the one nobody had asked. Read off the live
+        // characters rather than restated from the loader, so a registration that silently did
+        // not happen reads as false here instead of as a throw three steps later.
+        canPlay: Object.freeze({
+          defender: clipInventory(runtimes.defenderFighter?.character),
+          attacker: clipInventory(runtimes.attackerFighter?.character),
+        }),
+      });
+    },
     // R20X.1: which way the body is travelling in its own frame, and how far the stride is turned.
     get laneDefenderTravelPlan() { return runtimes.laneController?.defenderTravelPlan ?? null; },
     // R21A.2: where the player is pointing. Read-only, and nothing consults it to decide anything.
     get guardSector() { return runtimes.guardSector?.report ?? null; },
+    // R23E.1: which mount the player's sword is wearing and why. A dial nobody can read the state
+    // of is a dial nobody can tell was on.
+    get weaponMount() { return runtimes.weaponMount?.report ?? null; },
+    // R23G.1: the player's own swing, from the outside. Whether it is live, where its blade got to
+    // and what its exchange concluded - the same three questions the opponent's side already
+    // answers, now askable of the half a person is driving.
+    get playerSwing() {
+      const player = runtimes.playerEngagement?.();
+      if (!player) return null;
+      const snapshot = player.attackRuntime.snapshot;
+      return Object.freeze({
+        active: player.attackRuntime.active === true,
+        phase: snapshot?.phase ?? null,
+        direction: snapshot?.direction ?? null,
+        elapsedSeconds: Number(snapshot?.elapsedSeconds ?? 0),
+        combatActive: player.combat.active === true,
+        recovering: player.hasRecovery,
+        firstContact: player.exchangeState.firstContact ?? null,
+        latestBodyHit: player.exchangeState.latestBodyHit ?? null,
+        outcome: player.exchangeState.latestCombatResult?.resolution?.outcome ?? null,
+      });
+    },
     // R21C.2: attempts per direction, split by why they missed.
     get parryTally() { return runtimes.parryTally?.rows ?? null; },
     // R21E.1: where the self-driving opponent thinks it is and what it will throw next.

@@ -28,7 +28,18 @@ test('R18M.C1 scene module owns renderer camera characters equipment resize and 
   assert.match(sceneSource, /new THREE\.PerspectiveCamera\(38, 1, 0\.05, 100\)/);
   assert.match(sceneSource, /createDefaultCharacter\(THREE\)/);
   assert.match(sceneSource, /mountDebugSword\(attacker, attackerSword, DEFAULT_KAYKIT_SWORD_MOUNT\)/);
-  assert.match(sceneSource, /mountOffhandBuckler\(defender, buckler, ACCEPTED_OFFHAND_BUCKLER_MOUNT_G423\)/);
+  // R23B.1: both fighters carry a buckler now, so the claim moved from "the defender is equipped"
+  // to the thing that matters once there are two - that they are equipped IDENTICALLY. One helper,
+  // called twice, on one shape and one mount calibration. Two shields that drift apart would be a
+  // fairness bug invisible to the eye.
+  //
+  // Still source-text under R22J.1's rule, and this is the case the rule keeps: the scene needs a
+  // WebGL canvas, so no behavioural version exists in node. It costs the ratchet ONE - the comment
+  // here first claimed it cost nothing, and the ratchet failed it, which is the second time in two
+  // stages that it caught its own author. Two assertions replace one because they are two different
+  // claims: the calibration is the accepted one, and there is only one recipe for both shields.
+  assert.match(sceneSource, /mountOffhandBuckler\(character, shield, ACCEPTED_OFFHAND_BUCKLER_MOUNT_G423\)/);
+  assert.equal((sceneSource.match(/createProceduralBuckler\(/g) || []).length, 1, 'one buckler recipe, not two');
   assert.match(sceneSource, /function resize\(\)/);
   assert.match(sceneSource, /function setView\(view\)/);
   assert.match(sceneSource, /x: 5\.8, y: 1\.7, z: 0\.1/);

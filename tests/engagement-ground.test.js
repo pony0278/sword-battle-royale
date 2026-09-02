@@ -20,18 +20,18 @@ test('R18Z.1 takes the ground each blow moves straight from the recoil profiles'
   assert.equal(ENGAGEMENT_GROUND_STAGE, 'R19U.1');
   // Not transcribed: if the recoil is retuned, the ground it transfers moves with it, because they
   // are the same event described once.
-  assert.equal(ENGAGEMENT_GROUND_TRANSFERS.block.defenderMeters, BLOCK_ROOT_DISPLACEMENT_PROFILES.defender.peakMeters);
-  assert.equal(ENGAGEMENT_GROUND_TRANSFERS.block.attackerMeters, -BLOCK_ROOT_DISPLACEMENT_PROFILES.attacker.peakMeters);
-  assert.equal(ENGAGEMENT_GROUND_TRANSFERS.parry.defenderMeters, PARRY_ROOT_DISPLACEMENT_PROFILES.defender.peakMeters);
-  assert.equal(ENGAGEMENT_GROUND_TRANSFERS.parry.attackerMeters, -PARRY_ROOT_DISPLACEMENT_PROFILES.attacker.peakMeters);
+  assert.equal(ENGAGEMENT_GROUND_TRANSFERS.block.receiverMeters, BLOCK_ROOT_DISPLACEMENT_PROFILES.defender.peakMeters);
+  assert.equal(ENGAGEMENT_GROUND_TRANSFERS.block.swingerMeters, -BLOCK_ROOT_DISPLACEMENT_PROFILES.attacker.peakMeters);
+  assert.equal(ENGAGEMENT_GROUND_TRANSFERS.parry.receiverMeters, PARRY_ROOT_DISPLACEMENT_PROFILES.defender.peakMeters);
+  assert.equal(ENGAGEMENT_GROUND_TRANSFERS.parry.swingerMeters, -PARRY_ROOT_DISPLACEMENT_PROFILES.attacker.peakMeters);
 
   // The two outcomes have to disagree about who loses ground or the parry is not a reward.
   assert.ok(
-    ENGAGEMENT_GROUND_TRANSFERS.block.defenderMeters > -ENGAGEMENT_GROUND_TRANSFERS.block.attackerMeters,
+    ENGAGEMENT_GROUND_TRANSFERS.block.receiverMeters > -ENGAGEMENT_GROUND_TRANSFERS.block.swingerMeters,
     'blocking should cost the defender more ground than it costs the attacker',
   );
   assert.ok(
-    -ENGAGEMENT_GROUND_TRANSFERS.parry.attackerMeters > ENGAGEMENT_GROUND_TRANSFERS.parry.defenderMeters,
+    -ENGAGEMENT_GROUND_TRANSFERS.parry.swingerMeters > ENGAGEMENT_GROUND_TRANSFERS.parry.receiverMeters,
     'parrying should cost the attacker more ground than it costs the defender',
   );
   assert.equal(resolveGroundTransfer('perfect-parry'), ENGAGEMENT_GROUND_TRANSFERS.parry);
@@ -57,9 +57,9 @@ test('R18Z.1 a landed blow banks the step and moves both fighters for good', () 
   lane.setAttackerSwing(step);
   const settled = lane.settleImpact('block');
 
-  const { attackerMeters, defenderMeters } = ENGAGEMENT_GROUND_TRANSFERS.block;
-  assert.ok(Math.abs(settled.attackerGroundMeters - (step + attackerMeters)) < 1e-9);
-  assert.ok(Math.abs(settled.defenderMeters - defenderMeters) < 1e-9);
+  const { swingerMeters, receiverMeters } = ENGAGEMENT_GROUND_TRANSFERS.block;
+  assert.ok(Math.abs(settled.attackerGroundMeters - (step + swingerMeters)) < 1e-9);
+  assert.ok(Math.abs(settled.defenderMeters - receiverMeters) < 1e-9);
   assert.equal(settled.attackerSwingMeters, 0, 'the step is spent once it is banked');
   assert.equal(settled.transfer, ENGAGEMENT_GROUND_TRANSFERS.block);
 
@@ -117,8 +117,8 @@ test('R18Z.1 the ledger is what the ground actually adds up to over an exchange'
   // design, not an oversight -- attacking buys ground.
   const lane = ground();
   const step = ATTACK_ADVANCE_PROFILES.top.metersByContact;
-  const givenBack = ENGAGEMENT_GROUND_TRANSFERS.block.defenderMeters
-    - ENGAGEMENT_GROUND_TRANSFERS.block.attackerMeters;
+  const givenBack = ENGAGEMENT_GROUND_TRANSFERS.block.receiverMeters
+    - ENGAGEMENT_GROUND_TRANSFERS.block.swingerMeters;
   lane.setAttackerSwing(step);
   const after = lane.settleImpact('block');
   assert.ok(Math.abs(after.separationMeters - (START - step + givenBack)) < 1e-9);

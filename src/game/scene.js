@@ -156,13 +156,29 @@ export function createCombatScene({
   const attackerSword = createDebugSword(THREE);
   mountDebugSword(attacker, attackerSword, DEFAULT_KAYKIT_SWORD_MOUNT);
 
-  const buckler = createProceduralBuckler(THREE, {
-    ...ACCEPTED_OFFHAND_BUCKLER_SHAPE_G423,
-    lineMode: true,
-    solidVisible: false,
-  });
-  mountOffhandBuckler(defender, buckler, ACCEPTED_OFFHAND_BUCKLER_MOUNT_G423);
+  // R23B.1: both fighters carry one, on the same accepted calibration. The attacker had none
+  // because nothing had ever asked it to defend - which was the single physical reason a mirror
+  // duel was impossible, everything else being wiring.
+  //
+  // Built by one function called twice rather than by two blocks, so the two shields cannot drift
+  // apart: a mirror duel in which one shield is 2cm wider than the other is a fairness bug nobody
+  // would find by looking.
+  function equipBuckler(character) {
+    const shield = createProceduralBuckler(THREE, {
+      ...ACCEPTED_OFFHAND_BUCKLER_SHAPE_G423,
+      lineMode: true,
+      solidVisible: false,
+    });
+    mountOffhandBuckler(character, shield, ACCEPTED_OFFHAND_BUCKLER_MOUNT_G423);
+    return shield;
+  }
+
+  const buckler = equipBuckler(defender);
+  // The cyan parry disc is an aiming aid for whoever is being attacked, and only the defender is
+  // aimed at today. The attacker's shield is mounted and measurable but not drawn as a target -
+  // one call flips it when the exchange becomes two-directional.
   buckler.setParrySurfaceVisible(true);
+  const attackerBuckler = equipBuckler(attacker);
 
   function resize() {
     const width = Math.max(1, canvas.clientWidth);
@@ -192,6 +208,7 @@ export function createCombatScene({
     defender,
     attackerSword,
     buckler,
+    attackerBuckler,
     resize,
     setView,
     setEngagementSeparation,

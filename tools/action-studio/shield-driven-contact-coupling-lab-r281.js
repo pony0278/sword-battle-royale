@@ -24,7 +24,6 @@ import { createActiveParryInterceptIntent } from '../../src/combat/active-parry-
 import {
   TWO_ACTOR_PARRY_REACTION_CHANNELS,
   TWO_ACTOR_PARRY_REACTION_PHASE_LATCHES,
-  createTwoActorCombatIntegration,
 } from '../../src/combat/two-actor-combat-integration.js';
 import {
   LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE,
@@ -37,7 +36,6 @@ import {
 } from '../../src/combat/committed-parry-contact-gate.js';
 import {
   LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE,
-  createLiveShieldSwordGripContactRuntime,
 } from '../../src/combat/live-shield-sword-grip-contact-constraint.js';
 import {
   sampleLiveParryOldB3ReleaseBlend,
@@ -69,28 +67,25 @@ import { readLabExperimentParameters } from './shield-parry-r281/lab-experiment-
 import { createOpponentDriveController } from './shield-parry-r281/opponent-drive-controller.js'; // R21E.1
 import { createGuardSectorRuntime } from '../../src/game/guard-sector-runtime.js';
 import {
-  createShieldParryExchangeState,
-  resetShieldParryExchangeState,
 } from '../../src/game/exchange-state.js';
-import { createShieldParryPreContactController } from '../../src/game/pre-contact-controller.js';
 import { createVisualOwnershipRuntimeTaps } from './shield-parry-r281/visual-ownership-runtime-taps.js';
-import { createShieldParryContactHandoffController } from '../../src/game/contact-handoff-controller.js';
 import { createCombatScene } from '../../src/game/scene.js';
 import { createFreeInspectionCameraControls } from './free-inspection-camera-controls.js';
-import { cloneSurface, magnitude, createBladePolylineSampler } from '../../src/game/geometry.js';
+import { cloneSurface, magnitude } from '../../src/game/geometry.js';
 import { createShieldParryFrameReporting } from './shield-parry-r281/frame-reporting.js';
 import { createShieldParryLaneController } from '../../src/game/lane-controller.js';
 import { createDefenderStanceRuntime } from '../../src/combat/defender-stance.js';
 import { createShieldParryInspectionOverlay } from './shield-parry-r281/inspection-overlay.js';
-import { createAttackerPresentationAdapter } from '../../src/game/attacker-presentation.js';
 import { createDirectOldB3DiagnosticController } from './shield-parry-r281/direct-old-b3-diagnostic.js';
 import { LANE_WALK_CLIPS, bootstrapShieldParryLabAssets } from '../../src/game/bootstrap.js';
 import { createNeutralStanceController } from '../../src/game/neutral-stance.js';
-import { createBodyStrikeReactionController } from '../../src/game/body-strike-reaction-controller.js';
+import { createFighter } from '../../src/game/fighter.js'; // R23A.1
 import { createShieldParryDebugApi } from './shield-parry-r281/debug-api.js';
 import { createFrameClock } from '../../src/game/frame-clock.js';
 import { createParryWhiffReporter } from './shield-parry-r281/parry-whiff-reporter.js';
 import { createShieldParryPlayerController } from '../../src/game/player-controller.js';
+import { createWeaponMountController } from '../../src/game/weapon-mount-controller.js';
+import { createEngagement } from '../../src/game/engagement.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
@@ -111,13 +106,23 @@ const labScene = createCombatScene({
   separationMeters: DEBUG_QUERY.has('spacing') ? Number(DEBUG_QUERY.get('spacing')) : undefined,
 });
 const {
-  canvas, renderer, scene, camera, freeCamera, attacker, defender, attackerSword, buckler, resize, setView,
+  canvas, renderer, scene, camera, freeCamera, attacker, defender, attackerSword, buckler, attackerBuckler, resize, setView,
 } = labScene;
 // R20S.2: the game's camera by default; ?camera=free hands the frame back to the inspection rig,
 // which is a debugging tool rather than a way anyone plays.
 const INSPECTION_CAMERA = DEBUG_QUERY.get('camera') === 'free';
 const inspectionOverlay = createShieldParryInspectionOverlay({ THREE, scene });
 let defenderSword = null;
+let weaponMount = null; // R23E.1: ?mount=, built once the load has both calibrations
+// R23G.1: the player's own engagement, swinging the other way. Built in main() rather than here
+// because it needs the defender's sword, and that sword's calibration is read out of a clip that
+// has not loaded yet. Null until then, and every frame call below is guarded on `ready`.
+let playerEngagement = null;
+// R23G.1: which way the player swung. Taken from the aim they are already holding rather than from
+// keys of its own - the sector is set by the mouse, drawn by the HUD indicator, and was already the
+// thing they point with to defend. One aim, both verbs.
+let playerDirection = 'top';
+let playerWasSwinging = false; // R23G.1: the falling edge is what banks the step
 
 // The two dials a playtest may turn, both defaulting to what ships: how long a swing takes
 // (?tempo=, R21O.1 - the golden grid and the parry gate are a record of the exchange at 1x) and how
@@ -125,15 +130,22 @@ let defenderSword = null;
 // carries the choice rather than the parsing, and so the tally can stamp both into its conditions.
 const EXPERIMENT = readLabExperimentParameters(DEBUG_QUERY);
 const attackRuntime = createLongswordDirectionalAttackRuntime({ tempoScale: EXPERIMENT.tempoScale });
-const guardMachine = createGuardStateMachine();
-const guardRuntime = createGuardPresentationRuntime(THREE, { machine: guardMachine, character: defender });
-const bracingRuntime = createArticulatedImpactBracingRuntime(THREE, { rig: defender.rig, buckler });
-const fineTrackingRuntime = createGuardThreatTrackingRuntime(THREE, { rig: defender.rig, buckler });
-const residualBodyReachRuntime = createGuardResidualBodyReachRuntime(THREE, { rig: defender.rig, buckler });
-const residualStanceReachRuntime = createGuardResidualStanceReachRuntime(THREE, { rig: defender.rig, buckler });
-const predictivePresentation = createPredictiveInterceptParryPresentationRuntime(THREE, { character: defender });
-const activeParryInterceptIntent = createActiveParryInterceptIntent();
-const parryGate = createCommittedParryContactGate();
+// R23A.1: one fighter, assembled in src/game rather than twelve consts here. Destructured so every
+// reader below is unchanged - this stage moves the assembly and must move nothing else, and the
+// golden grid is what says so. The second fighter is now one more call, not another twelve lines.
+const defenderFighter = createFighter(THREE, { character: defender, buckler, camera });
+// R23B.1: the second fighter. Built but not yet wired to anything - it defends nothing until the
+// contact stack runs both ways (step 4) and nothing drives it until the opponent can guard (step 6).
+// It is constructed NOW because constructing it is the test: every guard runtime states the bones
+// it needs, and the attacker is animated from a different pack than the defender. If that rig were
+// short a wrist or a toe, this line throws on load rather than three steps later with the wiring
+// half-done and the cause buried.
+const attackerFighter = createFighter(THREE, { character: attacker, buckler: attackerBuckler, camera });
+const {
+  guardMachine, guardRuntime, bracingRuntime, fineTrackingRuntime, residualBodyReachRuntime,
+  residualStanceReachRuntime, predictivePresentation, activeParryInterceptIntent, parryGate,
+  stance: defenderStance, guardSector, neutralStance, bodyStrikeReaction,
+} = defenderFighter;
 const laneController = createShieldParryLaneController({ // R18Z.1: steps, feet, and the ground ledger
   // R21Y.1: which run lends the sprint its arms; ?runclip=, Running_A unless somebody says otherwise.
   labScene, walkClips: LANE_WALK_CLIPS, services: { captureRigPose, applyRigPose }, sprintArmClipId: EXPERIMENT.sprintArmClipId, wholeBodyRun: EXPERIMENT.wholeBodyRun, runPlaybackAuthored: EXPERIMENT.runPlaybackAuthored });
@@ -141,10 +153,8 @@ const playerController = createShieldParryPlayerController({ // R20S.3: feet, lo
   camera, laneController, freeCamera, inspectionCamera: INSPECTION_CAMERA, // R20U.1: running is refused by these two
   // R21V.1: the sprint's ground speed is a playtest dial; with no ?sprint= this is the shipped seed.
   readGuardActive: () => defenderStance.report.guardActive === true, readAttacking: () => attackRuntime.active === true, sprintSpeedMps: EXPERIMENT.sprintSpeedMps });
-const exchangeState = createShieldParryExchangeState();
 // R20G.1 (B6c): defence is a choice - in block mode the guard (and the whole measured defence
 // behind it) exists only while the key is held; the machine follows this input, never auto-raises.
-const defenderStance = createDefenderStanceRuntime();
 let guardKeyHeld = false; let lateGuardRaise = false; // R20J.1 (B6d): raised before the swing, or into it?
 // R20H.2: an armed attempt still awaiting its contact, or the live deflect itself - what a released
 // key may not interrupt. Both end on their own; the deferred stand-down lands the frame after. The
@@ -181,44 +191,6 @@ function requestDodge(direction) {
   if (!defenderStance.mayDodge()) return Object.freeze({ accepted: false, reason: 'guard-refuses-the-dodge' });
   return laneController.tryDodge(direction);
 }
-const neutralStance = createNeutralStanceController({
-  defender, camera, readGuardState: () => guardMachine.state,
-});
-const bodyStrikeReaction = createBodyStrikeReactionController({ defender, camera }); // R19K.1
-
-const attackerPresentation = createAttackerPresentationAdapter({
-  THREE,
-  attacker,
-  camera,
-  exchangeState,
-  services: {
-    captureRigPose,
-    applyRigPose,
-    blendRecoveryPose,
-    sampleLongswordAttackRecovery,
-    sampleLiveParryOldB3ReleaseBlend,
-  },
-});
-
-const combat = createTwoActorCombatIntegration({
-  THREE,
-  attackerCharacter: attacker,
-  attackRuntime,
-  guardMachine,
-  parrySync: {
-    presentationOffsetSeconds: 0.205,
-    parryAttackerRecoilDelayMs: 0,
-  },
-  sampleFrozenContactPose(interruption) {
-    attackerPresentation.sampleFrozenContactPose(interruption, {
-      ownsLiveContact: contactHandoffController.ownsLiveContact(),
-    });
-  },
-});
-const swordGripConstraint = createLiveShieldSwordGripContactRuntime(THREE, {
-  attackerRig: attacker.rig,
-  attackerSword,
-});
 
 const uiElements = createShieldParryLabDom(document);
 const { status, reportNode, autoRepeat, opponentDrive, slowReview, showSurface } = uiElements;
@@ -238,95 +210,60 @@ const labUi = createShieldParryLabUi(uiElements);
 // R21A.2: the player's aim, and the widget that draws it. Nothing reads the sector to decide an
 // outcome yet - step one is that the direction exists and is visible, so a person can answer
 // whether it is readable in time before any rule is written against it.
-const guardSector = createGuardSectorRuntime();
 const guardSectorIndicator = createGuardSectorIndicator(document.getElementById('guardSector'));
 // R21C.2: counts what the attempts did, so a play test produces numbers rather than impressions.
 const parryTally = createParryAttemptTally({ conditions: () => ({ tempoScale: EXPERIMENT.tempoScale, slowReview: slowReview.checked, sprint: EXPERIMENT }) });
-const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
 let ready = false;
 let selectedDirection = 'right';
 let selectedMode = null; // R19I.1: chosen, never assumed
 const frameClock = createFrameClock(); // R20K.1: the wall clock, until a harness pins it
-let attackerIdleDuration = 1;
-let attackerIdleClockSeconds = 0;
-let attackerRecovery = null;
 let repeatCooldownMs = 0;
-let previousBlade = null;
 let hudClockMs = HUD_INTERVAL_MS;
 let reportClockMs = REPORT_INTERVAL_MS;
 
-const preContactController = createShieldParryPreContactController({
+// R23F.1: one direction of the fight, as a unit. Nine constructions and four pieces of
+// between-frame state used to sit loose in this file; the second exchange is now one more call
+// rather than another hundred lines. The functions below still own the UI and the orchestration -
+// that is the boundary, and it is why readContext and callbacks are still handed in from here.
+const engagement = createEngagement(THREE, {
+  swinger: attacker, swingerSword: attackerSword, receiver: defender, receiverBuckler: buckler,
+  receiverFighter: defenderFighter, camera, attackRuntime,
   createOwnershipTaps: createVisualOwnershipRuntimeTaps, // R20Z.3: the lab supplies its own watcher
-  exchangeState,
-  buckler,
-  defender,
-  camera,
-  bracingRuntime,
-  fineTrackingRuntime,
-  residualBodyReachRuntime,
-  residualStanceReachRuntime,
-  predictivePresentation,
-  activeInterceptIntent: activeParryInterceptIntent,
-  parryGate,
-  longswordAttackPhases: LONGSWORD_ATTACK_PHASES,
-  promptHoldMs: PARRY_PROMPT_HOLD_MS,
-  debugMode: DEBUG_MODE,
+  longswordAttackPhases: LONGSWORD_ATTACK_PHASES, promptHoldMs: PARRY_PROMPT_HOLD_MS, debugMode: DEBUG_MODE,
+  presentationServices: {
+    captureRigPose, applyRigPose, blendRecoveryPose,
+    sampleLongswordAttackRecovery, sampleLiveParryOldB3ReleaseBlend,
+  },
+  preContactServices: {
+    cloneSurface, magnitude, planArticulatedImpactBracing, planFineGuardTracking,
+    analyzePredictiveInterceptParry, evaluateCommittedParryInput,
+    measureSweptSwordBucklerClosestApproach, planGuardThreatCorrection,
+    sampleActiveShieldLeadMotion, compactInterceptDriveTraceFrame, compactInterceptDriveTelemetry,
+  },
+  contactServices: { measureAttackerRecoilWorldSilhouette },
   readContext: () => ({
     selectedMode,
     slowReviewChecked: slowReview.checked,
-    previousBlade,
     defenderSword,
     debugStanceProfile,
     separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, lateGuardRaise, // R19N.1 + R19Z.1 + R20F.1 + R20G.1 + R20J.1 read the live lane
   }),
-  services: {
-    cloneSurface,
-    magnitude,
-    planArticulatedImpactBracing,
-    planFineGuardTracking,
-    analyzePredictiveInterceptParry,
-    evaluateCommittedParryInput,
-    measureSweptSwordBucklerClosestApproach,
-    planGuardThreatCorrection,
-    sampleActiveShieldLeadMotion,
-    compactInterceptDriveTraceFrame,
-    compactInterceptDriveTelemetry,
-  },
-});
-
-const contactHandoffController = createShieldParryContactHandoffController({
-  exchangeState,
-  buckler,
-  attacker,
-  defender,
-  attackerSword,
-  camera,
-  combat,
-  swordGripConstraint,
-  guardRuntime,
-  predictivePresentation,
-  parryGate,
-  preContactController,
-  fineTrackingRuntime,
-  residualBodyReachRuntime,
-  residualStanceReachRuntime,
-  services: {
-    measureAttackerRecoilWorldSilhouette,
-  },
   callbacks: {
     onBodyStruck: (bodyContact) => bodyStrikeReaction.start(bodyContact), readDodgeReport: () => laneController.dodgeReport, // R19K.1 + R20F.1
     readGuardActive: () => selectedMode !== 'block' || defenderStance.report.guardActive === true, // R20G.1: parry mode keeps its armed guard
-    captureCanonicalAttackerOldB3Base: () => attackerPresentation.captureCanonicalOldB3Base(attackRuntime.snapshot.interruption),
-    captureAttackerWorldSilhouette: () => attackerPresentation.captureWorldSilhouette(),
     updateLiveContactMarkers: (report) => inspectionOverlay.update(report),
     formatInspectionFailureSummary,
-    publishStatus({ text, className }) {
-      status.textContent = text;
-      status.className = className;
-    },
+    publishStatus({ text, className }) { status.textContent = text; status.className = className; },
   },
 });
+const {
+  exchangeState, combat, presentation: attackerPresentation, gripConstraint: swordGripConstraint,
+  preContact: preContactController, contactHandoff: contactHandoffController,
+  captureBlade: captureBladePolyline, readBladeForMeasurement: readBladePolylineForMeasurement,
+} = engagement;
+// After the engagement, because the blackboard it reports on is the engagement's now.
+const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
 const directOldB3DiagnosticController = createDirectOldB3DiagnosticController({
   THREE,
@@ -346,7 +283,7 @@ const directOldB3DiagnosticController = createDirectOldB3DiagnosticController({
   readContext: () => ({ ready, selectedDirection }),
   callbacks: {
     disableAutoRepeat: () => { autoRepeat.checked = false; },
-    clearAttackerRecovery: () => { attackerRecovery = null; },
+    clearAttackerRecovery: () => engagement.clearRecovery(),
     enterGuard,
     setSelectedDirection: (direction) => { selectedDirection = direction; },
     resetExchange,
@@ -361,13 +298,6 @@ const directOldB3DiagnosticController = createDirectOldB3DiagnosticController({
     buildReport: (combatSnapshot) => buildReport(combatSnapshot),
   },
 });
-
-const captureBladePolyline = createBladePolylineSampler(THREE, attackerSword);
-// R21A.1: a SECOND sampler for measurement reads. The sampler alternates between two buffers so the
-// frame loop can hold last frame's blade and this frame's at once, and the swept contact probe
-// compares exactly those two - so an extra read from outside the loop does not just return a value,
-// it rotates the buffer the fight is using. Its own instance, its own buffers, nothing shared.
-const readBladePolylineForMeasurement = createBladePolylineSampler(THREE, attackerSword);
 
 // Gathering only, and constructed here because every accessor below reads a `let` this file owns.
 const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporting({
@@ -408,7 +338,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
 // of which drive attacks by hand at fixed separations) untouched with the toggle off.
 const opponentDriveController = createOpponentDriveController({
   toggle: opponentDrive, laneController, startAttack, tally: parryTally,
-  readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !attackerRecovery,
+  readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !engagement.hasRecovery,
 });
 
 function enterGuard() {
@@ -417,21 +347,16 @@ function enterGuard() {
   const report = guardRuntime.update(180, camera);
   if (report.snapshot.state !== GUARD_STATES.HOLD) throw new Error(`Expected Guard Hold, got ${report.snapshot.state}`);
 }
+// R23F.1: the recovery, the idle clock and their two-way handoff live in the engagement now. These
+// stay as names because a dozen call sites read like sentences with them and like plumbing without,
+// and stay as DECLARATIONS because two of those call sites are construction arguments evaluated
+// above this line - a const arrow would be in its temporal dead zone there, which is exactly the
+// error this refactor produced before it was one.
 function beginAttackRecovery(direction) {
-  attackerRecovery = attackerPresentation.createRecovery(direction);
-  attackerIdleClockSeconds = 0;
+  return engagement.beginRecovery(direction);
 }
 function sampleAttackerBase(snapshot, deltaMs) {
-  const presentationState = attackerPresentation.sampleBase({
-    snapshot,
-    deltaMs,
-    recovery: attackerRecovery,
-    idleClockSeconds: attackerIdleClockSeconds,
-    idleDuration: attackerIdleDuration,
-    walkSample: laneController.attackerWalkSample,
-  });
-  attackerRecovery = presentationState.recovery;
-  attackerIdleClockSeconds = presentationState.idleClockSeconds;
+  return engagement.sampleBase(snapshot, deltaMs, laneController.attackerWalkSample);
 }
 function resetExchange() {
   laneController.endExchange(); lateGuardRaise = false; // R20J.1: the next swing asks again
@@ -441,9 +366,7 @@ function resetExchange() {
   residualBodyReachRuntime.reset(); residualStanceReachRuntime.reset();
   predictivePresentation.reset(); contactHandoffController.resetRootDisplacement();
   preContactController.resetActiveIntercept();
-  resetShieldParryExchangeState(exchangeState, {
-    previousShieldLeadSurface: cloneSurface(buckler.getWorldParrySurface()),
-  });
+  engagement.resetExchangeState({ previousShieldLeadSurface: cloneSurface(buckler.getWorldParrySurface()) });
   inspectionOverlay.clear();
 }
 
@@ -528,12 +451,15 @@ function forceOldTwoActorB3(direction = selectedDirection) {
   return directOldB3DiagnosticController.run(direction);
 }
 function startAttack(direction = selectedDirection) {
-  if (!ready || combat.active || attackRuntime.active || attackerRecovery) return false;
+  if (!ready || combat.active || attackRuntime.active || engagement.hasRecovery) return false;
+  // R23G.1: and not into the player's swing either. One advance runtime, one swinging slot - the
+  // refusal is symmetric because the ledger underneath is.
+  if (playerEngagement?.attackRuntime.active || playerEngagement?.combat.active) return false;
   // B6c: parry mode keeps its armed guard; block mode raises only what the held key says.
   if ((selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
   selectedDirection = direction;
   resetExchange();
-  previousBlade = captureBladePolyline();
+  engagement.rememberBlade(captureBladePolyline());
   repeatCooldownMs = 0;
   const started = combat.startAttack(direction);
   if (!started.accepted) return false;
@@ -553,7 +479,7 @@ function restartAttack(direction = selectedDirection) {
     return false;
   }
   combat.reset();
-  attackerRecovery = null;
+  engagement.clearRecovery();
   if (selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) enterGuard();
   else if (selectedMode === 'block') { guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera); }
   const started = startAttack(direction);
@@ -587,9 +513,41 @@ function isParryPreContactReviewActive(snapshot = attackRuntime.snapshot) {
 }
 
 
+// R23G.1: the player's swing, aimed where they are already pointing.
+//
+// The sector is null until a first aim ('never-aimed'), and a swing that silently refuses because
+// of an invisible precondition is worse than one that picks a direction and says which - so an
+// unaimed press swings TOP and the status line names it.
+//
+// Refused while either engagement is live, and that is the LEDGER's rule surfacing rather than a
+// new one: engagement-ground holds one advance runtime and one swinging slot, so two swings at once
+// would not be a harder fight, it would be one swing wearing the other's arithmetic.
+function startPlayerAttack() {
+  if (!ready || !playerEngagement) return false;
+  if (combat.active || attackRuntime.active || playerEngagement.combat.active
+    || playerEngagement.attackRuntime.active || playerEngagement.hasRecovery) return false;
+  const aimed = guardSector.sector;
+  playerDirection = aimed || 'top';
+  playerEngagement.resetExchangeState({ previousShieldLeadSurface: null });
+  playerEngagement.rememberBlade(playerEngagement.captureBlade());
+  const started = playerEngagement.combat.startAttack(playerDirection);
+  if (!started.accepted) return false;
+  laneController.startAttack(playerDirection, playerEngagement.attackRuntime.snapshot?.action?.runtime?.contactSeconds, { swinger: 'defender' });
+  status.textContent = `YOU SWING ${playerDirection.toUpperCase()}${aimed ? '' : ' · nothing aimed yet, so TOP'}`;
+  status.className = 'warn';
+  return true;
+}
+function resolvePlayerContact(snapshot, currentBlade, deltaSeconds) {
+  const resolved = playerEngagement.contactHandoff.resolveContact(snapshot, currentBlade, deltaSeconds, {
+    previousBlade: playerEngagement.previousBlade, selectedMode: 'block', selectedDirection: playerDirection,
+  });
+  const settled = laneController.settle(playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome);
+  if (settled) playerEngagement.exchangeState.latestEngagementGround = settled;
+  return resolved;
+}
 function resolveContact(snapshot, currentBlade, deltaSeconds) {
   const resolved = contactHandoffController.resolveContact(snapshot, currentBlade, deltaSeconds, {
-    previousBlade,
+    previousBlade: engagement.previousBlade,
     selectedMode,
     selectedDirection,
   });
@@ -609,10 +567,52 @@ async function main() {
     defender,
     labStage: LAB_STAGE,
   });
-  attackerIdleDuration = bootstrap.attackerIdleDuration;
+  engagement.setIdleDuration(bootstrap.attackerIdleDuration);
   laneController.setWalkDurations(bootstrap.locomotionClipDurations);
   neutralStance.setIdleDuration(bootstrap.defenderIdleDuration);
   defenderSword = bootstrap.defenderSword;
+  // R23G.1: the mirror of the engagement above - the player swings, the opponent receives. Measured
+  // before it was wired: every per-frame call in this stack is inert while its own attack runtime
+  // has no action (updatePreContact returns on !snapshot.action, updateCombatBeforeGuard on
+  // !combat.active, advanceDefender's root write on no plan), which is why a second one can sit in
+  // the frame loop without the golden grid moving a single cell.
+  playerEngagement = createEngagement(THREE, {
+    swinger: defender, swingerSword: defenderSword, receiver: attacker, receiverBuckler: attackerBuckler,
+    receiverFighter: attackerFighter, camera,
+    attackRuntime: createLongswordDirectionalAttackRuntime({ tempoScale: EXPERIMENT.tempoScale }),
+    createOwnershipTaps: createVisualOwnershipRuntimeTaps,
+    longswordAttackPhases: LONGSWORD_ATTACK_PHASES, promptHoldMs: PARRY_PROMPT_HOLD_MS, debugMode: DEBUG_MODE,
+    presentationServices: {
+      captureRigPose, applyRigPose, blendRecoveryPose,
+      sampleLongswordAttackRecovery, sampleLiveParryOldB3ReleaseBlend,
+    },
+    preContactServices: {
+      cloneSurface, magnitude, planArticulatedImpactBracing, planFineGuardTracking,
+      analyzePredictiveInterceptParry, evaluateCommittedParryInput,
+      measureSweptSwordBucklerClosestApproach, planGuardThreatCorrection,
+      sampleActiveShieldLeadMotion, compactInterceptDriveTraceFrame, compactInterceptDriveTelemetry,
+    },
+    contactServices: { measureAttackerRecoilWorldSilhouette },
+    // The opponent does not defend yet - step 6 is what gives them a guard - so this says so
+    // explicitly rather than letting an absent stance read as a raised one.
+    readContext: () => ({
+      selectedMode: 'block', slowReviewChecked: false, defenderSword: attackerSword, debugStanceProfile,
+      separationMeters: laneController.separationMeters, defenderFacingErrorRadians: 0,
+      dodgeReport: null, stanceReport: { guardActive: false }, lateGuardRaise: false,
+    }),
+    callbacks: {
+      onBodyStruck: (bodyContact) => attackerFighter.bodyStrikeReaction.start(bodyContact),
+      readDodgeReport: () => null,
+      readGuardActive: () => false,
+      updateLiveContactMarkers: () => {},
+      formatInspectionFailureSummary,
+      publishStatus: () => {},
+    },
+  });
+  playerEngagement.setIdleDuration(bootstrap.defenderIdleDuration);
+  // R23E.1: ?mount=. The PLAYER's sword only - the attacker's blade is what every contact
+  // measurement is taken from, and moving it 0.608m is a different fight, not a different look.
+  weaponMount = createWeaponMountController({ weapon: defenderSword, mounts: bootstrap.defenderMounts, mode: EXPERIMENT.weaponMountMode, readGuardState: () => guardMachine.state });
   exchangeState.previousShieldLeadSurface = cloneSurface(buckler.getWorldParrySurface());
   ready = true;
   status.textContent = `${LAB_STAGE} READY · both fighters idle · choose BLOCK or PARRY, then an attack direction`;
@@ -636,6 +636,7 @@ bindShieldParryLabUiEvents({
     onDebugResetDefaults: resetDebugStanceDefaults,
     onDefenderIntent: (intent) => laneController.setDefenderIntent(intent), onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
     onDefenderLateralIntent: (intent) => laneController.setDefenderLateralIntent(intent), onGuardKey: (held) => setGuardHeld(held), // R19V.1 + R20G.1
+    onAttack: () => startPlayerAttack(), // R23G.1 the player's own swing
     onDodge: (direction) => requestDodge(direction), // R20F.1 through the stance gate
     onMoveIntent: (moveIntent) => playerController.setMoveIntent(moveIntent), // R20S.3 WASD, world frame
     onLockToggle: () => playerController.toggleLock(), // R20S.3 Tab
@@ -680,13 +681,26 @@ function frame(timestamp) {
 
     parryWhiffReporter.report(snapshot, selectedDirection); // R20S.1: a report about a finished attack, never a decision
 
-    laneController.update(snapshot.elapsedSeconds, Boolean(snapshot.action), snapshot.phase); // R20B.1 phase rides along
+    // R23G.1: the player's swing advances on the same clock. One swing at a time is not a policy
+    // here, it is the ledger: engagement-ground holds one advance runtime and one swinging slot, so
+    // the lane is driven by whichever engagement actually has an action this frame.
+    const playerSnapshot = playerEngagement ? playerEngagement.attackRuntime.update(deltaMs) : null;
+    // R23G.1: bank the step the frame the swing ends. Measured without this: the player closed the
+    // measured 0.862m of a TOP advance and then stood there forever - separation stuck at 1.538m
+    // and the swing never banked, because the ledger only spends a swing while one is live and
+    // nothing was telling it this one had stopped. The opponent's side banks at the START of its
+    // next attack instead, which is what the golden grid was measured against and is therefore not
+    // changed here; the two ought to agree, and that is its own change with its own evidence.
+    if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; }
+    playerWasSwinging = Boolean(playerSnapshot?.action);
+    const laneSwing = playerSnapshot?.action ? playerSnapshot : snapshot;
+    laneController.update(laneSwing.elapsedSeconds, Boolean(laneSwing.action), laneSwing.phase); // R20B.1 phase rides along
 
     const contactFrame = contactHandoffController.updateCombatBeforeGuard({
       deltaSeconds,
       deltaMs,
       selectedDirection,
-      hasAttackerRecovery: Boolean(attackerRecovery),
+      hasAttackerRecovery: engagement.hasRecovery,
       beginAttackRecovery,
     });
     // R21J.1: a swing that ends without the combat path completing it - the blade missed, or it
@@ -695,8 +709,15 @@ function frame(timestamp) {
     // frames, then moved 0.011m in the next. Every other lab in this repo already begins the
     // recovery on the attack's own completion; only this one relied on the combat path, which is
     // why the snap appeared exactly when a player FAILED to answer a swing.
-    if (snapshot.completed && !attackerRecovery) beginAttackRecovery(selectedDirection);
+    if (snapshot.completed && !engagement.hasRecovery) beginAttackRecovery(selectedDirection);
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
+
+    const playerFrame = playerEngagement?.contactHandoff.updateCombatBeforeGuard({
+      deltaSeconds, deltaMs, selectedDirection: playerDirection,
+      hasAttackerRecovery: playerEngagement.hasRecovery,
+      beginAttackRecovery: (direction) => playerEngagement.beginRecovery(direction),
+    });
+    if (playerSnapshot?.completed && !playerEngagement.hasRecovery) playerEngagement.beginRecovery(playerDirection);
 
     laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active, // R20W.2: and whether
       selectedMode !== 'block' || defenderStance.report.guardActive === true); // the guard owns the torso
@@ -704,19 +725,39 @@ function frame(timestamp) {
     neutralStance.sample(deltaMs); // R19I.1: no-op unless the guard is neutral
     laneController.overlayDefenderWalkLegs(); laneController.overlayDefenderDodge(); // R20F.1 dodge outranks the guard, a landed blade outranks the dodge
     bodyStrikeReaction.sample(deltaMs); // R19K.1: last writer - a landed blade owns the fighter
+    // R23G.1: and after all of it, the player's own swing, because a body that is swinging is not
+    // also standing in its guard. Inert on every frame the player is not swinging: sampleBase does
+    // nothing without an action or a recovery, which is what keeps the three gates unmoved.
+    if (playerEngagement && (playerSnapshot?.action || playerEngagement.hasRecovery)) {
+      if (!playerFrame?.handledCombat) playerEngagement.sampleBase(playerSnapshot, deltaMs, null);
+    }
     contactHandoffController.updateDefenderDeflectReleaseGate();
+    playerEngagement?.contactHandoff.updateDefenderDeflectReleaseGate();
+    playerEngagement?.contactHandoff.updateLiveConstraintAfterGuard({
+      deltaSeconds, selectedDirection: playerDirection, needsUpdate: playerFrame?.liveConstraintNeedsUpdate,
+    });
     contactHandoffController.updateLiveConstraintAfterGuard({
       deltaSeconds,
       selectedDirection,
       needsUpdate: contactFrame.liveConstraintNeedsUpdate,
     });
+    weaponMount?.frame(); // R23E.1: before the swords redraw, so a changed mount is what they draw
     attackerSword.update(); defenderSword?.update(); contactHandoffController.recordVisibleOldB3Sample(exchangeState.latestCombatUpdate);
 
     if (!exchangeState.firstContact) {
       const currentBlade = captureBladePolyline();
       preContactController.update(snapshot, currentBlade, deltaSeconds);
       resolveContact(snapshot, currentBlade, deltaSeconds);
-      previousBlade = currentBlade;
+      engagement.rememberBlade(currentBlade);
+    }
+    // The same three steps the other way. Guarded on an action rather than on firstContact alone so
+    // an idle player never samples a blade or runs a probe - the golden grid replays with this
+    // branch never taken, which is the measurement that says a second engagement is free.
+    if (playerEngagement && playerSnapshot?.action && !playerEngagement.exchangeState.firstContact) {
+      const playerBlade = playerEngagement.captureBlade();
+      playerEngagement.preContact.update(playerSnapshot, playerBlade, deltaSeconds);
+      resolvePlayerContact(playerSnapshot, playerBlade, deltaSeconds);
+      playerEngagement.rememberBlade(playerBlade);
     }
     // R21D.1: after contact resolution, so a confirmation landing this frame still wins. An
     // accepted attempt whose attack has ended can never be confirmed - letting it stay armed
@@ -729,7 +770,7 @@ function frame(timestamp) {
     if (hudClockMs >= HUD_INTERVAL_MS) { hudClockMs %= HUD_INTERVAL_MS; updateHud(snapshot, combatSnapshot); }
     if (reportClockMs >= REPORT_INTERVAL_MS) { reportClockMs %= REPORT_INTERVAL_MS; buildReport(combatSnapshot); }
 
-    if (!combat.active && !attackRuntime.active && !attackerRecovery && (guardMachine.state === GUARD_STATES.HOLD || selectedMode === 'block') && autoRepeat.checked && !opponentDrive?.checked) { // R21E.1: the drive owns the cadence when it is on
+    if (!combat.active && !attackRuntime.active && !engagement.hasRecovery && (guardMachine.state === GUARD_STATES.HOLD || selectedMode === 'block') && autoRepeat.checked && !opponentDrive?.checked) { // R21E.1: the drive owns the cadence when it is on
       repeatCooldownMs += deltaMs;
       if (repeatCooldownMs >= 700) startAttack(selectedDirection);
     }
@@ -778,7 +819,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     },
   },
   runtimes: {
-    laneController, playerController, // R20S.3
+    laneController, playerController, defenderFighter, attackerFighter, // R20S.3 + R23B.1
     defenderStance, frameClock,
     combat,
     attackRuntime,
@@ -793,6 +834,8 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     guardSector,
     parryTally,
     opponentDriveController,
+    get weaponMount() { return weaponMount; }, // a getter: built after the load, so a captured null would never update
+    playerEngagement: () => playerEngagement, // R23G.1: same reason, and a thunk so the facade holds no stale null
   },
   debugMode: DEBUG_MODE,
   getDebugStanceProfile: () => debugStanceProfile,
