@@ -126,6 +126,7 @@ let playerEngagement = null;
 // keys of its own - the sector is set by the mouse, drawn by the HUD indicator, and was already the
 // thing they point with to defend. One aim, both verbs.
 let playerWasSwinging = false; // R23G.1: the falling edge is what banks the step
+let opponentWasSwinging = false; // R23W.1: the opponent's falling edge settles their line of the log
 
 // The two dials a playtest may turn, both defaulting to what ships: how long a swing takes
 // (?tempo=, R21O.1 - the golden grid and the parry gate are a record of the exchange at 1x) and how
@@ -503,6 +504,7 @@ function startAttack(direction = selectedDirection) {
   const started = combat.startAttack(direction);
   if (!started.accepted) return false;
   laneController.startAttack(direction, attackRuntime.snapshot?.action?.runtime?.contactSeconds);
+  swingLedger.recordSwing({ who: 'opponent', direction, separationMeters: laneController.separationMeters }); // R23W.1: the fight log
   // R21G.1: the denominator is the swing, not the press. R21M.1: with where the player was
   // already pointing when it began, so a press that never moved can be told from a misread one.
   parryTally.recordAttack(direction, guardSector.sector);
@@ -724,6 +726,8 @@ function frame(timestamp) {
     // changed here; the two ought to agree, and that is its own change with its own evidence.
     if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; swingLedger.settle({ bodyHit: playerEngagement.exchangeState.latestBodyHit, outcome: playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.separationMeters }); }
     playerWasSwinging = Boolean(playerSnapshot?.action);
+    if (opponentWasSwinging && !snapshot?.action) swingLedger.settle({ bodyHit: exchangeState.latestBodyHit, outcome: exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.separationMeters, receiverStaggered: attackerFighter.condition.report.staggered }); // R23W.1: a parry staggers the swinger, and the log says so
+    opponentWasSwinging = Boolean(snapshot?.action);
     const laneSwing = playerSnapshot?.action ? playerSnapshot : snapshot;
     laneController.update(laneSwing.elapsedSeconds, Boolean(laneSwing.action), laneSwing.phase); // R20B.1 phase rides along
 

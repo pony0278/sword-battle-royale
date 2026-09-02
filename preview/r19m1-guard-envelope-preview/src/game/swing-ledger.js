@@ -1,4 +1,4 @@
-export const SWING_LEDGER_STAGE = 'R23M.1';
+export const SWING_LEDGER_STAGE = 'R23W.1';
 
 // R23L.1 — every swing the player throws leaves a line, on the page, in the words a person reads.
 //
@@ -28,15 +28,20 @@ export function createSwingLedger({ capacity = 40, shown = 6 } = {}) {
     while (entries.length > capacity) entries.pop();
   };
 
-  function recordRefusal({ direction = null, reason = 'unknown', separationMeters = null } = {}) {
+  // R23W.1: whose swing. The ledger was the player's; a person parried the opponent and could not
+  // tell from the page whether anything had happened to them, so the opponent's swings are on it
+  // now with what became of each - which is what a fight log is.
+  const whose = (who) => (who === 'opponent' ? 'opponent' : 'player');
+
+  function recordRefusal({ who = 'player', direction = null, reason = 'unknown', separationMeters = null } = {}) {
     count += 1;
-    push(Object.freeze({ n: count, direction, started: false, reason: String(reason), separationAtPress: separationMeters }));
+    push(Object.freeze({ n: count, who: whose(who), direction, started: false, reason: String(reason), separationAtPress: separationMeters }));
   }
 
-  function recordSwing({ direction = null, separationMeters = null, mount = null, mode = null, locked = null } = {}) {
+  function recordSwing({ who = 'player', direction = null, separationMeters = null, mount = null, mode = null, locked = null } = {}) {
     if (open) settle({});
     count += 1;
-    open = { n: count, direction, started: true, separationAtPress: separationMeters, mountAtPress: mount, mode, locked };
+    open = { n: count, who: whose(who), direction, started: true, separationAtPress: separationMeters, mountAtPress: mount, mode, locked };
   }
 
   // The mount the blade actually wore while it was in the air. Read at the press it is still the
@@ -49,13 +54,14 @@ export function createSwingLedger({ capacity = 40, shown = 6 } = {}) {
     return true;
   }
 
-  function settle({ bodyHit = null, outcome = null, separationMeters = null } = {}) {
+  function settle({ bodyHit = null, outcome = null, separationMeters = null, receiverStaggered = false } = {}) {
     if (!open) return false;
     const approach = bodyHit?.closestApproach || {};
     push(Object.freeze({
       ...open,
       separationAtEnd: separationMeters,
       mountInFlight: open.mountInFlight ?? null,
+      receiverStaggered: receiverStaggered === true,
       probed: bodyHit != null,
       hit: bodyHit?.contact === true,
       band: bodyHit?.band ?? null,
@@ -67,14 +73,29 @@ export function createSwingLedger({ capacity = 40, shown = 6 } = {}) {
     return true;
   }
 
+  // What a shield did to the swing, in the swinger's terms: the player's swing "被擋", the
+  // opponent's "你擋下". A stagger rides along, because that is the part a person could not see.
+  function shieldVerdict(entry) {
+    const mine = entry.who !== 'opponent';
+    const outcome = String(entry.outcome || '').toLowerCase();
+    if (outcome === 'perfect-parry') return mine ? '被完美 parry' : '你完美 parry';
+    if (outcome === 'parry') return mine ? '被 parry' : '你 parry';
+    if (outcome === 'block') return mine ? '被擋' : '你擋下';
+    return null;
+  }
+
   function line(entry) {
+    const who = entry.who === 'opponent' ? '對手' : '你';
     const dir = String(entry.direction || '?').toUpperCase();
-    if (!entry.started) return `#${entry.n} ${dir} ${meters(entry.separationAtPress)} 沒出招: ${entry.reason}`;
+    if (!entry.started) return `#${entry.n} ${who} ${dir} ${meters(entry.separationAtPress)} 沒出招: ${entry.reason}`;
     const span = `${meters(entry.separationAtPress)}→${meters(entry.separationAtEnd)}`;
-    const mount = entry.mountInFlight ? ` 掛點 ${String(entry.mountInFlight).split('-')[0]}` : '';
-    if (entry.hit) return `#${entry.n} ${dir} ${span} 命中 ${entry.band}${mount}`;
-    if (!entry.probed) return `#${entry.n} ${dir} ${span} 沒量到刀${entry.outcome ? ` (${entry.outcome})` : ''}${mount}`;
-    return `#${entry.n} ${dir} ${span} 落空 短${entry.shortMeters.toFixed(2)} 偏${entry.besideMeters.toFixed(2)}${entry.outcome ? ` (${entry.outcome})` : ''}${mount}`;
+    const mount = entry.who !== 'opponent' && entry.mountInFlight ? ` 掛點 ${String(entry.mountInFlight).split('-')[0]}` : '';
+    const stagger = entry.receiverStaggered ? (entry.who === 'opponent' ? '（對手暈眩）' : '（你暈眩）') : '';
+    const verdict = shieldVerdict(entry);
+    if (verdict) return `#${entry.n} ${who} ${dir} ${span} ${verdict}${stagger}${mount}`;
+    if (entry.hit) return `#${entry.n} ${who} ${dir} ${span} ${entry.who === 'opponent' ? '打中你' : '命中'} ${entry.band}${mount}`;
+    if (!entry.probed) return `#${entry.n} ${who} ${dir} ${span} 沒量到刀${entry.outcome ? ` (${entry.outcome})` : ''}${mount}`;
+    return `#${entry.n} ${who} ${dir} ${span} 落空 短${entry.shortMeters.toFixed(2)} 偏${entry.besideMeters.toFixed(2)}${mount}`;
   }
 
   return Object.freeze({
@@ -115,6 +136,6 @@ export function formatSwingLedgerReport({ report = null, context = {} } = {}) {
     `血量 ${health}`,
   ];
   const lines = report?.lines ?? [];
-  if (lines.length === 0) return [...head, '出刀 0 次（尚未出刀）'].join('\n');
-  return [...head, `出刀 ${report.count} 次，最近 ${lines.length} 筆（新→舊）：`, ...lines].join('\n');
+  if (lines.length === 0) return [...head, '交鋒 0 次（尚未有人出刀）'].join('\n');
+  return [...head, `交鋒 ${report.count} 次，最近 ${lines.length} 筆（新→舊）：`, ...lines].join('\n');
 }

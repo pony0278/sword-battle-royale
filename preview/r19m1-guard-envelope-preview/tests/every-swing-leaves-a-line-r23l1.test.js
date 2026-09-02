@@ -15,7 +15,7 @@ test('R23L.1 a refused swing is a line that says why, with the stance it was ref
   const ledger = createSwingLedger();
   ledger.recordRefusal({ direction: 'right', reason: 'opponent-mid-exchange', separationMeters: 2.384 });
   assert.equal(ledger.report.count, 1);
-  assert.deepEqual(ledger.report.lines, ['#1 RIGHT 2.38m 沒出招: opponent-mid-exchange']);
+  assert.deepEqual(ledger.report.lines, ['#1 你 RIGHT 2.38m 沒出招: opponent-mid-exchange']);
   assert.equal(ledger.report.entries[0].started, false);
 });
 
@@ -29,19 +29,19 @@ test('R23L.1 a landed swing says where it landed; a whiff says by how much, shor
   ledger.note({ mount: 'kaykit-default' });
   ledger.settle({ bodyHit: { contact: true, band: 'chest' }, separationMeters: 2.21 });
   assert.equal(ledger.open, null);
-  assert.deepEqual(ledger.report.lines, ['#1 RIGHT 2.40m→2.21m 命中 chest 掛點 kaykit']);
+  assert.deepEqual(ledger.report.lines, ['#1 你 RIGHT 2.40m→2.21m 命中 chest 掛點 kaykit']);
   assert.equal(ledger.note({ mount: 'x' }), false, 'nothing to note on when no swing is open');
 
   ledger.recordSwing({ direction: 'left', separationMeters: 2.5 });
   ledger.note({ mount: 'skyrim-guard-calibrated' });
   ledger.settle({ bodyHit: { contact: false, closestApproach: { planeGapMeters: 0.07, radialGapMeters: 0.004 } }, separationMeters: 2.31 });
-  assert.equal(ledger.report.lines[0], '#2 LEFT 2.50m→2.31m 落空 短0.07 偏0.00 掛點 skyrim');
+  assert.equal(ledger.report.lines[0], '#2 你 LEFT 2.50m→2.31m 落空 短0.07 偏0.00 掛點 skyrim');
 
   // A swing the sampler never probed is a different fact from a swing that missed, and the line
   // must not dress one up as the other. The outcome rides along when there is one.
   ledger.recordSwing({ direction: 'top', separationMeters: 1.9 });
   ledger.settle({ bodyHit: null, outcome: 'block', separationMeters: 1.9 });
-  assert.equal(ledger.report.lines[0], '#3 TOP 1.90m→1.90m 沒量到刀 (block)');
+  assert.equal(ledger.report.lines[0], '#3 你 TOP 1.90m→1.90m 被擋');
   assert.equal(ledger.report.entries[0].probed, false);
 });
 
