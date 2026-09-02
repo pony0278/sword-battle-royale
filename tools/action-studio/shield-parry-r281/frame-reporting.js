@@ -85,6 +85,7 @@ export function createShieldParryFrameReporting({
       // through the debug API, which reads the runtime rather than the screen.
       opponent: read.opponent?.() ?? null, // R21E.1
       duel: read.duel?.() ?? null, // R23J.1: health, stagger and who is still standing
+      swingLedger: read.swingLedger?.() ?? null, // R23L.1: the player's last swings, in words
       parryTallyReport: read.parryTallyReport?.() ?? null, // R21G.2
       swingInnerReach: exchangeState.latestSwingInnerReach, // R20T.2
       selectedMode: read.selectedMode(),

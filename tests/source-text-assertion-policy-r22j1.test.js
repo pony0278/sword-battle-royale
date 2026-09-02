@@ -95,7 +95,9 @@ function census() {
 // both read codeOnly() so a comment cannot satisfy them.
 // R23K.1 raised toolsText and total by one: the entry hands the player's swing runtime to the mount
 // dial, and that is a composition claim about a browser entry - KEEP, the same shape as R23F.1's.
-const BASELINE = Object.freeze({ total: 1158, srcText: 361, toolsText: 632, html: 157, absence: 146 });
+// R23L.1 raised toolsText and total by two: the entry settles the ledger on the swing's falling
+// edge and the HUD joins its lines - both composition claims about browser code. KEEP.
+const BASELINE = Object.freeze({ total: 1160, srcText: 361, toolsText: 634, html: 157, absence: 146 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();
