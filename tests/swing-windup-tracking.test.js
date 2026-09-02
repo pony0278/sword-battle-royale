@@ -68,5 +68,8 @@ test('R20B.1 the lane wires the policy and the entry hands the phase down', asyn
   assert.match(lane, /swingPhase = swingLive \? phase : null/);
   const entry = await readFile(
     new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
-  assert.match(entry, /laneController\.update\(snapshot\.elapsedSeconds, Boolean\(snapshot\.action\), snapshot\.phase\)/);
+  // R23G.1: still one snapshot's elapsed, action and phase handed down together - but the entry
+  // now picks WHICH swing that is, because either fighter can be the one throwing it and the
+  // ledger underneath holds exactly one advance runtime.
+  assert.match(entry, /laneController\.update\(laneSwing\.elapsedSeconds, Boolean\(laneSwing\.action\), laneSwing\.phase\)/);
 });

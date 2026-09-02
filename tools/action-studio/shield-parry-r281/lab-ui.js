@@ -619,6 +619,14 @@ export function bindShieldParryLabUiEvents({
       if (!event.repeat) handlers.onLockToggle?.();
       return;
     }
+    // R23G.1: the attack key. K, because I-J-L already carry the directional guard and K is the
+    // middle of that same inverted T - one hand aims and defends, the same hand strikes, and the
+    // direction comes from the aim rather than from three more keys.
+    if (event.code === 'KeyK' && !event.repeat) {
+      event.preventDefault();
+      handlers.onAttack?.();
+      return;
+    }
     if (event.code === 'Space' && !event.repeat) {
       // R20F.1: dodge. Direction comes from whatever movement keys are held at the press -
       // lateral wins over lane, nothing held dodges back - and the state itself refuses

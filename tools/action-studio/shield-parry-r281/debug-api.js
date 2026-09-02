@@ -92,6 +92,25 @@ export function createShieldParryDebugApi({
     // R23E.1: which mount the player's sword is wearing and why. A dial nobody can read the state
     // of is a dial nobody can tell was on.
     get weaponMount() { return runtimes.weaponMount?.report ?? null; },
+    // R23G.1: the player's own swing, from the outside. Whether it is live, where its blade got to
+    // and what its exchange concluded - the same three questions the opponent's side already
+    // answers, now askable of the half a person is driving.
+    get playerSwing() {
+      const player = runtimes.playerEngagement?.();
+      if (!player) return null;
+      const snapshot = player.attackRuntime.snapshot;
+      return Object.freeze({
+        active: player.attackRuntime.active === true,
+        phase: snapshot?.phase ?? null,
+        direction: snapshot?.direction ?? null,
+        elapsedSeconds: Number(snapshot?.elapsedSeconds ?? 0),
+        combatActive: player.combat.active === true,
+        recovering: player.hasRecovery,
+        firstContact: player.exchangeState.firstContact ?? null,
+        latestBodyHit: player.exchangeState.latestBodyHit ?? null,
+        outcome: player.exchangeState.latestCombatResult?.resolution?.outcome ?? null,
+      });
+    },
     // R21C.2: attempts per direction, split by why they missed.
     get parryTally() { return runtimes.parryTally?.rows ?? null; },
     // R21E.1: where the self-driving opponent thinks it is and what it will throw next.
