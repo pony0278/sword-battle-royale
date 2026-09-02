@@ -635,7 +635,7 @@ async function main() {
   playerEngagement.setIdleDuration(bootstrap.defenderIdleDuration);
   // R23E.1: ?mount=. The PLAYER's sword only - the attacker's blade is what every contact
   // measurement is taken from, and moving it 0.608m is a different fight, not a different look.
-  weaponMount = createWeaponMountController({ weapon: defenderSword, mounts: bootstrap.defenderMounts, mode: EXPERIMENT.weaponMountMode, readGuardState: () => guardMachine.state });
+  weaponMount = createWeaponMountController({ weapon: defenderSword, mounts: bootstrap.defenderMounts, mode: EXPERIMENT.weaponMountMode, readGuardState: () => guardMachine.state, readSwinging: () => playerEngagement?.attackRuntime.active === true }); // R23K.1: the swing is a UAL window the guard machine cannot see
   exchangeState.previousShieldLeadSurface = cloneSurface(buckler.getWorldParrySurface());
   ready = true;
   status.textContent = `${LAB_STAGE} READY · both fighters idle · choose BLOCK or PARRY, then an attack direction`;

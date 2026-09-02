@@ -93,7 +93,9 @@ function census() {
 // without a browser. Total rose by one and absence by two: the two new ones are this stage's own
 // claim, that the entry no longer holds the swinger's recovery or a second blackboard loose, and
 // both read codeOnly() so a comment cannot satisfy them.
-const BASELINE = Object.freeze({ total: 1157, srcText: 361, toolsText: 631, html: 157, absence: 146 });
+// R23K.1 raised toolsText and total by one: the entry hands the player's swing runtime to the mount
+// dial, and that is a composition claim about a browser entry - KEEP, the same shape as R23F.1's.
+const BASELINE = Object.freeze({ total: 1158, srcText: 361, toolsText: 632, html: 157, absence: 146 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

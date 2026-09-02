@@ -42,7 +42,7 @@ test('R20H.1 confirmation asks the armed gate, mode cannot veto a Sekiro raise',
 
 test('R20H.1 the page identifies the Sekiro build and documents the windows', () => {
   const html = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab.html', import.meta.url), 'utf8');
-  assert.match(html, /\?v=g43b5r281-a-duel-can-be-lost-r23j1/);
+  assert.match(html, /\?v=g43b5r281-the-mount-follows-the-swing-r23k1/);
   assert.match(html, /B6c2/);
   assert.match(html, /Sekiro/);
 });

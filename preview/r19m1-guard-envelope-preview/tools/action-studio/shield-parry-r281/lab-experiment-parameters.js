@@ -43,13 +43,15 @@ export function readLabExperimentParameters(query) {
   // legs are not wearing the run at all.
   const runPlaybackAuthored = wholeBodyRun && read('footslide') !== '0';
   // R23E.1: how the PLAYER's sword sits in their hand. ?mount=kaykit holds it at the attacker's
-  // mount, ?mount=follow lets it change with whichever authoring family is posing the hand, and
-  // anything else - including absent - is the Skyrim-calibrated mount that ships.
+  // mount, ?mount=skyrim holds it at the Skyrim-calibrated one, and anything else - including
+  // absent - is `follow`, the mount that changes with whichever authoring family is posing the
+  // hand. R23K.1 made follow the default: under the Skyrim mount the player's LEFT reached 2.4m
+  // against a 2.4m stance and landed 3 swings in 7; following the hand it reaches 2.6m like the
+  // opponent's does. The numbers are in src/combat/weapon-mount-policy.js.
   //
   // The player's, and only the player's. The attacker's blade is the surface every contact
-  // measurement is taken from, and swapping their mount moves the swept polyline's far point
-  // 0.608m against a 27.5cm shield - a different fight, not a different look. The defender's sword
-  // is measured by nothing, which is what makes it the one that can be experimented on.
+  // measurement of the opponent's swing is taken from, and swapping their mount moves the swept
+  // polyline's far point 0.608m against a 27.5cm shield - a different fight, not a different look.
   const mount = resolveWeaponMountMode(read('mount'));
   return Object.freeze({
     stage: LAB_EXPERIMENT_PARAMETERS_STAGE,
