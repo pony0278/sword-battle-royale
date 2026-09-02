@@ -338,6 +338,7 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
     // R23J.1: the duel, for the one HUD line a player actually needs.
     duel: () => duel.report,
     swingLedger: () => swingLedger.report, // R23L.1
+    weaponMount: () => weaponMount?.report ?? null, // R23M.1: for the copied run's header
     parryTallyReport: () => parryTally.reportText, // R21G.2: the whole run, pasteable
   },
 });

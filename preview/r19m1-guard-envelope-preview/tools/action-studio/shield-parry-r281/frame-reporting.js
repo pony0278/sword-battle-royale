@@ -86,6 +86,7 @@ export function createShieldParryFrameReporting({
       opponent: read.opponent?.() ?? null, // R21E.1
       duel: read.duel?.() ?? null, // R23J.1: health, stagger and who is still standing
       swingLedger: read.swingLedger?.() ?? null, // R23L.1: the player's last swings, in words
+      weaponMount: read.weaponMount?.() ?? null, // R23M.1: which mount dial the copied run was played on
       parryTallyReport: read.parryTallyReport?.() ?? null, // R21G.2
       swingInnerReach: exchangeState.latestSwingInnerReach, // R20T.2
       selectedMode: read.selectedMode(),

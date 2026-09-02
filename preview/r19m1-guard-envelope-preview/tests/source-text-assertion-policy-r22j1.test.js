@@ -97,7 +97,8 @@ function census() {
 // dial, and that is a composition claim about a browser entry - KEEP, the same shape as R23F.1's.
 // R23L.1 raised toolsText and total by two: the entry settles the ledger on the swing's falling
 // edge and the HUD joins its lines - both composition claims about browser code. KEEP.
-const BASELINE = Object.freeze({ total: 1160, srcText: 361, toolsText: 634, html: 157, absence: 146 });
+// R23M.1 raised toolsText and total by one: the copy button is bound in browser UI code. KEEP.
+const BASELINE = Object.freeze({ total: 1161, srcText: 361, toolsText: 635, html: 157, absence: 146 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

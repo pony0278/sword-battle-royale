@@ -1,4 +1,4 @@
-export const SWING_LEDGER_STAGE = 'R23L.1';
+export const SWING_LEDGER_STAGE = 'R23M.1';
 
 // R23L.1 — every swing the player throws leaves a line, on the page, in the words a person reads.
 //
@@ -10,9 +10,11 @@ export const SWING_LEDGER_STAGE = 'R23L.1';
 // instrument: what the swing asked for, whether the game let it start and if not why, how far
 // apart the fighters stood when the button went down, and what the blade found when it arrived.
 //
-// It is a ring of the last few swings rather than a stream, because a HUD line is read between
-// exchanges by someone holding a mouse, and six lines is what fits in an eye's worth of attention.
-export function createSwingLedger({ capacity = 6 } = {}) {
+// It is a ring rather than a stream. The HUD shows the newest few, because a HUD line is read
+// between exchanges by someone holding a mouse and six is what fits in an eye's worth of
+// attention; the ring behind it is longer, because R23M.1 added a button that copies the whole
+// thing, and a run pasted into a conversation is worth more than the last six lines of it.
+export function createSwingLedger({ capacity = 40, shown = 6 } = {}) {
   const entries = [];
   let count = 0;
   let open = null;
@@ -84,7 +86,35 @@ export function createSwingLedger({ capacity = 6 } = {}) {
     reset() { entries.length = 0; open = null; count = 0; },
     get open() { return open ? Object.freeze({ ...open }) : null; },
     get report() {
-      return Object.freeze({ stage: SWING_LEDGER_STAGE, count, entries: Object.freeze(entries.slice()), lines: Object.freeze(entries.map(line)) });
+      const lines = entries.map(line);
+      return Object.freeze({
+        stage: SWING_LEDGER_STAGE,
+        count,
+        entries: Object.freeze(entries.slice()),
+        lines: Object.freeze(lines),
+        hudLines: Object.freeze(lines.slice(0, shown)),
+      });
     },
   });
+}
+
+// R23M.1 — the pasteable form. A line without the run it came from cannot be compared to the next
+// one, so the copy carries the build, the mode, the lock, the mount dial and the health alongside
+// the swings. Newest first, as on the HUD, so the two read the same way.
+export function formatSwingLedgerReport({ report = null, context = {} } = {}) {
+  const yesNo = (value) => (value === true ? '是' : value === false ? '否' : '—');
+  const mount = context.weaponMount
+    ? `${context.weaponMount.mode ?? '—'}(${context.weaponMount.reason ?? '—'}) 現在 ${String(context.weaponMount.applied ?? '—').split('-')[0]}`
+    : '—';
+  const health = context.duel
+    ? `你 ${context.duel.player?.health ?? '—'} / 對手 ${context.duel.opponent?.health ?? '—'}`
+    : '—';
+  const head = [
+    `build ${context.build ?? 'unknown'}`,
+    `模式 ${context.mode ?? '—'} · 鎖定 ${yesNo(context.locked)} · 掛點 ${mount} · 對手 ${context.opponent ?? '手動'}`,
+    `血量 ${health}`,
+  ];
+  const lines = report?.lines ?? [];
+  if (lines.length === 0) return [...head, '出刀 0 次（尚未出刀）'].join('\n');
+  return [...head, `出刀 ${report.count} 次，最近 ${lines.length} 筆（新→舊）：`, ...lines].join('\n');
 }
