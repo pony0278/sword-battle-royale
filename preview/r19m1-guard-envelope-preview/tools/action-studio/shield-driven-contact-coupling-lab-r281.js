@@ -365,6 +365,11 @@ function syncOpponentGuard(held) {
 // Named so the frame reads as two fighters' pipelines rather than one call twice - R18M.C6 pins the
 // player's writer order by the text of the player's calls, and this is not one of them.
 function sampleOpponentGuard(deltaMs) { // R23T.1: with the legs of the walk laid back over the guard, as the player's are
+  // R23U.1: the swing and its recovery own the body, as the player's own them - the guard machine
+  // stays HOLD underneath and the presentation resumes when the recovery hands the body back.
+  // Measured before: leaving and re-entering the guard around the swing put a 1.16m one-frame
+  // jump on the frame the shield came back; the fastest frame of the swing itself moves 0.61m.
+  if (attackRuntime.active || engagement.hasRecovery) return null;
   laneController.captureAttackerWalkLegs(); const report = attackerFighter.guardRuntime.update(deltaMs, camera); laneController.overlayAttackerWalkLegs(); return report;
 }
 
@@ -487,7 +492,6 @@ function startAttack(direction = selectedDirection) {
   // B6c: parry mode keeps its armed guard; block mode raises only what the held key says.
   if ((selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
   selectedDirection = direction;
-  syncOpponentGuard(false); // R23S.1: a body that swings is not holding a shield
   resetExchange();
   engagement.rememberBlade(captureBladePolyline());
   repeatCooldownMs = 0;
@@ -624,7 +628,7 @@ async function main() {
     callbacks: {
       onBodyStruck: (bodyContact) => { attackerFighter.bodyStrikeReaction.start(bodyContact); duel.landBlowOn(attackerFighter.condition); laneController.settle('hit'); }, // R23P.1
       readDodgeReport: () => null,
-      readGuardActive: () => attackerFighter.stance.report.guardActive === true, // R23S.1
+      readGuardActive: () => attackerFighter.stance.report.guardActive === true && !attackRuntime.active, // R23S.1; R23U.1: a body mid-swing guards nothing, even with the machine still in HOLD
       readAimedSector: () => attackerFighter.guardSector.sector, // R23T.1
       updateLiveContactMarkers: () => {},
       formatInspectionFailureSummary,

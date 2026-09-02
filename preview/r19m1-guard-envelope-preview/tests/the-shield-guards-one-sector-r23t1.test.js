@@ -63,7 +63,7 @@ test('R23T.1 the opponent stands in guard and moves the shield into the sector w
   assert.deepEqual(pick(planOpponentGuard({ threat: swing(0.05), decision: reads, currentSector: 'top' })), [true, 'top', OPPONENT_GUARD_REASONS.REACTING]);
   assert.deepEqual(pick(planOpponentGuard({ threat: swing(0.18), decision: reads, currentSector: 'top' })), [true, 'left', OPPONENT_GUARD_REASONS.COVERING], 'their RIGHT arrives at my LEFT');
   assert.deepEqual(pick(planOpponentGuard({ threat: swing(0.4), decision: { willCover: false, reactionSeconds: 0.18 }, currentSector: 'top' })), [true, 'top', OPPONENT_GUARD_REASONS.DECLINED]);
-  assert.deepEqual(pick(planOpponentGuard({ threat: swing(0.4), decision: reads, currentSector: 'top', ownSwinging: true })), [false, 'top', OPPONENT_GUARD_REASONS.SWINGING]);
+  assert.deepEqual(pick(planOpponentGuard({ threat: swing(0.4), decision: reads, currentSector: 'top', ownSwinging: true })), [true, 'top', OPPONENT_GUARD_REASONS.SWINGING], 'R23U.1: held through the swing, not moved');
   assert.deepEqual(pick(planOpponentGuard({ threat: swing(0.4, 'top'), decision: reads, currentSector: 'left' })), [true, 'top', OPPONENT_GUARD_REASONS.COVERING]);
 });
 
