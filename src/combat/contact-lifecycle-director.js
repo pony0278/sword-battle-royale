@@ -1,4 +1,5 @@
 import { probeSweptSwordBucklerContact } from './swept-sword-buckler-contact.js';
+import { planGuardSectorGate } from './guard-sector-gate.js';
 import { applyShieldContactSkin } from './shield-contact-skin.js';
 import { evaluateSweptContactTemporalEligibility } from './swept-contact-temporal-eligibility.js';
 import { probeHiltClangContact, buildHiltPolyline } from './hilt-clang-contact.js';
@@ -101,6 +102,7 @@ export function createContactLifecycleDirector({
   readDefenderBodyPoint,
   readCloseRangePosture,
   readGuardActive,
+  readAimedSector = null, // R23T.1: absent = the omnidirectional shield every stage before step 6 had
   readDodgeIFramesActive,
   fallbackIncomingVelocity,
   releaseReachOwnership,
@@ -439,6 +441,20 @@ export function createContactLifecycleDirector({
         eligible: contactEvaluation.eligible,
         reason: 'shield-not-raised-guards-nothing',
       });
+    }
+    // R23T.1: and a shield held in another sector guards nothing either. The body probe below
+    // still decides whether the blade reached anybody - this only says the shield did not.
+    if (contactEvaluation.contact && typeof readAimedSector === 'function') {
+      const sectorGate = planGuardSectorGate({ direction: attackSnapshot?.direction, aimedSector: readAimedSector() });
+      if (!sectorGate.covers) {
+        contactEvaluation = Object.freeze({
+          ...contactEvaluation,
+          contact: false,
+          eligible: contactEvaluation.eligible,
+          reason: sectorGate.reason,
+          sectorGate,
+        });
+      }
     }
     // R20F.1: a dodge's invulnerability window. During i-frames the exchange does not touch the
     // defender at all - shield, clang, and body alike - because the dodge investigation measured

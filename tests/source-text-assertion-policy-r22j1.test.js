@@ -106,7 +106,17 @@ function census() {
 // controller) and one absence (it no longer carries the swing) - KEEP; the behaviour is called.
 // R23S.1 raised toolsText by four and absence by one: the entry reads the opponent's stance (two
 // claims), drops the shield to swing, and no longer writes the stance in by hand. KEEP.
-const BASELINE = Object.freeze({ total: 1173, srcText: 362, toolsText: 645, html: 157, absence: 148 });
+// R23T.1 - a correction, not growth alone. From R23L.1 on, the new stages read files through a
+// one-line helper (`const src = (path) => readFileSync(new URL(path, ...))`) that this census
+// cannot see, so their claims were never counted and the bumps recorded above for R23L.1 to
+// R23S.1 were partly guesses. Every helper read is inlined now and the numbers below are the
+// census's own: srcText 363 (R23T.1 reads the lifecycle and the pre-contact controller for the
+// sector gate's composition - one is R23P.1's lane read, surfaced), toolsText 651, absence 148.
+// R23U.1: two composition claims on the entry (the guard sample waits for the swing; a swinging body
+// guards nothing), and the R23S.1 'drops the shield' claim became an absence. KEEP.
+// R23W.1: two composition claims on the entry - the opponent's swing is recorded when it starts and
+// settled on its falling edge. KEEP; the lines themselves are called.
+const BASELINE = Object.freeze({ total: 1185, srcText: 364, toolsText: 656, html: 157, absence: 149 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

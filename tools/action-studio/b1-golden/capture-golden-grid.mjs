@@ -60,6 +60,11 @@ export async function runExchange(page, { dir, stance }) {
   // R20G.1 (B6c): the guard is an input now. The golden grid describes the guard-up world, so
   // the driver holds it for the whole exchange - the cells themselves are unchanged.
   await page.evaluate(() => window.__G43B5R281_LAB__.setGuardHeld(true));
+  // R23T.1: the shield guards one sector now, so the guard-up world is the guard-up-and-pointed
+  // world: every cell holds the shield in the sector its swing arrives at, the way a person
+  // defending it would. The outcomes and waypoints are unchanged - coverage was always anchored
+  // to the attack's direction - which is what the re-captured record shows.
+  await page.evaluate((d) => window.__G43B5R281_LAB__.selectGuardSector({ top: 'top', right: 'left', left: 'right' }[d]), dir);
   await page.evaluate((s) => window.__G43B5R281_LAB__.setEngagementSeparation(s), stance);
   await waitFrames(page, SETTLE_FRAMES);
   return page.evaluate(async ({ d, frames }) => {

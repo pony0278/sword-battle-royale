@@ -1,40 +1,40 @@
 import { createSeededRandom } from './opponent-drive.js';
+import { GUARD_SECTORS } from './guard-sector.js';
+import { defendedSectorFor } from './attack-direction-as-defended.js';
 
-export const OPPONENT_GUARD_STAGE = 'R23S.1';
+export const OPPONENT_GUARD_STAGE = 'R23T.1';
 
-// R23S.1 — whether the opponent holds their shield up, and why that is the whole of step 6a.
+// R23T.1 — which sector the opponent's shield is in, and why that is the whole of step 6b.
 //
-// Measured before this existed (R23A.1 through R23R.1): the attacker fighter already owns every
-// guard runtime the player has - the machine, the presentation, the bracing, the parry gate, the
-// stance - because createFighter builds one of each for both bodies. Nothing ever pressed their
-// guard, and the player's engagement was built with `stanceReport: { guardActive: false }` written
-// in by hand, so every swing the player threw met a body and never a shield. A block is geometric -
-// the swept blade against the buckler where the guard pose put it - gated by one read, "is the
-// guard up", and it does not care which sector (R21O: block does not take direction; only the
-// parry gate does). So an opponent who blocks is an opponent who HOLDS, at the right moment, and
-// this module decides that and nothing else.
+// R23S.1 (6a) raised and lowered the shield: a roll per swing decided whether it came up at all,
+// and the opponent stood between swings with the sword down while the player, in parry mode,
+// stood in guard. A person noticed the two stances did not match. The For Honor duel this is
+// heading for has both fighters in guard the whole time, each shield in ONE of three sectors, a
+// swing landing when it arrives where the shield is not - and R23T.1 made the block take
+// direction for both fighters (guard-sector-gate.js). So the opponent now HOLDS whenever the drive
+// is on and their own swing is not owning the body, and what the roll decides is whether they
+// READ this swing and move the shield into its sector in time.
 //
-// The numbers are dials with a measured floor under them. The player's contact comes 0.43s into
-// every swing (MEASURED_CONTACT_SECONDS); the guard's enter takes 0.18s of presentation to reach
-// HOLD (enterGuard advances it 180ms in one frame); so a reaction later than 0.25s puts the shield
-// up after the blade has arrived, and a reaction of 0.18s puts it up with 0.07s to spare - which is
-// what a person parrying at 180ms TTC in the defence matrix also has. blockChance is what makes the
-// duel winnable at all: a shield that answers every swing is a wall, not an opponent.
+// Measured: the player's contact comes 0.43s into every swing (MEASURED_CONTACT_SECONDS), the
+// guard sector switches on the frame it is chosen (R21N.1 select is discrete), so a reaction of
+// 0.18s puts the shield in the sector with 0.25s to spare - the same margin the parry gate's
+// 180ms window gives a person. coverChance is what makes the duel winnable: a shield that reads
+// every swing is a wall. Between swings the shield stays where it last was, which is what a
+// person's shield does too; a swing into the sector it already holds is blocked without a read.
 export const OPPONENT_GUARD_PROFILE = Object.freeze({
   reactionSeconds: 0.18,
-  blockChance: 0.6,
-  holdAfterSwingSeconds: 0.25,
-  authority: 'decides-only-whether-the-shield-is-held-no-contact-authority',
+  coverChance: 0.6,
+  restSector: 'top',
+  authority: 'decides-only-whether-the-shield-is-held-and-which-sector-no-contact-authority',
 });
 
 export const OPPONENT_GUARD_REASONS = Object.freeze({
-  SWINGING: 'own-swing-owns-the-body',
-  NO_THREAT: 'no-swing-to-answer',
+  SWINGING: 'own-swing-owns-the-body-shield-stays',
+  STANDING: 'in-guard-where-the-shield-last-was',
   UNDECIDED: 'swing-not-yet-seen',
-  DECLINED: 'chose-not-to-block-this-one',
+  DECLINED: 'did-not-read-this-one-shield-stays',
   REACTING: 'seen-not-yet-answered',
-  BLOCKING: 'shield-up-for-the-swing',
-  LOWERING: 'shield-still-up-after-the-swing',
+  COVERING: 'shield-moved-into-the-sector-the-swing-arrives-at',
 });
 
 function finite(value, fallback = 0) {
@@ -47,33 +47,35 @@ function finite(value, fallback = 0) {
 export function decideOpponentGuard(random, profile = OPPONENT_GUARD_PROFILE) {
   const roll = typeof random === 'function' ? finite(random()) : 1;
   return Object.freeze({
-    willBlock: roll < finite(profile.blockChance),
+    willCover: roll < finite(profile.coverChance),
     reactionSeconds: Math.max(0, finite(profile.reactionSeconds)),
     roll,
   });
 }
 
-// Pure. Given the swing coming at them (or none), what they decided about it, and their own
-// state, is the shield held this frame?
+// Pure. Given the swing coming at them (or none), what they decided about it, where the shield
+// is now and their own state: is the shield held this frame, and in which sector?
 export function planOpponentGuard({
   threat = null,
   decision = null,
-  sinceThreatEndedSeconds = Infinity,
+  currentSector = null,
   ownSwinging = false,
   profile = OPPONENT_GUARD_PROFILE,
 } = {}) {
-  const verdict = (hold, reason) => Object.freeze({ stage: OPPONENT_GUARD_STAGE, hold, reason, authority: profile.authority });
-  if (ownSwinging === true) return verdict(false, OPPONENT_GUARD_REASONS.SWINGING);
-  if (threat?.active === true) {
-    if (!decision) return verdict(false, OPPONENT_GUARD_REASONS.UNDECIDED);
-    if (decision.willBlock !== true) return verdict(false, OPPONENT_GUARD_REASONS.DECLINED);
-    if (finite(threat.elapsedSeconds) < decision.reactionSeconds) return verdict(false, OPPONENT_GUARD_REASONS.REACTING);
-    return verdict(true, OPPONENT_GUARD_REASONS.BLOCKING);
-  }
-  if (decision?.willBlock === true && finite(sinceThreatEndedSeconds, Infinity) < finite(profile.holdAfterSwingSeconds)) {
-    return verdict(true, OPPONENT_GUARD_REASONS.LOWERING);
-  }
-  return verdict(false, OPPONENT_GUARD_REASONS.NO_THREAT);
+  const held = GUARD_SECTORS.includes(String(currentSector || '').toLowerCase())
+    ? String(currentSector).toLowerCase()
+    : (GUARD_SECTORS.includes(profile.restSector) ? profile.restSector : GUARD_SECTORS[0]);
+  const verdict = (hold, sector, reason) => Object.freeze({ stage: OPPONENT_GUARD_STAGE, hold, sector, reason, authority: profile.authority });
+  // R23U.1: held, not dropped. The player's guard machine stays HOLD through their own swing and
+  // the swing merely owns the pose; mirroring that is what removed the re-entry snap. What the
+  // swing does forbid is moving the shield - a body mid-swing reads nothing.
+  if (ownSwinging === true) return verdict(true, held, OPPONENT_GUARD_REASONS.SWINGING);
+  if (threat?.active !== true) return verdict(true, held, OPPONENT_GUARD_REASONS.STANDING);
+  if (!decision) return verdict(true, held, OPPONENT_GUARD_REASONS.UNDECIDED);
+  if (decision.willCover !== true) return verdict(true, held, OPPONENT_GUARD_REASONS.DECLINED);
+  if (finite(threat.elapsedSeconds) < decision.reactionSeconds) return verdict(true, held, OPPONENT_GUARD_REASONS.REACTING);
+  const target = defendedSectorFor(threat.direction) || held;
+  return verdict(true, target, OPPONENT_GUARD_REASONS.COVERING);
 }
 
 export { createSeededRandom };

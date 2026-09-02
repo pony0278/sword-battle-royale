@@ -126,6 +126,7 @@ let playerEngagement = null;
 // keys of its own - the sector is set by the mouse, drawn by the HUD indicator, and was already the
 // thing they point with to defend. One aim, both verbs.
 let playerWasSwinging = false; // R23G.1: the falling edge is what banks the step
+let opponentWasSwinging = false; // R23W.1: the opponent's falling edge settles their line of the log
 
 // The two dials a playtest may turn, both defaulting to what ships: how long a swing takes
 // (?tempo=, R21O.1 - the golden grid and the parry gate are a record of the exchange at 1x) and how
@@ -250,13 +251,14 @@ const engagement = createEngagement(THREE, {
     slowReviewChecked: slowReview.checked,
     defenderSword,
     debugStanceProfile,
-    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, lateGuardRaise, // R19N.1 + R19Z.1 + R20F.1 + R20G.1 + R20J.1 read the live lane
+    separationMeters: laneController.separationMeters, defenderFacingErrorRadians: laneController.defenderFacingErrorRadians, dodgeReport: laneController.dodgeReport, stanceReport: defenderStance.report, lateGuardRaise, aimedSector: guardSector.sector, // R23T.1: the block reads the aim too // R19N.1 + R19Z.1 + R20F.1 + R20G.1 + R20J.1 read the live lane
   }),
   callbacks: {
     // R23J.1: the flinch AND the wound. onBodyStruck is the one signal that means a blade genuinely
     // landed - latestBodyHit also holds near-misses - so it is the only honest place to spend health.
     onBodyStruck: (bodyContact) => { bodyStrikeReaction.start(bodyContact); duel.landBlowOn(defenderFighter.condition); laneController.settle('hit'); }, // R23P.1: and the ground readDodgeReport: () => laneController.dodgeReport,
     readGuardActive: () => selectedMode !== 'block' || defenderStance.report.guardActive === true, // R20G.1: parry mode keeps its armed guard
+    readAimedSector: () => guardSector.sector, // R23T.1: the shield guards one sector
     updateLiveContactMarkers: (report) => inspectionOverlay.update(report),
     formatInspectionFailureSummary,
     publishStatus({ text, className }) { status.textContent = text; status.className = className; },
@@ -349,9 +351,9 @@ const opponentDriveController = createOpponentDriveController({
   toggle: opponentDrive, laneController, startAttack, tally: parryTally,
   readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !engagement.hasRecovery,
   // R23S.1: the shield answers the PLAYER's swing, and is read off the player's runtime.
-  readThreat: () => { const s = playerEngagement?.attackRuntime.snapshot; return s?.action ? { active: true, sequence: s.sequence, elapsedSeconds: s.elapsedSeconds } : null; },
+  readThreat: () => { const s = playerEngagement?.attackRuntime.snapshot; return s?.action ? { active: true, sequence: s.sequence, elapsedSeconds: s.elapsedSeconds, direction: s.direction } : null; }, // R23T.1: with the direction, which is what the shield answers
   readOwnSwinging: () => combat.active || attackRuntime.active,
-  applyGuardHeld: (held) => syncOpponentGuard(held),
+  applyGuard: ({ held, sector }) => { attackerFighter.guardSector.select(sector); syncOpponentGuard(held); }, // R23T.1: the sector first, so the guard that rises is already pointed
 });
 // R23S.1: the opponent's guard, driven by the stance the way the player's is (syncGuardToStance)
 // and entered the way enterGuard enters it - one machine, one presentation, both already theirs.
@@ -363,7 +365,19 @@ function syncOpponentGuard(held) {
 }
 // Named so the frame reads as two fighters' pipelines rather than one call twice - R18M.C6 pins the
 // player's writer order by the text of the player's calls, and this is not one of them.
-function sampleOpponentGuard(deltaMs) { return attackerFighter.guardRuntime.update(deltaMs, camera); }
+function sampleOpponentGuard(deltaMs, bodyOwnedByContact = false) { // R23T.1: with the legs of the walk laid back over the guard, as the player's are
+  // R23U.1: the swing and its recovery own the body, as the player's own them - the guard machine
+  // stays HOLD underneath and the presentation resumes when the recovery hands the body back.
+  // Measured before: leaving and re-entering the guard around the swing put a 1.16m one-frame
+  // jump on the frame the shield came back; the fastest frame of the swing itself moves 0.61m.
+  // R23V.1: and so do the contact stack (the frames it handled combat on) and the stagger. Measured
+  // before this line: with the drive on, a parried opponent's bones sat 1.19m from the parry pose
+  // from the very next frame and never moved again - the guard had painted over the whole
+  // losing-their-footing reaction; with the drive off the same parry moved them 0.37, 0.99, 0.92,
+  // 0.87, 0.83, 1.28m over 1.2s. A person saw an opponent who did not react to being parried.
+  if (attackRuntime.active || engagement.hasRecovery || bodyOwnedByContact === true || attackerFighter.condition.report.staggered) return null;
+  laneController.captureAttackerWalkLegs(); const report = attackerFighter.guardRuntime.update(deltaMs, camera); laneController.overlayAttackerWalkLegs(); return report;
+}
 
 function enterGuard() {
   guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera);
@@ -484,13 +498,13 @@ function startAttack(direction = selectedDirection) {
   // B6c: parry mode keeps its armed guard; block mode raises only what the held key says.
   if ((selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
   selectedDirection = direction;
-  syncOpponentGuard(false); // R23S.1: a body that swings is not holding a shield
   resetExchange();
   engagement.rememberBlade(captureBladePolyline());
   repeatCooldownMs = 0;
   const started = combat.startAttack(direction);
   if (!started.accepted) return false;
   laneController.startAttack(direction, attackRuntime.snapshot?.action?.runtime?.contactSeconds);
+  swingLedger.recordSwing({ who: 'opponent', direction, separationMeters: laneController.separationMeters }); // R23W.1: the fight log
   // R21G.1: the denominator is the swing, not the press. R21M.1: with where the player was
   // already pointing when it began, so a press that never moved can be told from a misread one.
   parryTally.recordAttack(direction, guardSector.sector);
@@ -616,12 +630,13 @@ async function main() {
     readContext: () => ({
       selectedMode: 'block', slowReviewChecked: false, defenderSword: attackerSword, debugStanceProfile,
       separationMeters: laneController.separationMeters, defenderFacingErrorRadians: 0,
-      dodgeReport: null, stanceReport: attackerFighter.stance.report, lateGuardRaise: false,
+      dodgeReport: null, stanceReport: attackerFighter.stance.report, lateGuardRaise: false, aimedSector: attackerFighter.guardSector.sector, // R23T.1
     }),
     callbacks: {
       onBodyStruck: (bodyContact) => { attackerFighter.bodyStrikeReaction.start(bodyContact); duel.landBlowOn(attackerFighter.condition); laneController.settle('hit'); }, // R23P.1
       readDodgeReport: () => null,
-      readGuardActive: () => attackerFighter.stance.report.guardActive === true, // R23S.1
+      readGuardActive: () => attackerFighter.stance.report.guardActive === true && !attackRuntime.active, // R23S.1; R23U.1: a body mid-swing guards nothing, even with the machine still in HOLD
+      readAimedSector: () => attackerFighter.guardSector.sector, // R23T.1
       updateLiveContactMarkers: () => {},
       formatInspectionFailureSummary,
       publishStatus: () => {},
@@ -711,6 +726,8 @@ function frame(timestamp) {
     // changed here; the two ought to agree, and that is its own change with its own evidence.
     if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; swingLedger.settle({ bodyHit: playerEngagement.exchangeState.latestBodyHit, outcome: playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.separationMeters }); }
     playerWasSwinging = Boolean(playerSnapshot?.action);
+    if (opponentWasSwinging && !snapshot?.action) swingLedger.settle({ bodyHit: exchangeState.latestBodyHit, outcome: exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.separationMeters, receiverStaggered: attackerFighter.condition.report.staggered }); // R23W.1: a parry staggers the swinger, and the log says so
+    opponentWasSwinging = Boolean(snapshot?.action);
     const laneSwing = playerSnapshot?.action ? playerSnapshot : snapshot;
     laneController.update(laneSwing.elapsedSeconds, Boolean(laneSwing.action), laneSwing.phase); // R20B.1 phase rides along
 
@@ -729,7 +746,7 @@ function frame(timestamp) {
     // why the snap appeared exactly when a player FAILED to answer a swing.
     if (snapshot.completed && !engagement.hasRecovery) beginAttackRecovery(selectedDirection);
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
-    sampleOpponentGuard(deltaMs); // R23S.1: the opponent's shield, over their base pose; a no-op in NEUTRAL, which is every frame the drive is off
+    sampleOpponentGuard(deltaMs, contactFrame.handledCombat); // R23S.1: the opponent's shield, over their base pose; a no-op in NEUTRAL, which is every frame the drive is off
     attackerFighter.bodyStrikeReaction.sample(deltaMs); // R23Q.1: last writer on the opponent - R23J.1 started this reaction and nothing ever sampled it
 
     const playerFrame = playerEngagement?.contactHandoff.updateCombatBeforeGuard({
@@ -821,6 +838,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     resetDebugStanceDefaults,
     triggerParryNow,
     dispatchParryInput,
+    selectGuardSector: (sector) => guardSector.select(sector), // R23T.1: the golden grid points the shield the way a person does, without a pointer
     setGuardHeld, setFixedStepMs: (ms) => frameClock.setFixedStep(ms), // R20G.1 + R20K.1: drivers hold the guard, harnesses pin the clock
     tryDodge: requestDodge, // R20G.1: same gate as the keys - the facade may not skip the stance
     forceOldTwoActorB3,
