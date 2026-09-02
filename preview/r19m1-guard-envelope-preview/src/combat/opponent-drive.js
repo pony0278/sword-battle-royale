@@ -147,6 +147,17 @@ export function createOpponentDirectionSequence(seed = 1, directions = LONGSWORD
 //   restedMs          how long the attack gate has been open
 //   restTargetMs      this cycle's seeded rest, drawn once when the gate opened
 //   nextDirection     what the bag is about to serve
+//   underSwing        R24A.1: a swing is coming at them right now (the player's action is live)
+//
+// R24A.1 - the opponent holds their ground under a swing. Measured (whiff-walk probe, block mode,
+// drive on): in 21 of 21 player swings the opponent backed away 0.26-0.48m (mean 0.35m) inside the
+// 0.43s before contact, because the swing's advance pushed the separation inside the band and
+// this planner read that as spacing to correct - from the very frame the swing began when it was
+// already walking, 7-10 frames in when it had been resting. TOP's 0.86m of advance netted 0.38m;
+// a swing the shield did not read then fell 0.39-0.62m short of the body. With the feet held for
+// the swing's duration the retreat measured 0.09m at most (the gait's own ease-out). This is a
+// decision of the AI - it stands and answers with the shield - not a lane rule: the player's own
+// retreat under the opponent's swing is untouched, and the walk resumes when the swing is over.
 export function planOpponentDrive(input = {}) {
   const profile = Object.freeze({ ...OPPONENT_DRIVE_PROFILE, ...(input.profile || {}) });
   const band = Object.freeze({ ...OPPONENT_ENGAGEMENT_BAND_METERS, ...(input.band || {}) });
@@ -163,7 +174,8 @@ export function planOpponentDrive(input = {}) {
   const inBand = drift <= profile.holdToleranceMeters;
   // -1 closes the distance and +1 opens it (normalizeLaneIntent), so the sign of the offset is
   // already the intent: too far apart is a negative step, too close is a positive one.
-  const intent = repositioning ? Math.sign(offsetMeters) * -1 : 0;
+  const underSwing = input.underSwing === true;
+  const intent = repositioning && !underSwing ? Math.sign(offsetMeters) * -1 : 0;
 
   const attackAvailable = input.attackAvailable === true;
   const restedMs = finite(input.restedMs);
@@ -173,11 +185,12 @@ export function planOpponentDrive(input = {}) {
   // Spacing is a precondition of the swing, not a race against it: a drive that swung on the clock
   // alone would throw RIGHT from wherever the last attack left it, because RIGHT's gate reopens
   // (600ms) sooner than the 0.663m it just spent takes to walk back out at 0.75 m/s (884ms).
-  const attack = attackAvailable && rested && !repositioning && inBand && direction ? direction : null;
+  const attack = attackAvailable && rested && !repositioning && inBand && direction && !underSwing ? direction : null;
 
   let reason = 'attacking';
   if (attack == null) {
-    if (!attackAvailable) reason = 'exchange-still-running';
+    if (underSwing) reason = 'holding-under-the-swing';
+    else if (!attackAvailable) reason = 'exchange-still-running';
     else if (!direction) reason = 'no-direction-served';
     else if (repositioning) reason = offsetMeters > 0 ? 'closing-to-band' : 'backing-off-to-band';
     else reason = 'resting';
@@ -190,6 +203,7 @@ export function planOpponentDrive(input = {}) {
     reason,
     inBand,
     repositioning,
+    underSwing,
     separationMeters,
     offsetMeters,
     restedMs,
