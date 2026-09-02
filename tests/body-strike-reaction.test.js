@@ -32,7 +32,7 @@ test('R19K.1 only a real strike plans a reaction - a near miss plans nothing', (
 test('R19K.1 every hurtbox band has a reaction, and an unknown one still gets the default', () => {
   // The map exists so a per-band flinch is a data change later; today they share one clip, and
   // that sameness should be visible rather than hidden behind a constant.
-  for (const band of ['head', 'chest', 'waist', 'knees']) {
+  for (const band of ['head', 'chest', 'belly', 'waist', 'knees']) {
     assert.equal(BODY_STRIKE_REACTION_BY_BAND[band], BODY_STRIKE_REACTION_CLIP_ID, band);
   }
   const odd = planBodyStrikeReaction({ contact: true, band: 'shoulder' });
