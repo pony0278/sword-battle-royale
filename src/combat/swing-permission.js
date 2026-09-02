@@ -1,4 +1,4 @@
-export const SWING_PERMISSION_STAGE = 'R23J.1';
+export const SWING_PERMISSION_STAGE = 'R23Q.1';
 
 // R23J.1 — whether a fighter may throw a swing right now, and the reason when they may not.
 //
@@ -16,12 +16,18 @@ export function planSwingPermission({
   ownExchangeUncleared = false,
   alreadySwinging = false,
   stillRecovering = false,
+  // R23Q.1: the hit reaction owns the whole fighter for 0.867s (R19K.1). A swing thrown under it
+  // would run its contact runtime with no body visibly swinging - the blade would land from a
+  // fighter who is still reeling on screen. Measured the other way round before this: the
+  // opponent's reaction was started and never sampled, so they took blows without moving.
+  beingStruck = false,
   canAct = true,
 } = {}) {
   const reason = !ready ? 'not-ready'
     : opponentMidExchange ? 'the-opponent-is-mid-exchange'
       : alreadySwinging ? 'already-swinging'
         : stillRecovering ? 'still-recovering'
+          : beingStruck ? 'still-being-struck'
           : !canAct ? 'staggered-or-down'
             : ownExchangeUncleared ? 'your-last-exchange-has-not-cleared'
               : null;
