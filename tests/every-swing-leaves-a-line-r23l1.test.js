@@ -75,5 +75,5 @@ test('R23L.1 the lab settles a swing on its falling edge and the HUD shows the l
   const entry = src('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js');
   assert.match(entry, /playerWasSwinging = false; swingLedger\.settle\(\{ bodyHit: playerEngagement\.exchangeState\.latestBodyHit/);
   const ui = src('../tools/action-studio/shield-parry-r281/lab-ui.js');
-  assert.match(ui, /model\.swingLedger\.lines\.join\('\\n'\)/);
+  assert.match(ui, /model\.swingLedger\.hudLines\.join\('\\n'\)/);
 });

@@ -22,6 +22,7 @@ const REQUIRED_IDS = Object.freeze([
   'autoRepeat',
   'opponentDrive',
   'copyTally',
+  'copySwings', // R23M.1
   'slowReview',
   'showSurface',
   'forceOldB3',

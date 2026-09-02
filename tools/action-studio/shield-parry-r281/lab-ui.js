@@ -11,11 +11,13 @@ import {
   formatWhiffDiagnostic,
 } from './diagnostic-formatters.js';
 
+import { formatSwingLedgerReport } from '../../../src/game/swing-ledger.js';
+
 export function createShieldParryLabUi(elements) {
   const {
     hudDuel, hudAttack, hudInput, parryCue, parryCueMain, parryCueDetail, hudContact, hudCoupling,
     hudShield, hudWeapon, hudSeparation, hudLineClearance, hudRecoil, hudDiagnostic, hudParryTally, hudOpponent,
-    parryNow, retryAttack, copyTally,
+    parryNow, retryAttack, copyTally, copySwings,
   } = elements;
 
   // R21G.2: the tally lives in the HUD, and the HUD folds to its title bar with the state
@@ -24,12 +26,16 @@ export function createShieldParryLabUi(elements) {
   // open: it copies the whole run, with the build it was collected on, because a number pasted
   // without its build cannot be compared to the next one.
   let copyableReport = null;
-  if (copyTally) {
-    const label = copyTally.textContent;
+  let copyableSwings = null; // R23M.1: the player's swings, formatted once per frame like the tally
+  const buildVersion = () => document.querySelector('script[type="module"][src*="v="]')?.src.split('v=')[1] || 'unknown';
+  // R23M.1: the tally's copy button, generalised - the swing ledger wants exactly the same
+  // clipboard-or-textarea behaviour, and two copies of a fallback are two ways for one to rot.
+  function bindCopyButton(button, makeText) {
+    if (!button) return;
+    const label = button.textContent;
     let restore = null;
-    copyTally.addEventListener('click', async () => {
-      const version = document.querySelector('script[type="module"][src*="v="]')?.src.split('v=')[1] || 'unknown';
-      const text = [`build ${version}`, ...(copyableReport || ['(尚未有任何攻擊)'])].join('\n');
+    button.addEventListener('click', async () => {
+      const text = makeText();
       let ok = true;
       try { await navigator.clipboard.writeText(text); } catch (error) { ok = false; }
       if (!ok) {
@@ -42,11 +48,13 @@ export function createShieldParryLabUi(elements) {
         field.select();
         setTimeout(() => field.remove(), 20000);
       }
-      copyTally.textContent = ok ? '已複製' : '請手動複製 ↙';
+      button.textContent = ok ? '已複製' : '請手動複製 ↙';
       clearTimeout(restore);
-      restore = setTimeout(() => { copyTally.textContent = label; }, 2000);
+      restore = setTimeout(() => { button.textContent = label; }, 2000);
     });
   }
+  bindCopyButton(copyTally, () => [`build ${buildVersion()}`, ...(copyableReport || ['(尚未有任何攻擊)'])].join('\n'));
+  bindCopyButton(copySwings, () => copyableSwings || formatSwingLedgerReport({ context: { build: buildVersion() } }));
 
   let parryCueState = null;
   let parryCueMainText = null;
@@ -306,9 +314,15 @@ export function createShieldParryLabUi(elements) {
       // R23L.1: and under the bars, the player's last swings - what each asked for and what it
       // found - because a probe that lands every swing and a person whose swings do nothing are
       // describing two different runs, and only the page they are both looking at can say which.
-      const ledger = model.swingLedger?.lines?.length ? `\n${model.swingLedger.lines.join('\n')}` : '';
+      const ledger = model.swingLedger?.hudLines?.length ? `\n${model.swingLedger.hudLines.join('\n')}` : '';
       hudDuel.textContent = `你 ${bar(model.duel.player.fraction)} ${model.duel.player.health}${flag(model.duel.player)}`
         + `   對手 ${bar(model.duel.opponent.fraction)} ${model.duel.opponent.health}${flag(model.duel.opponent)}${ledger}`;
+    }
+    if (model.swingLedger) {
+      copyableSwings = formatSwingLedgerReport({ report: model.swingLedger, context: {
+        build: buildVersion(), mode: model.selectedMode, locked: model.lockReport?.locked ?? null,
+        weaponMount: model.weaponMount, opponent: model.opponent, duel: model.duel,
+      } });
     }
     // Kept current here rather than assembled on the click, so the button copies exactly the run
     // the tester is looking at even if the HUD is folded away.
