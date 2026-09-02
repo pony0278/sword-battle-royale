@@ -125,7 +125,10 @@ function census() {
 // claims (that button opts back into pointer events, or the HUD swallows the click; and the absence below,
 // which the census counts under html too) and one absence
 // (the panel button is no longer named for the player's swings). KEEP.
-const BASELINE = Object.freeze({ total: 1194, srcText: 364, toolsText: 663, html: 159, absence: 150 });
+// R23Z.1: five composition claims - the entry tells both readers of each exchange whose shield it
+// is (four), and the pre-contact controller hands that word to the gate (one). KEEP; the gate's
+// two rules are called.
+const BASELINE = Object.freeze({ total: 1199, srcText: 365, toolsText: 667, html: 159, absence: 150 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

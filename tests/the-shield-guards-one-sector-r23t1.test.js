@@ -45,7 +45,7 @@ test('R23T.1 the lifecycle: a shield contact in another sector guards nothing, a
   assert.equal(gate.covers, false);
   assert.equal(gate.reason, 'shield-in-another-sector-guards-nothing');
   const source = readFileSync(new URL('../src/combat/contact-lifecycle-director.js', import.meta.url), 'utf8');
-  assert.match(source, /if \(contactEvaluation\.contact && typeof readAimedSector === 'function'\) \{\n\s*const sectorGate = planGuardSectorGate\(\{ direction: attackSnapshot\?\.direction, aimedSector: readAimedSector\(\) \}\);/);
+  assert.match(source, /if \(contactEvaluation\.contact && typeof readAimedSector === 'function'\) \{\n\s*const sectorGate = planGuardSectorGate\(\{ direction: attackSnapshot\?\.direction, aimedSector: readAimedSector\(\), coverage: guardCoverage \}\);/);
 });
 
 test('R23T.1 coverage does not engage for a sector the shield is not in', () => {

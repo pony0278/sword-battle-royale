@@ -82,6 +82,7 @@ export function createShieldParryContactHandoffController({
     readDodgeIFramesActive: () => callbacks.readDodgeReport?.()?.iFramesActive === true,
     readGuardActive: callbacks.readGuardActive, // R20G.1: absent = the legacy always-guarding world
     readAimedSector: callbacks.readAimedSector, // R23T.1: absent = the omnidirectional shield
+    guardCoverage: callbacks.guardCoverage, // R23Z.1: and present, whose shield it is
     // R19Y.1: the two points the depth order compares - both read live, like the hurtbox, so a
     // displaced or turned fighter is judged where they actually stand.
     readAttackerRootPoint: () => {

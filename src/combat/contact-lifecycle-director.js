@@ -1,5 +1,5 @@
 import { probeSweptSwordBucklerContact } from './swept-sword-buckler-contact.js';
-import { planGuardSectorGate } from './guard-sector-gate.js';
+import { GUARD_COVERAGE, planGuardSectorGate } from './guard-sector-gate.js';
 import { applyShieldContactSkin } from './shield-contact-skin.js';
 import { evaluateSweptContactTemporalEligibility } from './swept-contact-temporal-eligibility.js';
 import { probeHiltClangContact, buildHiltPolyline } from './hilt-clang-contact.js';
@@ -103,6 +103,7 @@ export function createContactLifecycleDirector({
   readCloseRangePosture,
   readGuardActive,
   readAimedSector = null, // R23T.1: absent = the omnidirectional shield every stage before step 6 had
+  guardCoverage = GUARD_COVERAGE.ONE_SECTOR, // R23Z.1: present, it says whose shield the gate is judging
   readDodgeIFramesActive,
   fallbackIncomingVelocity,
   releaseReachOwnership,
@@ -445,7 +446,7 @@ export function createContactLifecycleDirector({
     // R23T.1: and a shield held in another sector guards nothing either. The body probe below
     // still decides whether the blade reached anybody - this only says the shield did not.
     if (contactEvaluation.contact && typeof readAimedSector === 'function') {
-      const sectorGate = planGuardSectorGate({ direction: attackSnapshot?.direction, aimedSector: readAimedSector() });
+      const sectorGate = planGuardSectorGate({ direction: attackSnapshot?.direction, aimedSector: readAimedSector(), coverage: guardCoverage });
       if (!sectorGate.covers) {
         contactEvaluation = Object.freeze({
           ...contactEvaluation,
