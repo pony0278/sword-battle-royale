@@ -142,6 +142,7 @@ export function createShieldParryDebugApi({
     dispatchParryInput: actions.dispatchParryInput,
     setGuardHeld: actions.setGuardHeld, // R20G.1: probes and drivers hold the guard directly
     selectGuardSector: actions.selectGuardSector, // R23T.1: and point it
+    triggerOpponentParryNow: actions.triggerOpponentParryNow, // R23X.1
     // R20K.1 (B6e): a harness pins the frame step so a cell's trajectory is reproducible, and
     // counts frames instead of milliseconds. setFixedStepMs(null) hands the clock back to the wall.
     setFixedStepMs: actions.setFixedStepMs,

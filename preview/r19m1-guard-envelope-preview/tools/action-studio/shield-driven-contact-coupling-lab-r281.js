@@ -87,6 +87,7 @@ import { createShieldParryPlayerController } from '../../src/game/player-control
 import { createWeaponMountController } from '../../src/game/weapon-mount-controller.js';
 import { createSwingLedger } from '../../src/game/swing-ledger.js';
 import { createPlayerAttackController } from './shield-parry-r281/player-attack-controller.js';
+import { createOpponentParry } from './shield-parry-r281/opponent-parry.js';
 import { createEngagement } from '../../src/game/engagement.js';
 import { createDuel } from '../../src/game/duel.js';
 
@@ -347,13 +348,15 @@ const { updateParryCue, updateHud, buildReport } = createShieldParryFrameReporti
 // R21E.1: the opponent places and paces themselves. Input source only - it writes nothing but
 // setAttackerIntent and startAttack, which is what leaves the golden grid and the parry gate (both
 // of which drive attacks by hand at fixed separations) untouched with the toggle off.
+const opponentParry = createOpponentParry({ readPlayerEngagement: () => playerEngagement, opponentFighter: attackerFighter }); // R23X.1
 const opponentDriveController = createOpponentDriveController({
   toggle: opponentDrive, laneController, startAttack, tally: parryTally,
   readAttackAvailable: () => ready && !combat.active && !attackRuntime.active && !engagement.hasRecovery,
   // R23S.1: the shield answers the PLAYER's swing, and is read off the player's runtime.
-  readThreat: () => { const s = playerEngagement?.attackRuntime.snapshot; return s?.action ? { active: true, sequence: s.sequence, elapsedSeconds: s.elapsedSeconds, direction: s.direction } : null; }, // R23T.1: with the direction, which is what the shield answers
+  readThreat: () => { const s = playerEngagement?.attackRuntime.snapshot; return s?.action ? { active: true, sequence: s.sequence, elapsedSeconds: s.elapsedSeconds, direction: s.direction, timeToContactSeconds: Number(s.action.runtime?.contactSeconds) - s.elapsedSeconds } : null; }, // R23T.1: with the direction, which is what the shield answers; R23X.1: and how long until the blade arrives
   readOwnSwinging: () => combat.active || attackRuntime.active,
   applyGuard: ({ held, sector }) => { attackerFighter.guardSector.select(sector); syncOpponentGuard(held); }, // R23T.1: the sector first, so the guard that rises is already pointed
+  applyParry: () => opponentParry.arm(), // R23X.1
 });
 // R23S.1: the opponent's guard, driven by the stance the way the player's is (syncGuardToStance)
 // and entered the way enterGuard enters it - one machine, one presentation, both already theirs.
@@ -493,7 +496,15 @@ function startAttack(direction = selectedDirection) {
   // R23G.1: and not into the player's swing either. One advance runtime, one swinging slot - the
   // refusal is symmetric because the ledger underneath is.
   // R23J.1: and a parried or downed opponent does not swing - what makes the stagger a RULE.
-  if (playerEngagement?.attackRuntime.active || playerEngagement?.combat.active
+  // R23X.1: and not while the player's swing still owns the lane - `active` ends at a parry, the
+  // action (and the lane slot, and the ledger's open line) lasts until the recovery hands it back.
+  // Measured: the opponent's punish started 0.3s before that edge, the edge then ended the
+  // OPPONENT's exchange, and the log settled the player's line with nothing and the opponent's
+  // line with the player's parry.
+  // R23X.1 (measured again): the drive's frame runs BEFORE the player's falling edge, so on the very
+  // frame the action drops the snapshot already reads empty while the lane and the ledger still
+  // belong to the player's swing. playerWasSwinging is that unprocessed edge: wait one more frame.
+  if (playerEngagement?.attackRuntime.active || playerEngagement?.combat.active || playerEngagement?.attackRuntime.snapshot?.action || playerWasSwinging
     || !attackerFighter.condition.report.canAct || attackerFighter.bodyStrikeReaction.active) return false; // R23Q.1: a body being struck is not a body that swings
   // B6c: parry mode keeps its armed guard; block mode raises only what the held key says.
   if ((selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
@@ -573,7 +584,7 @@ const duel = createDuel({
 const playerAttack = createPlayerAttackController({
   laneController, guardSector, swingLedger, duel, status, playerFighter: defenderFighter,
   readPlayerEngagement: () => playerEngagement, readWeaponMount: () => weaponMount, readReady: () => ready,
-  readSelectedMode: () => selectedMode, readOpponentMidExchange: () => combat.active || attackRuntime.active,
+  readSelectedMode: () => selectedMode, readOpponentMidExchange: () => combat.active || attackRuntime.active || Boolean(attackRuntime.snapshot?.action) || opponentWasSwinging, // R23X.1: the same edge, mirrored, and the unprocessed edge too
   readLocked: () => playerController?.locked,
 });
 function resolveContact(snapshot, currentBlade, deltaSeconds) {
@@ -724,7 +735,7 @@ function frame(timestamp) {
     // nothing was telling it this one had stopped. The opponent's side banks at the START of its
     // next attack instead, which is what the golden grid was measured against and is therefore not
     // changed here; the two ought to agree, and that is its own change with its own evidence.
-    if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; swingLedger.settle({ bodyHit: playerEngagement.exchangeState.latestBodyHit, outcome: playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.separationMeters }); }
+    if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; swingLedger.settle({ bodyHit: playerEngagement.exchangeState.latestBodyHit, outcome: playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.separationMeters, receiverStaggered: defenderFighter.condition.report.staggered }); } // R23X.1: a parried player is staggered, and their line says so
     playerWasSwinging = Boolean(playerSnapshot?.action);
     if (opponentWasSwinging && !snapshot?.action) swingLedger.settle({ bodyHit: exchangeState.latestBodyHit, outcome: exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.separationMeters, receiverStaggered: attackerFighter.condition.report.staggered }); // R23W.1: a parry staggers the swinger, and the log says so
     opponentWasSwinging = Boolean(snapshot?.action);
@@ -838,7 +849,8 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     resetDebugStanceDefaults,
     triggerParryNow,
     dispatchParryInput,
-    selectGuardSector: (sector) => guardSector.select(sector), // R23T.1: the golden grid points the shield the way a person does, without a pointer
+    selectGuardSector: (sector) => guardSector.select(sector), // R23T.1
+    triggerOpponentParryNow: (source) => opponentParry.arm(source || 'probe'), // R23X.1: probes arm it directly, as they do the player's: the golden grid points the shield the way a person does, without a pointer
     setGuardHeld, setFixedStepMs: (ms) => frameClock.setFixedStep(ms), // R20G.1 + R20K.1: drivers hold the guard, harnesses pin the clock
     tryDodge: requestDodge, // R20G.1: same gate as the keys - the facade may not skip the stance
     forceOldTwoActorB3,

@@ -48,6 +48,14 @@ test('R23W.1 the player\'s swing reads the other way, and a shield verdict outra
   assert.equal(ledger.report.entries.find((e) => e.n === 1).who, 'player', 'absent means the player, as every R23L.1 caller assumed');
 });
 
+test('R23X.1 a swing never settled is closed as superseded, not as a whiff at 0.00m', () => {
+  const ledger = createSwingLedger();
+  ledger.recordSwing({ direction: 'top', separationMeters: 2.4 });
+  ledger.recordSwing({ who: 'opponent', direction: 'right', separationMeters: 2.3 });
+  assert.equal(ledger.report.lines[0], '#1 你 TOP 2.40m 沒結算: 下一刀先開始了');
+  assert.equal(ledger.report.entries[0].superseded, true);
+});
+
 test('R23W.1 the lab records the opponent\'s swing when it starts and settles it on its falling edge, stagger and all', () => {
   const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
   assert.match(entry, /laneController\.startAttack\(direction, attackRuntime\.snapshot\?\.action\?\.runtime\?\.contactSeconds\);\n\s*swingLedger\.recordSwing\(\{ who: 'opponent', direction, separationMeters: laneController\.separationMeters \}\);/);
