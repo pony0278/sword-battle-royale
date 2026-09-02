@@ -466,7 +466,7 @@ function startAttack(direction = selectedDirection) {
   // refusal is symmetric because the ledger underneath is.
   // R23J.1: and a parried or downed opponent does not swing - what makes the stagger a RULE.
   if (playerEngagement?.attackRuntime.active || playerEngagement?.combat.active
-    || !attackerFighter.condition.report.canAct) return false;
+    || !attackerFighter.condition.report.canAct || attackerFighter.bodyStrikeReaction.active) return false; // R23Q.1: a body being struck is not a body that swings
   // B6c: parry mode keeps its armed guard; block mode raises only what the held key says.
   if ((selectedMode === 'parry' || (selectedMode === 'block' && guardKeyHeld)) && guardMachine.state !== GUARD_STATES.HOLD) enterGuard();
   selectedDirection = direction;
@@ -539,7 +539,7 @@ function startPlayerAttack() {
   const permission = planSwingPermission({ ready: ready && Boolean(playerEngagement),
     opponentMidExchange: combat.active || attackRuntime.active, ownExchangeUncleared: playerEngagement?.combat.active,
     alreadySwinging: playerEngagement?.attackRuntime.active, stillRecovering: playerEngagement?.hasRecovery,
-    canAct: defenderFighter.condition.report.canAct });
+    beingStruck: bodyStrikeReaction.active, canAct: defenderFighter.condition.report.canAct }); // R23Q.1: beingStruck
   const aimed = guardSector.sector;
   if (!permission.allowed) { playerAttackRefusal = permission.reason; swingLedger.recordRefusal({ direction: aimed || 'top', reason: permission.reason, separationMeters: laneController.separationMeters }); return false; }
   playerDirection = aimed || 'top';
@@ -739,6 +739,7 @@ function frame(timestamp) {
     // why the snap appeared exactly when a player FAILED to answer a swing.
     if (snapshot.completed && !engagement.hasRecovery) beginAttackRecovery(selectedDirection);
     if (!contactFrame.handledCombat) sampleAttackerBase(snapshot, deltaMs);
+    attackerFighter.bodyStrikeReaction.sample(deltaMs); // R23Q.1: last writer on the opponent - R23J.1 started this reaction and nothing ever sampled it
 
     const playerFrame = playerEngagement?.contactHandoff.updateCombatBeforeGuard({
       deltaSeconds, deltaMs, selectedDirection: playerDirection,

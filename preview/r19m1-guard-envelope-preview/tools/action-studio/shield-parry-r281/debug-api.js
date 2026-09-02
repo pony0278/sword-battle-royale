@@ -88,6 +88,11 @@ export function createShieldParryDebugApi({
           defender: runtimes.defenderFighter?.condition?.report ?? null,
           attacker: runtimes.attackerFighter?.condition?.report ?? null,
         }),
+        // R23Q.1: whether each is currently reeling from a blow - the frame the reaction owns.
+        reacting: Object.freeze({
+          defender: runtimes.defenderFighter?.bodyStrikeReaction?.active === true,
+          attacker: runtimes.attackerFighter?.bodyStrikeReaction?.active === true,
+        }),
       });
     },
     // R20X.1: which way the body is travelling in its own frame, and how far the stride is turned.
