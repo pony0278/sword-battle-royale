@@ -65,9 +65,11 @@ test('R24B.1 a rest draws its circle from the seed, bounded by the profile, and 
   again.commit('top');
   assert.equal(again.report.circle, null, 'the swing ends the walk');
   // Arriving back in the band draws one too - measured: without this, one circle in 12 seconds.
+  // The gate's own draw is spent first (300ms in three frames, in band), so what follows can only
+  // come from the arrival: walk out of band, walk back, and the circle is there again.
   const arriving = createOpponentDriveRuntime({ seed: 5, profile: { circle: { chance: 1, durationMs: { minimum: 300, maximum: 300 } } } });
-  arriving.commit('top');
-  arriving.frame({ deltaMs: 100, separationMeters: 1.9, attackAvailable: false });
+  for (let i = 0; i < 4; i += 1) arriving.frame({ deltaMs: 100, separationMeters: 2.4, attackAvailable: true });
+  assert.equal(arriving.report.circle, null, 'the gate\'s circle is spent');
   arriving.frame({ deltaMs: 100, separationMeters: 1.9, attackAvailable: true });
   assert.equal(arriving.report.reason, 'backing-off-to-band');
   arriving.frame({ deltaMs: 100, separationMeters: 2.4, attackAvailable: true });
