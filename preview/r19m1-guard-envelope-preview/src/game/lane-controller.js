@@ -522,5 +522,6 @@ export function createShieldParryLaneController({
     },
     get report() { return ground.report; },
     get separationMeters() { return ground.separationMeters; },
+    get settledSeparationMeters() { return ground.report.settledSeparationMeters; }, // R24E.2: once the ground a blow owes is paid
   });
 }

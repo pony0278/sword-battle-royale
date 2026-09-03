@@ -741,9 +741,9 @@ function frame(timestamp) {
     // nothing was telling it this one had stopped. The opponent's side banks at the START of its
     // next attack instead, which is what the golden grid was measured against and is therefore not
     // changed here; the two ought to agree, and that is its own change with its own evidence.
-    if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; swingLedger.settle({ bodyHit: playerEngagement.exchangeState.latestBodyHit, outcome: playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.separationMeters, receiverStaggered: defenderFighter.condition.report.staggered }); } // R23X.1: a parried player is staggered, and their line says so
+    if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; swingLedger.settle({ bodyHit: playerEngagement.exchangeState.latestBodyHit, outcome: playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.settledSeparationMeters, receiverStaggered: defenderFighter.condition.report.staggered }); } // R23X.1: a parried player is staggered, and their line says so
     playerWasSwinging = Boolean(playerSnapshot?.action);
-    if (opponentWasSwinging && !snapshot?.action) swingLedger.settle({ bodyHit: exchangeState.latestBodyHit, outcome: exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.separationMeters, receiverStaggered: attackerFighter.condition.report.staggered }); // R23W.1: a parry staggers the swinger, and the log says so
+    if (opponentWasSwinging && !snapshot?.action) swingLedger.settle({ bodyHit: exchangeState.latestBodyHit, outcome: exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.settledSeparationMeters, receiverStaggered: attackerFighter.condition.report.staggered }); // R23W.1: a parry staggers the swinger, and the log says so
     opponentWasSwinging = Boolean(snapshot?.action);
     const laneSwing = playerSnapshot?.action ? playerSnapshot : snapshot;
     laneController.update(laneSwing.elapsedSeconds, Boolean(laneSwing.action), laneSwing.phase); // R20B.1 phase rides along

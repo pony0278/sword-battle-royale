@@ -176,7 +176,9 @@ test('R23C.1 a defender-thrown swing moves the defender on the ledger, not the a
     `a defender's lunge carries them toward the attacker, got ${mid.defenderPosition.z}`);
   assert.ok(mid.separationMeters < start.separationMeters, 'so the gap closes');
   // And the exchange settles onto the right pair of shoulders.
-  const settled = lane.settle('parry');
+  lane.settle('parry');
+  for (let i = 0; i < 30; i += 1) lane.walk(1 / 60, null); // R24E.2: the throw is paid over the reaction
+  const settled = lane.report;
   assert.ok(settled.defenderPosition.z > mid.defenderPosition.z,
     'a parried swinger is thrown back the way they came');
   assert.ok(settled.attackerPosition.z < start.attackerPosition.z,

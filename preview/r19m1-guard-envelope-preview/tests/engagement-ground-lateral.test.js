@@ -61,7 +61,9 @@ test('R19U.1 impact throws run down the live line between the fighters', () => {
   g.moveDefenderLateral(0.7);
   const before = g.report.separationMeters;
   g.setAttackerSwing(0.2, Math.atan2(0.7, 1.4));
-  const settled = g.settleImpact('block');
+  g.settleImpact('block');
+  g.advanceYield(1); // R24E.2: given over the reaction; the line it runs down is the same
+  const settled = g.report;
   // Block transfer: attacker -0.07, defender +0.09 along the line = 0.16 net opening, applied to
   // whatever the separation was when the blow landed.
   close(settled.separationMeters, before - 0.2 + 0.16, 1e-6);
