@@ -16,7 +16,7 @@ function functionBody(name) {
 
 test('Step 1 exposes a direct OLD Two-Actor B3 diagnostic control', () => {
   assert.match(html, /id="forceOldB3"/);
-  assert.match(html, /g43b5r281-the-parry-arm-takes-its-time-r24d1/);
+  assert.match(html, /g43b5r281-the-ground-is-given-over-the-reaction-r24e2/);
   assert.match(source, /forceOldTwoActorB3/);
   assert.match(diagnosticSource, /direct-existing-old-two-actor-b3-diagnostic/);
 });

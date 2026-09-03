@@ -17,6 +17,11 @@ export function createAttackerPresentationAdapter({
     blendRecoveryPose,
     sampleLongswordAttackRecovery,
     sampleLiveParryOldB3ReleaseBlend,
+    // R24E.1 (#26): optional. Paints the pose the body will resume in once the recovery hands it
+    // back - the held guard, for a fighter whose guard machine is in HOLD - and returns it, or
+    // returns null when there is nothing to resume, in which case the recovery settles into the
+    // idle as before.
+    captureResumePose,
   } = services || {};
 
   for (const [name, fn] of Object.entries({
@@ -96,16 +101,24 @@ export function createAttackerPresentationAdapter({
 
   function createRecovery(direction) {
     const sourcePose = captureRigPose(attacker.rig);
-    attacker.sampleAnimation('UAL1/Sword_Idle', 0, {
-      loop: true,
-      inPlace: true,
-      rootRotationPolicy: 'lock',
-    });
-    attacker.update(0, camera);
-    const targetPose = captureRigPose(attacker.rig);
+    // R24E.1 (#26): the recovery blends toward where the body is GOING, not toward the idle it
+    // will never show. Measured before: an opponent holding their guard recovered into Sword_Idle
+    // over 0.5s and then, on the first frame the guard painted again, jumped 24cm at the chest and
+    // 45/56cm at the hands - the whole guard, in one frame, right after a blend whose only purpose
+    // was to avoid exactly that. The player's held block did the same on their own swing.
+    const resumePose = typeof captureResumePose === 'function' ? captureResumePose() : null;
+    if (!resumePose) {
+      attacker.sampleAnimation('UAL1/Sword_Idle', 0, {
+        loop: true,
+        inPlace: true,
+        rootRotationPolicy: 'lock',
+      });
+      attacker.update(0, camera);
+    }
+    const targetPose = resumePose || captureRigPose(attacker.rig);
     applyRigPose(attacker.rig, sourcePose);
     attacker.update(0, camera);
-    return { direction, elapsedMs: 0, sourcePose, targetPose };
+    return { direction, elapsedMs: 0, sourcePose, targetPose, resumes: resumePose ? 'guard' : 'idle' };
   }
 
   function sampleBase({ snapshot, deltaMs, recovery, idleClockSeconds, idleDuration, walkSample }) {

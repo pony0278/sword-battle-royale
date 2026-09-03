@@ -713,8 +713,16 @@ export function createContactLifecycleDirector({
       });
     }
     if (releaseBlend) releaseBlend.elapsedMs += deltaMs;
+    // R24E.1 (#26): a recoil that has finished weighs nothing. The recoil's torso weight eases to
+    // zero over its settle and then the plan is gone, so the snapshot has no sample - and the
+    // fallback was 1. Measured: on the frame the recoil completed the lean's weight read 0.0001,
+    // 1.00 the next, and the target lean went from +15.5 degrees (settled) to -7.0 (the whole
+    // backward lean) in one frame - 15cm at the chest, 41cm at the sword hand - and the recovery
+    // then captured that flung silhouette as the pose to stand up from.
+    const recoilUpdate = combatUpdate?.recoilUpdate;
+    const recoilDone = recoilUpdate?.justCompleted === true || recoilUpdate?.reactionAlreadyComplete === true;
     const attackerReaction = reactionDirector.advanceAttacker(deltaMs, {
-      torsoWeight: readCombatSnapshot().attackerRecoil?.sample?.weights?.torsoWeight ?? 1,
+      torsoWeight: readCombatSnapshot().attackerRecoil?.sample?.weights?.torsoWeight ?? (recoilDone ? 0 : 1),
     });
     const justCompleted = combatUpdate?.justCompleted === true;
     if (justCompleted) reactionDirector.reset();

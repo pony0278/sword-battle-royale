@@ -59,5 +59,5 @@ test('R23X.1 a swing never settled is closed as superseded, not as a whiff at 0.
 test('R23W.1 the lab records the opponent\'s swing when it starts and settles it on its falling edge, stagger and all', () => {
   const entry = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab-r281.js', import.meta.url), 'utf8');
   assert.match(entry, /laneController\.startAttack\(direction, attackRuntime\.snapshot\?\.action\?\.runtime\?\.contactSeconds\);\n\s*swingLedger\.recordSwing\(\{ who: 'opponent', direction, separationMeters: laneController\.separationMeters \}\);/);
-  assert.match(entry, /if \(opponentWasSwinging && !snapshot\?\.action\) swingLedger\.settle\(\{ bodyHit: exchangeState\.latestBodyHit, outcome: exchangeState\.latestCombatResult\?\.resolution\?\.outcome, separationMeters: laneController\.separationMeters, receiverStaggered: attackerFighter\.condition\.report\.staggered \}\);/);
+  assert.match(entry, /if \(opponentWasSwinging && !snapshot\?\.action\) swingLedger\.settle\(\{ bodyHit: exchangeState\.latestBodyHit, outcome: exchangeState\.latestCombatResult\?\.resolution\?\.outcome, separationMeters: laneController\.settledSeparationMeters, receiverStaggered: attackerFighter\.condition\.report\.staggered \}\);/);
 });

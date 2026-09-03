@@ -55,7 +55,9 @@ test('R18Z.1 a landed blow banks the step and moves both fighters for good', () 
   const lane = ground();
   const step = ATTACK_ADVANCE_PROFILES.left.metersByContact;
   lane.setAttackerSwing(step);
-  const settled = lane.settleImpact('block');
+  const atContact = lane.settleImpact('block');
+  lane.advanceYield(1); // R24E.2: a block's throw is given over its reaction now, like a hit's
+  const settled = { ...lane.report, transfer: atContact.transfer };
 
   const { swingerMeters, receiverMeters } = ENGAGEMENT_GROUND_TRANSFERS.block;
   assert.ok(Math.abs(settled.attackerGroundMeters - (step + swingerMeters)) < 1e-9);
@@ -87,6 +89,7 @@ test('R19B.2 a whiffed swing leaves the attacker where their own momentum carrie
   const blocked = createEngagementGround({ startSeparationMeters: START });
   blocked.setAttackerSwing(step);
   blocked.settleImpact('block');
+  blocked.advanceYield(1);
   assert.ok(lane.separationMeters < blocked.separationMeters, 'a whiff should end closer than a block');
   assert.equal(lane.settleImpact('nonsense'), null);
 });
@@ -120,7 +123,12 @@ test('R18Z.1 the ledger is what the ground actually adds up to over an exchange'
   const givenBack = ENGAGEMENT_GROUND_TRANSFERS.block.receiverMeters
     - ENGAGEMENT_GROUND_TRANSFERS.block.swingerMeters;
   lane.setAttackerSwing(step);
-  const after = lane.settleImpact('block');
+  const atContact = lane.settleImpact('block');
+  // R24E.2: the number is the same, and the ledger already knows it at contact - the yield only
+  // decides when the feet get there.
+  assert.ok(Math.abs(atContact.settledSeparationMeters - (START - step + givenBack)) < 1e-9);
+  lane.advanceYield(1);
+  const after = lane.report;
   assert.ok(Math.abs(after.separationMeters - (START - step + givenBack)) < 1e-9);
   assert.ok(after.separationMeters < START, 'a blocked attack still gains the attacker ground');
   assert.ok(givenBack < step, 'and the impact alone cannot pay that back');
@@ -133,7 +141,10 @@ test('R18Z.1 a parry hands ground back to the defender', () => {
   const blocked = createEngagementGround({ startSeparationMeters: START });
   blocked.setAttackerSwing(step);
   blocked.settleImpact('block');
-  const parried = lane.settleImpact('parry');
+  blocked.advanceYield(1);
+  lane.settleImpact('parry');
+  lane.advanceYield(1);
+  const parried = lane.report;
   assert.ok(
     parried.separationMeters > blocked.separationMeters,
     'the same attack parried must leave the attacker further away than blocked',

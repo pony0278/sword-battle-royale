@@ -37,17 +37,27 @@ export const ENGAGEMENT_GROUND_STAGE = 'R19U.1';
 // other exchange. The measured PROFILES keep their names - they are recordings of specific
 // animations, and the animation was recorded on the attacker - so the reference below reads
 // "the swinger moves by what was measured on the attacker", which is exactly what it means.
+// R24E.2 (#34): given over the reaction, like a hit's ground since R23P.1, rather than in one
+// frame. Measured before: on the contact frame both fighters' lane positions stepped 70mm and
+// 90mm at once (the block's two peaks), and the root-bone recoil then rose by the same amount over
+// the next four frames - the whole body jumped, then travelled the same distance again. The yield
+// runs as long as the recoil profile whose peak it mirrors (rise + hold + recover), so the ground
+// is given while the body is visibly reacting to the blow and is fully paid before the swinger's
+// action drops (18 frames after contact).
+const reactionSeconds = (profile) => (profile.riseMs + profile.holdMs + profile.recoverMs) / 1000;
 export const ENGAGEMENT_GROUND_TRANSFERS = Object.freeze({
   block: Object.freeze({
     outcome: 'block',
     swingerMeters: -BLOCK_ROOT_DISPLACEMENT_PROFILES.attacker.peakMeters,
     receiverMeters: BLOCK_ROOT_DISPLACEMENT_PROFILES.defender.peakMeters,
+    yieldSeconds: reactionSeconds(BLOCK_ROOT_DISPLACEMENT_PROFILES.attacker),
     authority: 'a-held-shield-gives-ground-and-rebounds-the-blade',
   }),
   parry: Object.freeze({
     outcome: 'parry',
     swingerMeters: -PARRY_ROOT_DISPLACEMENT_PROFILES.attacker.peakMeters,
     receiverMeters: PARRY_ROOT_DISPLACEMENT_PROFILES.defender.peakMeters,
+    yieldSeconds: reactionSeconds(PARRY_ROOT_DISPLACEMENT_PROFILES.attacker),
     authority: 'a-parry-throws-the-swinger-and-costs-the-one-who-answered-little',
   }),
   // R23P.1 - a landed blow gives ground. Measured before this existed, from the swing ledger a
@@ -181,8 +191,17 @@ export function createEngagementGround(options = {}) {
       attacker: yields.attacker ? yields.attacker.totalMeters - yields.attacker.appliedMeters : 0,
       defender: yields.defender ? yields.defender.totalMeters - yields.defender.appliedMeters : 0,
     }); // R23P.1: ground a blow is still owed, by the slot that owes it
+    // R24E.2: the gap once everything owed has been paid - what the exchange ends at, which is the
+    // number a ledger line and a record want, rather than wherever the yield has got to when they
+    // happen to be read. The gap runs defender-minus-attacker, so the attacker's owed ground
+    // closes it and the defender's opens it, each along its own line.
+    const owed = (slot, axis) => (yields[slot] ? yieldMeters[slot] * yields[slot].sign * yields[slot].along[axis] : 0);
+    const settledLongitudinal = gap.longitudinal - owed('attacker', 'longitudinal') + owed('defender', 'longitudinal');
+    const settledLateral = gap.lateral - owed('attacker', 'lateral') + owed('defender', 'lateral');
+    const settledSeparationMeters = settledLateral === 0 ? settledLongitudinal : Math.hypot(settledLongitudinal, settledLateral);
     return Object.freeze({
       yieldMeters,
+      settledSeparationMeters,
       stage: ENGAGEMENT_GROUND_STAGE,
       attackerMeters,
       defenderMeters,
@@ -463,26 +482,27 @@ export function createEngagementGround(options = {}) {
     const receiverMeters = transfer.receiverGivesBackTheStep
       ? Math.max(Math.hypot(swingMeters[swinger], swingLateralMeters[swinger]), finite(transfer.minimumReceiverMeters))
       : finite(transfer.receiverMeters);
-    if (gap.lateral === 0 || !(gap.separation > 1e-9)) {
-      groundMeters[swinger] += swingMeters[swinger] + transfer.swingerMeters * sign;
-    } else {
-      // The blow's throw is along the line between them at the moment it lands, wherever that
-      // line points: the swinger is thrown back down it, the one who answered gives ground up it.
-      groundMeters[swinger] += swingMeters[swinger]
-        + transfer.swingerMeters * sign * (gap.longitudinal / gap.separation);
-      lateralMeters[swinger] += swingLateralMeters[swinger]
-        + transfer.swingerMeters * sign * (gap.lateral / gap.separation);
-    }
-    if (gap.lateral === 0) lateralMeters[swinger] += swingLateralMeters[swinger];
+    // The step is banked at once - it has already been walked - and the blow's throw is along the
+    // line between them at the moment it lands, wherever that line points: the swinger is thrown
+    // back down it, the one who answered gives ground up it.
+    groundMeters[swinger] += swingMeters[swinger];
+    lateralMeters[swinger] += swingLateralMeters[swinger];
     const along = gap.lateral === 0 || !(gap.separation > 1e-9)
       ? { longitudinal: 1, lateral: 0 }
       : { longitudinal: gap.longitudinal / gap.separation, lateral: gap.lateral / gap.separation };
-    if (finite(transfer.yieldSeconds) > 0) {
-      yields[receiver] = { totalMeters: receiverMeters, appliedMeters: 0, seconds: finite(transfer.yieldSeconds), elapsed: 0, sign, along };
-    } else {
-      groundMeters[receiver] += receiverMeters * sign * along.longitudinal;
-      lateralMeters[receiver] += receiverMeters * sign * along.lateral;
-    }
+    // R24E.2: what each of them is given goes over the transfer's yield when it has one - the
+    // swinger's throw as much as the receiver's ground - and at once otherwise.
+    const give = (slot, meters) => {
+      if (meters === 0) return;
+      if (finite(transfer.yieldSeconds) > 0) {
+        yields[slot] = { totalMeters: meters, appliedMeters: 0, seconds: finite(transfer.yieldSeconds), elapsed: 0, sign, along };
+        return;
+      }
+      groundMeters[slot] += meters * sign * along.longitudinal;
+      lateralMeters[slot] += meters * sign * along.lateral;
+    };
+    give(swinger, finite(transfer.swingerMeters));
+    give(receiver, receiverMeters);
     swingMeters[swinger] = 0;
     swingLateralMeters[swinger] = 0;
     holdMinimumSeparation(swinger);
