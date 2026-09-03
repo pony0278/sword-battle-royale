@@ -807,6 +807,15 @@ export function bindShieldParryLabUiEvents({
     button.addEventListener('pointerdown', (event) => { event.preventDefault(); handlers.onDodge?.('back'); });
     button.addEventListener('contextmenu', (event) => event.preventDefault());
   });
+  // R24F.2 (#36): the thumb's blade. Measured before: a touch on the canvas did nothing at all - no
+  // swing, no refusal - because bindAttack returns for touch pointers, and the panel's direction
+  // buttons are the lab's. The same handler the mouse button calls, on the same edge: pointerdown,
+  // measured on the mouse path as active on the very frame of the press. One touch is one swing
+  // because the permission gate refuses a second start while the first is live.
+  documentRef.querySelectorAll('[data-attack-touch]').forEach((button) => {
+    button.addEventListener('pointerdown', (event) => { event.preventDefault(); handlers.onAttack?.(); });
+    button.addEventListener('contextmenu', (event) => event.preventDefault());
+  });
   canvas.addEventListener('pointerdown', () => canvas.focus({ preventScroll: true }));
   elements.showSurface.addEventListener('change', () => handlers.onShowSurface(elements.showSurface.checked));
   windowRef.addEventListener('resize', handlers.onResize);

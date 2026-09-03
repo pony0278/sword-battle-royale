@@ -69,7 +69,7 @@
     #touchPad {
     position: fixed; right: 14px; bottom: 14px; z-index: 30;
     display: grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px;
-    grid-template-areas: ". up dodge" "left guard right" ". down ."; gap: 6px;
+    grid-template-areas: ". up dodge" "left guard right" ". down attack"; gap: 6px;
     opacity: 0.85; touch-action: none;
   }
   #touchPad button {
@@ -113,6 +113,7 @@
   .pad-up { grid-area: up; } .pad-down { grid-area: down; }
   .pad-left { grid-area: left; } .pad-right { grid-area: right; }
   .pad-guard { grid-area: guard; } .pad-dodge { grid-area: dodge; }
+  .pad-attack { grid-area: attack; border-color: #7ef0ad88; } /* R24F.2 (#36): the right thumb's blade */
 </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -129,7 +130,10 @@
       <button data-move="ArrowRight" class="pad-right">▶</button>
       <button data-move="ArrowDown" class="pad-down">▼</button>
       <button data-hold-guard class="pad-guard">🛡</button>
+      <!-- R24F.2 (#36): the blade. Fires on pointerdown like the mouse button does (R23H.1) - a
+           click would wait for the finger to lift. Direction is the last sector cell pressed, else TOP. -->
       <button data-dodge class="pad-dodge">✦</button>
+      <button data-attack-touch class="pad-attack">⚔</button>
     </div>
     <!-- R24F.1: what a phone sees first. The kind is painted by lab-ui from src/game/mobile-start. -->
     <div id="startOverlay" class="start-overlay" hidden data-kind="">
@@ -273,6 +277,6 @@
       });
     })();
   </script>
-  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-the-phone-starts-the-fight-r24f1"></script>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-the-thumb-swings-r24f2"></script>
 </body>
 </html>
