@@ -284,6 +284,27 @@ export function createEngagementGround(options = {}) {
     return report();
   }
 
+  // R24B.1 (step 6c): the same verb for the attacker. Positive steps to the ATTACKER's own right
+  // when facing the defender, which on the lane is -x (they face +z; the defender faces -z and
+  // their right is +x, R20T.3 - the note above this one predates that correction). Off the axis
+  // it is the perpendicular of the current line between
+  // them, so the opponent CIRCLES the player the way the player circles them. Measured before
+  // this existed: a player sidestep at 0.75 m/s orbits at 18 deg/s at 2.4m, both base facings
+  // track the bearing at 180 deg/s with 0.0 deg of error, and from 1.29m off the axis all three
+  // directions still land - the geometry is symmetric, so the mirror is the whole of the rule.
+  function moveAttackerLateral(meters) {
+    const step = finite(meters);
+    if (step === 0) return report();
+    const gap = gapParts();
+    if (gap.lateral === 0 || !(gap.separation > 1e-9)) {
+      lateralMeters.attacker -= step;
+    } else {
+      lateralMeters.attacker += step * (-gap.longitudinal / gap.separation);
+      groundMeters.attacker += step * (gap.lateral / gap.separation);
+    }
+    return report();
+  }
+
   // R20N.1: the world verb. Everything above is spoken relative to the opponent - close the gap,
   // circle them - which is the language of a locked duel and the reason a sidestep orbits instead
   // of sliding away down the world's x. Free movement has no such reference: the player walks
@@ -535,6 +556,7 @@ export function createEngagementGround(options = {}) {
     moveAttacker,
     moveDefender,
     moveDefenderLateral,
+    moveAttackerLateral, // R24B.1
     moveAttackerWorld,
     moveDefenderWorld,
     // null restores the derived bearing, which is what unlocking is: nobody is pointed at anybody

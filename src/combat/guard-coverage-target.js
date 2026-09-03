@@ -121,17 +121,52 @@ function lerpVector(a, b, t) {
   });
 }
 
+// R24C.1 - the measured aim answers a blade that is COMING, and stays where it met it.
+//
+// Measured on both defenders at 2.40m (the shield hand, mm per frame): (1) a swing thrown while
+// the last one's blade is still retracting past the shield engaged the measured aim on that
+// receding blade for its first 0.1s - 34 to 70mm/frame of lunge toward a sword on its way out;
+// (2) once the blade had passed the shield plane the aim fell back to the direction anchor and
+// the arm turned around at 40mm/frame, one frame after meeting the blade. Together with the
+// snap-to-measured this read as a shield hunting for a line rather than taking one. So: the
+// measurement only engages while the blade's plane gap is closing (a first reading has no
+// trend, and waits one frame), and once it has engaged in a sequence it is held - the blade's
+// last measured point is the aim until the sequence ends. Neither changes where the shield is
+// when the blade arrives, which is the only thing the swept contact test reads.
 export function createGuardCoverageTargetTracker(options = {}) {
   const profile = Object.freeze({ ...GUARD_COVERAGE_TARGET_PROFILE, ...(options.profile || {}) });
   let sequence = null;
   let smoothedPoint = null;
+  let lastPlaneGap = null; // R24C.1: the previous frame's plane gap, for the closing test
+  let heldThreat = null; // R24C.1: the last measured aim of this sequence
 
   return Object.freeze({
     select(input = {}) {
-      const selection = selectGuardCoverageTarget({ ...input, profile });
+      let selection = selectGuardCoverageTarget({ ...input, profile });
       if (input.sequence !== sequence) {
         sequence = input.sequence ?? null;
         smoothedPoint = null;
+        lastPlaneGap = null;
+        heldThreat = null;
+      }
+      // R24C.1: a measured reading counts only while the blade is closing on the shield plane, and
+      // only inside the window in which it could still arrive (`measurable`, the caller's word -
+      // the swing's active window less the guard's own horizon; a swing thrown while the last
+      // blade is still on its way home sweeps that blade past the shield with a briefly closing gap).
+      const planeGap = input.approach ? finite(input.approach.planeGapMeters, Infinity) : null;
+      const closing = planeGap != null && lastPlaneGap != null && planeGap < lastPlaneGap - 1e-6;
+      if (planeGap != null) lastPlaneGap = planeGap;
+      const measurable = input.measurable !== false;
+      if (selection.engaged && (!closing || !measurable) && !heldThreat) {
+        selection = Object.freeze({ ...selection, engaged: false, source: 'measured-blade-receding', threat: selection.threat });
+        // The threat below is still the measured point; without a closing blade it is not an aim.
+        // Fall through to the far-blade selection instead, as if the measurement had not engaged.
+        selection = selectGuardCoverageTarget({ ...input, profile, approach: null });
+      }
+      if (selection.engaged) heldThreat = selection.threat;
+      else if (heldThreat) {
+        // R24C.1: engaged once this sequence, so the blade has been met or passed - hold the line.
+        return Object.freeze({ ...selection, source: 'measured-held', engaged: false, held: true, smoothed: false, threat: heldThreat });
       }
       if (!selection.threat?.point) return selection;
       const raw = freezeVector(selection.threat.point);
@@ -151,7 +186,10 @@ export function createGuardCoverageTargetTracker(options = {}) {
     reset() {
       sequence = null;
       smoothedPoint = null;
+      lastPlaneGap = null;
+      heldThreat = null;
     },
     get point() { return smoothedPoint; },
+    get held() { return heldThreat; }, // R24C.1
   });
 }

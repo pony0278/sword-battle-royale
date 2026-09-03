@@ -83,8 +83,29 @@ export const OPPONENT_DRIVE_PROFILE = Object.freeze({
   // opponent swings the instant each gate opens, which is not a rhythm a person can read. Seeded
   // jitter across this range so the timing is not metronomic and is still reproducible.
   restIntervalMs: Object.freeze({ minimum: 450, maximum: 1100 }),
+  // R24B.1 (step 6c): circling. Drawn once per rest, like the rest itself: a coin for whether this
+  // rest walks at all, a side, and how long. Sidestepping is priced at the lane's lateral speed
+  // (0.75 m/s, R19V.1), so 400-1000ms is 0.3-0.75m of arc - 7-18 degrees round the player at
+  // 2.4m, enough to be seen and answered, not enough to walk out of anybody's reach.
+  circle: Object.freeze({ chance: 0.5, durationMs: Object.freeze({ minimum: 400, maximum: 1000 }) }),
   authority: 'opponent-input-only-no-contact-authority',
 });
+
+// R24B.1: one rest's circling, or null. Three draws in a fixed order so a seed replays the same
+// walk; the runtime draws it right after the rest interval, so the direction bag is untouched.
+export function drawCircle(random, profile = OPPONENT_DRIVE_PROFILE) {
+  const circle = { ...OPPONENT_DRIVE_PROFILE.circle, ...(profile?.circle || {}) };
+  const roll = typeof random === 'function' ? random() : 1;
+  const sideRoll = typeof random === 'function' ? random() : 0;
+  const lengthRoll = typeof random === 'function' ? random() : 0;
+  if (!(roll < finite(circle.chance))) return null;
+  const minimum = finite(circle.durationMs?.minimum, 400);
+  const maximum = Math.max(minimum, finite(circle.durationMs?.maximum, 1000));
+  return Object.freeze({
+    side: sideRoll < 0.5 ? -1 : 1,
+    durationMs: minimum + (maximum - minimum) * lengthRoll,
+  });
+}
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -148,6 +169,8 @@ export function createOpponentDirectionSequence(seed = 1, directions = LONGSWORD
 //   restTargetMs      this cycle's seeded rest, drawn once when the gate opened
 //   nextDirection     what the bag is about to serve
 //   underSwing        R24A.1: a swing is coming at them right now (the player's action is live)
+//   circleSide        R24B.1: -1/+1 while a drawn circle is running (the attacker's own left/right), else 0.
+//                     A running circle also holds the blade: the walk finishes, then the swing.
 //
 // R24A.1 - the opponent holds their ground under a swing. Measured (whiff-walk probe, block mode,
 // drive on): in 21 of 21 player swings the opponent backed away 0.26-0.48m (mean 0.35m) inside the
@@ -176,6 +199,7 @@ export function planOpponentDrive(input = {}) {
   // already the intent: too far apart is a negative step, too close is a positive one.
   const underSwing = input.underSwing === true;
   const intent = repositioning && !underSwing ? Math.sign(offsetMeters) * -1 : 0;
+  const circleSide = Math.sign(finite(input.circleSide));
 
   const attackAvailable = input.attackAvailable === true;
   const restedMs = finite(input.restedMs);
@@ -185,7 +209,12 @@ export function planOpponentDrive(input = {}) {
   // Spacing is a precondition of the swing, not a race against it: a drive that swung on the clock
   // alone would throw RIGHT from wherever the last attack left it, because RIGHT's gate reopens
   // (600ms) sooner than the 0.663m it just spent takes to walk back out at 0.75 m/s (884ms).
-  const attack = attackAvailable && rested && !repositioning && inBand && direction && !underSwing ? direction : null;
+  const attack = attackAvailable && rested && !repositioning && inBand && direction && !underSwing && circleSide === 0 ? direction : null;
+
+  // R24B.1: the sidestep only ever happens in the rest - not while the spacing is being corrected
+  // (the walk-back has the feet), not under a swing (R24A.1 holds the ground), not while a swing
+  // of their own is up or recovering (the lane locks the feet; the recovery keeps the body).
+  const lateralIntent = attack == null && attackAvailable && !repositioning && !underSwing ? circleSide : 0;
 
   let reason = 'attacking';
   if (attack == null) {
@@ -193,12 +222,14 @@ export function planOpponentDrive(input = {}) {
     else if (!attackAvailable) reason = 'exchange-still-running';
     else if (!direction) reason = 'no-direction-served';
     else if (repositioning) reason = offsetMeters > 0 ? 'closing-to-band' : 'backing-off-to-band';
+    else if (lateralIntent !== 0) reason = lateralIntent < 0 ? 'circling-left' : 'circling-right';
     else reason = 'resting';
   }
 
   return Object.freeze({
     stage: OPPONENT_DRIVE_STAGE,
     intent,
+    lateralIntent, // R24B.1
     attack,
     reason,
     inBand,

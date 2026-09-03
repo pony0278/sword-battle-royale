@@ -128,7 +128,12 @@ function census() {
 // R23Z.1: five composition claims - the entry tells both readers of each exchange whose shield it
 // is (four), and the pre-contact controller hands that word to the gate (one). KEEP; the gate's
 // two rules are called.
-const BASELINE = Object.freeze({ total: 1199, srcText: 365, toolsText: 667, html: 159, absence: 150 });
+// R24B.1: two composition claims on the lane (the attacker's sidestep is on the swing lock and
+// reaches the ground verb; their stride is turned along the travel) - the walk needs a scene. KEEP.
+// R24C.1: three composition claims on the pre-contact controller - the recovery phase joins the
+// engaged gate, and the measurable window is the active start less the guard horizon, handed to
+// the director. KEEP; the tracker's own rules are called.
+const BASELINE = Object.freeze({ total: 1204, srcText: 370, toolsText: 667, html: 159, absence: 150 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

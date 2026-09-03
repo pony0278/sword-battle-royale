@@ -53,6 +53,7 @@ export function createOpponentDriveController({
         underSwing: threat?.active === true, // R24A.1: hold the ground under the player's swing
       });
       laneController.setAttackerIntent(plan.intent);
+      laneController.setAttackerLateralIntent?.(plan.lateralIntent ?? 0); // R24B.1: the sidestep, same verb shape
       if (plan.attack && startAttack(plan.attack)) runtime.commit(plan.attack);
       const guard = guardRuntime.frame({ threat, ownSwinging: readOwnSwinging() === true });
       applyGuard({ held: guard.hold === true, sector: guard.sector });
