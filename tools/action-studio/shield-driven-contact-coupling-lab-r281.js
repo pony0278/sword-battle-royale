@@ -232,6 +232,11 @@ let reportClockMs = REPORT_INTERVAL_MS;
 // between-frame state used to sit loose in this file; the second exchange is now one more call
 // rather than another hundred lines. The functions below still own the UI and the orchestration -
 // that is the boundary, and it is why readContext and callbacks are still handed in from here.
+// R24E.1 (#26): what a swinger's recovery settles into. A guard machine in HOLD paints its guard
+// (the same sync the impact path uses) and the recovery blends toward that; anything else is the
+// idle. Read at the recovery's first frame, which is the last honest moment - nothing about the
+// guard is read again until the recovery hands the body back.
+const resumePoseOf = (machine, runtime, character) => (machine.state === GUARD_STATES.HOLD ? (runtime.sync(camera), captureRigPose(character.rig)) : null);
 const engagement = createEngagement(THREE, {
   swinger: attacker, swingerSword: attackerSword, receiver: defender, receiverBuckler: buckler,
   receiverFighter: defenderFighter, camera, attackRuntime,
@@ -239,7 +244,7 @@ const engagement = createEngagement(THREE, {
   longswordAttackPhases: LONGSWORD_ATTACK_PHASES, promptHoldMs: PARRY_PROMPT_HOLD_MS, debugMode: DEBUG_MODE,
   presentationServices: {
     captureRigPose, applyRigPose, blendRecoveryPose,
-    sampleLongswordAttackRecovery, sampleLiveParryOldB3ReleaseBlend,
+    sampleLongswordAttackRecovery, sampleLiveParryOldB3ReleaseBlend, captureResumePose: () => resumePoseOf(attackerFighter.guardMachine, attackerFighter.guardRuntime, attacker), // R24E.1
   },
   preContactServices: {
     cloneSurface, magnitude, planArticulatedImpactBracing, planFineGuardTracking,
@@ -628,7 +633,7 @@ async function main() {
     longswordAttackPhases: LONGSWORD_ATTACK_PHASES, promptHoldMs: PARRY_PROMPT_HOLD_MS, debugMode: DEBUG_MODE,
     presentationServices: {
       captureRigPose, applyRigPose, blendRecoveryPose,
-      sampleLongswordAttackRecovery, sampleLiveParryOldB3ReleaseBlend,
+      sampleLongswordAttackRecovery, sampleLiveParryOldB3ReleaseBlend, captureResumePose: () => resumePoseOf(guardMachine, guardRuntime, defender), // R24E.1: the player's held block
     },
     preContactServices: {
       cloneSurface, magnitude, planArticulatedImpactBracing, planFineGuardTracking,
@@ -768,11 +773,19 @@ function frame(timestamp) {
     });
     if (playerSnapshot?.completed && !playerEngagement.hasRecovery) playerEngagement.beginRecovery(playerAttack.direction);
 
-    laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active, // R20W.2: and whether
-      selectedMode !== 'block' || defenderStance.report.guardActive === true); // the guard owns the torso
-    guardRuntime.update(deltaMs, camera);
-    neutralStance.sample(deltaMs); // R19I.1: no-op unless the guard is neutral
-    laneController.overlayDefenderWalkLegs(); laneController.overlayDefenderDodge(); // R20F.1 dodge outranks the guard, a landed blade outranks the dodge
+    // R24E.1 (#26): not on the frames the player's own contact stack owns their body. Measured
+    // before: a blocked player swing showed the contact pose for one frame, then the held block
+    // painted over it (sword hand 1.33m in a frame), held it dead still for 16 frames, and the
+    // recovery snapped back to the contact pose it had captured underneath (1.18m). The opponent's
+    // guard has yielded to their contact stack since R23V.1; this is the same rule for the player.
+    if (!playerFrame?.handledCombat) {
+      laneController.sampleDefenderWalk(!attackRuntime.active && !combat.active, // R20W.2: and whether
+        selectedMode !== 'block' || defenderStance.report.guardActive === true); // the guard owns the torso
+      guardRuntime.update(deltaMs, camera);
+      neutralStance.sample(deltaMs); // R19I.1: no-op unless the guard is neutral
+      laneController.overlayDefenderWalkLegs();
+    }
+    laneController.overlayDefenderDodge(); // R20F.1 dodge outranks the guard, a landed blade outranks the dodge
     bodyStrikeReaction.sample(deltaMs); // R19K.1: last writer - a landed blade owns the fighter
     // R23G.1: and after all of it, the player's own swing, because a body that is swinging is not
     // also standing in its guard. Inert on every frame the player is not swinging: sampleBase does
