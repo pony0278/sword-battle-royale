@@ -42,6 +42,7 @@ export function createOpponentDriveController({
       wasEnabled = running;
       tally?.setSessionActive(running);
       if (!enabled()) return null;
+      const threat = readThreat(); // R24A.1: read once - the feet and the shield answer the same swing
       const plan = runtime.frame({
         deltaMs: rawDeltaMs,
         separationMeters: laneController.report?.separationMeters ?? null,
@@ -49,10 +50,11 @@ export function createOpponentDriveController({
         // spent on a swing the lab then refuses would skew the very distribution the bag exists
         // to guarantee.
         attackAvailable: readAttackAvailable() === true,
+        underSwing: threat?.active === true, // R24A.1: hold the ground under the player's swing
       });
       laneController.setAttackerIntent(plan.intent);
       if (plan.attack && startAttack(plan.attack)) runtime.commit(plan.attack);
-      const guard = guardRuntime.frame({ threat: readThreat(), ownSwinging: readOwnSwinging() === true });
+      const guard = guardRuntime.frame({ threat, ownSwinging: readOwnSwinging() === true });
       applyGuard({ held: guard.hold === true, sector: guard.sector });
       if (guardRuntime.parry?.arm === true) applyParry();
       return plan;
