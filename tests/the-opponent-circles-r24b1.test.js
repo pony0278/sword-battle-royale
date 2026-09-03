@@ -72,6 +72,8 @@ test('R24B.1 a rest draws its circle from the seed, bounded by the profile, and 
   assert.equal(arriving.report.circle, null, 'the gate\'s circle is spent');
   arriving.frame({ deltaMs: 100, separationMeters: 1.9, attackAvailable: true });
   assert.equal(arriving.report.reason, 'backing-off-to-band');
+  arriving.frame({ deltaMs: 100, separationMeters: 2.4, attackAvailable: true }); // arrives; the draw lands after this frame's plan
+  assert.ok(arriving.report.circle, 'a circle was drawn on arrival');
   arriving.frame({ deltaMs: 100, separationMeters: 2.4, attackAvailable: true });
   assert.ok(Math.abs(arriving.report.lateralIntent) === 1, `arrived, and circling: ${arriving.report.reason}`);
 });
