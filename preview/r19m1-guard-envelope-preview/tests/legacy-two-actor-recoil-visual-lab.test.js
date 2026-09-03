@@ -34,7 +34,7 @@ function functionBody(source, name, nextName) {
 
 test('current R281 HTML runs the Step 3A shield to sword to hand entry', () => {
   assert.match(html, /Step 3A · Live Shield → Sword → Wrist-Grip Constraint/);
-  assert.match(html, /shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-a-held-shield-stays-held-r24h1/);
+  assert.match(html, /shield-driven-contact-coupling-lab-r281\.js\?v=g43b5r281-the-shield-blocks-at-every-distance-r24i1/);
   assert.match(html, /PARRY NOW \(F\)/);
   assert.doesNotMatch(html, /data-mode="perfect"/);
 });
