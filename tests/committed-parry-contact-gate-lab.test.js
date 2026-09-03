@@ -54,7 +54,7 @@ test('Step 2 exposes one manual Parry and removes Perfect from the Lab', () => {
   assert.doesNotMatch(html, /id="slowReview"[^>]*checked/);
   assert.match(html, />PARRY NOW \(F\)</);
   assert.doesNotMatch(html, /data-mode="perfect"/);
-  assert.match(html, /g43b5r281-the-guard-has-three-tiers-r24g1/);
+  assert.match(html, /g43b5r281-the-log-says-how-fast-the-phone-ran-r24g2/);
 });
 
 test('Step 2 does not auto-start Parry from predictive timing', () => {

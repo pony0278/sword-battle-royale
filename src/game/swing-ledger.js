@@ -1,3 +1,4 @@
+import { formatFrameTimeLine } from './frame-time-sampler.js'; // R24G.2
 export const SWING_LEDGER_STAGE = 'R23W.1';
 
 // R23L.1 — every swing the player throws leaves a line, on the page, in the words a person reads.
@@ -144,6 +145,9 @@ export function formatSwingLedgerReport({ report = null, context = {} } = {}) {
     `build ${context.build ?? 'unknown'}`,
     `模式 ${context.mode ?? '—'} · 鎖定 ${yesNo(context.locked)} · 掛點 ${mount} · 對手 ${context.opponent ?? '手動'}`,
     `血量 ${health}`,
+    // R24G.2: how fast the device ran the fight that was just pasted. A phone runs this code at a
+    // different dt than a desktop, and a paste that does not say which cannot be reasoned about.
+    ...(context.frameTime?.samples > 0 ? [formatFrameTimeLine(context.frameTime)] : []),
   ];
   const lines = report?.lines ?? [];
   if (lines.length === 0) return [...head, '交鋒 0 次（尚未有人出刀）'].join('\n');
