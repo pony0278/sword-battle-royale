@@ -1,6 +1,7 @@
 // R18M.3 — DOM lookup only. No gameplay/runtime authority lives here.
 
 const REQUIRED_IDS = Object.freeze([
+  'startOverlay', 'startButton', 'startCount', 'labToggle', // R24F.1: the phone's start sequence and the lab lid
   'hudDuel',
   'hudAttack',
   'hudInput',

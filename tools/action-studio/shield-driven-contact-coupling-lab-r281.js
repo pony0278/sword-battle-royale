@@ -271,11 +271,8 @@ const engagement = createEngagement(THREE, {
     publishStatus({ text, className }) { status.textContent = text; status.className = className; },
   },
 });
-const {
-  exchangeState, combat, presentation: attackerPresentation, gripConstraint: swordGripConstraint,
-  preContact: preContactController, contactHandoff: contactHandoffController,
-  captureBlade: captureBladePolyline, readBladeForMeasurement: readBladePolylineForMeasurement,
-} = engagement;
+const { exchangeState, combat, presentation: attackerPresentation, gripConstraint: swordGripConstraint, preContact: preContactController, contactHandoff: contactHandoffController,
+  captureBlade: captureBladePolyline, readBladeForMeasurement: readBladePolylineForMeasurement } = engagement;
 // After the engagement, because the blackboard it reports on is the engagement's now.
 const parryWhiffReporter = createParryWhiffReporter({ parryGate, exchangeState, status, debugMode: DEBUG_MODE });
 
@@ -665,12 +662,12 @@ async function main() {
   weaponMount = createWeaponMountController({ weapon: defenderSword, mounts: bootstrap.defenderMounts, mode: EXPERIMENT.weaponMountMode, readGuardState: () => guardMachine.state, readSwinging: () => playerEngagement?.attackRuntime.active === true }); // R23K.1: the swing is a UAL window the guard machine cannot see
   exchangeState.previousShieldLeadSurface = cloneSurface(buckler.getWorldParrySurface());
   ready = true;
-  status.textContent = `${LAB_STAGE} READY · both fighters idle · choose BLOCK or PARRY, then an attack direction`;
-  status.className = 'good';
+  setMode('block'); // R24F.1 (#35): the page opens in BLOCK - hold F / 🛡 to guard. R19I.1's "chosen, never assumed" was about the gates, and they still choose for themselves.
+  status.textContent = `${LAB_STAGE} READY · both fighters idle · BLOCK (hold F to guard) · pick an attack direction`; status.className = 'good';
   buildReport();
 }
 
-bindShieldParryLabUiEvents({
+const { startOverlay } = bindShieldParryLabUiEvents({ // R24F.1: the phone's start sequence comes back out
   documentRef: document,
   windowRef: window,
   canvas,
@@ -690,6 +687,8 @@ bindShieldParryLabUiEvents({
     onDodge: (direction) => requestDodge(direction), // R20F.1 through the stance gate
     onMoveIntent: (moveIntent) => playerController.setMoveIntent(moveIntent), // R20S.3 WASD, world frame
     onLockToggle: () => playerController.toggleLock(), // R20S.3 Tab
+    onStart: () => { setMode('block'); if (!playerController.locked) playerController.toggleLock(); duel.reset(); if (!combat.active && !attackRuntime.active) laneController.resetLane(); canvas.focus({ preventScroll: true }); }, // R24F.1 (#35): one tap sets the fight up - block, lock, full health, the measured stance
+    onDriveAllowed: (on) => opponentDriveController.setEnabled(on), // R24F.1: after 3-2-1, never in portrait, only ever sent from a touch screen
     onSprint: (held) => playerController.setSprintRequested(held), // R20U.1 Shift
     onLook: (deltaPixels) => (INSPECTION_CAMERA ? null : playerController.look(deltaPixels)), // R20S.3 free look
     onAim: (aim) => guardSector.aim(aim), // R21A.2 the guard sector, aim only - no rule reads it
@@ -806,6 +805,7 @@ function frame(timestamp) {
     // R23J.1: the stagger burns down on the wall clock, not the review-slowed one - a second taken
     // out of the fight is a second the player waits through, whatever the tempo dial is set to.
     duel.advance(rawDeltaMs);
+    startOverlay.frame(rawDeltaMs, duel.verdict.over); // R24F.1: the countdown runs on the wall clock too
     weaponMount?.frame(); if (playerEngagement?.attackRuntime.active) swingLedger.note({ mount: weaponMount?.report.applied }); // R23E.1: before the swords redraw, so a changed mount is what they draw; R23L.1: and the ledger sees the mount the blade is wearing
     attackerSword.update(); defenderSword?.update(); contactHandoffController.recordVisibleOldB3Sample(exchangeState.latestCombatUpdate);
 
