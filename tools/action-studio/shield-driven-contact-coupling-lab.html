@@ -78,6 +78,38 @@
     touch-action: none; user-select: none; -webkit-user-select: none;
   }
   #touchPad button:active { background: rgba(70, 110, 150, 0.9); }
+  /* R24F.1 (#35): a touch screen is a phone playing, not a lab. Measured before: a phone opened on
+     a 58vh scene under a 207px HUD with six thousand pixels of lab text stacked below, and any
+     Android in landscape (over 900 CSS px wide) got the desktop layout, whose HUD covered the
+     fighters completely. Keyed on the pointer, not the width, for exactly that reason. The scene
+     takes the viewport, the aside hides behind a Lab lid, the sector indicator steps up off the
+     player's feet (it sat on them in landscape), and the start overlay owns the first tap. */
+  .lab-toggle{display:none}
+  .start-overlay{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#050a12d9;color:#dceaff;text-align:center;font:600 18px/1.5 system-ui,sans-serif}
+  .start-overlay[hidden]{display:none}
+  .start-overlay>*,.start-button>span{display:none}
+  .start-overlay[data-kind=rotate] .start-rotate{display:block}
+  .start-overlay[data-kind=start] .start-button,.start-overlay[data-kind=rematch] .start-button{display:block}
+  .start-overlay[data-kind=start] .when-start,.start-overlay[data-kind=rematch] .when-rematch{display:inline}
+  .start-overlay[data-kind=countdown] .start-count{display:block}
+  .start-button{flex:none;font:700 28px/1 system-ui,sans-serif;padding:18px 48px;border-radius:16px;border:1px solid #7ef0ad;background:#0d382c;color:#7ef0ad;min-height:0}
+  .start-count{font:800 96px/1 ui-monospace,monospace;color:#7ef0ad}
+  .start-rotate{font-size:22px}.start-rotate small{display:block;font-size:13px;color:#94b8e8;margin-top:8px}
+  .start-rotate .phone{display:inline-block;font-size:48px;transform:rotate(90deg)}
+  @media (pointer: coarse){
+    html,body{height:100%;overflow:hidden}body{display:block}
+    main{height:100vh;height:100dvh;min-height:0;width:100%}
+    aside{display:none}
+    body.lab-open aside{display:block;position:fixed;inset:0;z-index:50;overflow:auto;background:#0b1220;border:0}
+    .lab-toggle{display:block;position:fixed;right:12px;top:12px;z-index:60;flex:none;min-height:0;padding:6px 10px;font-size:12px;opacity:.75}
+    .hud{left:10px;right:70px;top:10px;min-width:0;font-size:11px;pointer-events:auto}
+    .hud.expanded{max-height:40vh;overflow-y:auto}
+    .hud button{flex:none;min-height:0;font-size:11px}
+    .legend{display:none}
+    /* The three sector cells go to the left thumb, the pad has the right one. Measured: raising them
+       in place put them on the player's chest, and at the bottom centre they sat on the sword. */
+    .guard-sector{left:14px;bottom:14px;transform:none}
+  }
   .pad-up { grid-area: up; } .pad-down { grid-area: down; }
   .pad-left { grid-area: left; } .pad-right { grid-area: right; }
   .pad-guard { grid-area: guard; } .pad-dodge { grid-area: dodge; }
@@ -99,6 +131,13 @@
       <button data-hold-guard class="pad-guard">🛡</button>
       <button data-dodge class="pad-dodge">✦</button>
     </div>
+    <!-- R24F.1: what a phone sees first. The kind is painted by lab-ui from src/game/mobile-start. -->
+    <div id="startOverlay" class="start-overlay" hidden data-kind="">
+      <div class="start-rotate"><span class="phone">📱</span><br>請把手機轉成橫向<small>直向沒有位置放盾和刀 · 沒反應的話請開啟自動旋轉</small></div>
+      <button id="startButton" type="button" class="start-button"><span class="when-start">開始</span><span class="when-rematch">再來一場</span></button>
+      <div id="startCount" class="start-count"></div>
+    </div>
+    <button id="labToggle" type="button" class="lab-toggle">Lab</button>
     <div id="parryCue" class="parry-cue wait"><span>BEST PARRY TIMING · R18I5</span><strong id="parryCueMain">LOADING…</strong><small id="parryCueDetail">等待即時 attack gate</small></div>
     <!-- R21N.1: press one of these to parry in that direction - the press names the direction AND
          is the timed input, so there is nothing to aim first. Keys I/J/L do the same. -->
@@ -211,7 +250,8 @@
       }
       // The phone layout already folded the HUD by default and that stays; a desktop opens with the
       // live diagnostics up and the legend - which is reference text, not state - folded away.
-      var wide = window.matchMedia('(min-width:901px)').matches;
+      // R24F.1: and a touch screen folds it whatever its width - an Android in landscape is wide.
+      var wide = window.matchMedia('(min-width:901px)').matches && !window.matchMedia('(pointer: coarse)').matches;
       [
         { el: document.querySelector('.hud'), key: 'r281.hud.expanded', open: wide },
         { el: document.querySelector('.legend'), key: 'r281.legend.expanded', open: false },
@@ -233,6 +273,6 @@
       });
     })();
   </script>
-  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-the-ground-is-given-over-the-reaction-r24e2"></script>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-the-phone-starts-the-fight-r24f1"></script>
 </body>
 </html>
