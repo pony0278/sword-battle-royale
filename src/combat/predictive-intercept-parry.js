@@ -22,6 +22,9 @@ import { PARRY_LUNGE_PROMPT_TTC_SECONDS } from './parry-lunge-reach.js';
 export const PREDICTIVE_INTERCEPT_PARRY_STAGE = 'G4.3B.5R';
 export const RHYTHM_TRIGGER_ACTIVE_PARRY_STAGE = 'G4.3B.5R.1';
 export const RECOIL_PRESENTATION_AUTHORITY_STAGE = 'G4.3B.5R.2.3';
+// R24D.1 measured this and left it: at 90ms with an ease-in the first frame of the opponent's parry
+// got WORSE (173 -> 210mm, 221 -> 262mm) and the player's did not improve - the lean is not what
+// the first frame is made of once the arm writers are paced.
 export const PREDICTIVE_PARRY_ENTRY_BLEND_SECONDS = 0.055;
 const PREDICTIVE_PARRY_ENTRY_BLEND_BONES = Object.freeze(['spine', 'chest', 'upperarm.l', 'lowerarm.l', 'wrist.l']);
 const PREDICTIVE_PARRY_EXTERNAL_SHIELD_ARM_BONES = Object.freeze(['root', 'hips', 'spine', 'chest', 'upperarm.l', 'lowerarm.l', 'wrist.l', 'hand.l', 'handslot.l']);
@@ -81,6 +84,25 @@ function captureBoneQuaternionPose(character, boneIds) {
 
 function capturePresentationEntryPose(character) {
   return captureBoneQuaternionPose(character, PREDICTIVE_PARRY_ENTRY_BLEND_BONES);
+}
+
+// R24D.1: the hips carry a TRANSLATION the clip animates (the parry's crouch and lunge), and the
+// entry blend below only slerps rotations - so the first sampled frame put the hips wherever the
+// clip had them, 49mm away in one frame with every bone above riding along. Captured at start and
+// eased in on the same alpha as the rotations.
+function capturePresentationEntryHips(character) {
+  const position = character?.rig?.bones?.hips?.position;
+  if (!position || !Number.isFinite(Number(position.x))) return null;
+  return Object.freeze({ x: Number(position.x), y: Number(position.y), z: Number(position.z) });
+}
+
+function blendPresentationEntryHips(character, entry, alpha) {
+  if (!entry || alpha >= 1) return;
+  const position = character?.rig?.bones?.hips?.position;
+  if (!position) return;
+  position.x = entry.x + (Number(position.x) - entry.x) * alpha;
+  position.y = entry.y + (Number(position.y) - entry.y) * alpha;
+  position.z = entry.z + (Number(position.z) - entry.z) * alpha;
 }
 
 function restoreBoneQuaternionPose(character, pose) {
@@ -313,6 +335,7 @@ export function createPredictiveInterceptParryPresentationRuntime(THREE, options
       elapsedMs: 0,
       entryBlendElapsedMs: 0,
       entryPose: capturePresentationEntryPose(character),
+      entryHips: capturePresentationEntryHips(character), // R24D.1
       shieldArmDeltaReferencePose: captureBoneQuaternionPose(character, R18N_SHIELD_ARM_DELTA_BONES),
       sourceTimeSeconds: PREDICTIVE_INTERCEPT_PARRY_PROFILE.presentationStartSourceSeconds,
     };
@@ -379,6 +402,7 @@ export function createPredictiveInterceptParryPresentationRuntime(THREE, options
     });
     applyGuardQuaternionOffsetsWeighted(THREE, character.rig, guardOffsets, active.profile.correctionWeight);
     blendPresentationEntryPose(character, active.entryPose, entryBlendProgress);
+    blendPresentationEntryHips(character, active.entryHips, entryBlendProgress); // R24D.1
     const authoredShieldArmPose = captureBoneQuaternionPose(character, R18N_SHIELD_ARM_DELTA_BONES);
     const shieldArmAuthoredDelta = extractShieldArmAuthoredDelta({
       referencePose: active.shieldArmDeltaReferencePose,

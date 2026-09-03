@@ -374,6 +374,19 @@ export function createGuardThreatTrackingRuntime(THREE, options = {}) {
     const profile = getGuardThreatTrackingProfile(mode);
     const dt = Math.max(1e-5, finite(deltaSeconds, 1 / 60));
     const snapTravel = options?.snapTravel === true && mode !== 'off';
+    // R24D.1: the joint budgets are per frame and the servo above only paces the OFFSET - a parry
+    // without an active intent (the opponent's, a block-mode raise) had its arm re-solved through
+    // the whole 20/26 degrees on the frame it armed. Paced like the closure when the caller gives a
+    // clock and its time to contact: with more than three frames left, at least the pace or enough
+    // to still cross three budgets by contact; with three or fewer, the budget it always had.
+    const paceDegreesPerSecond = finite(options?.paceDegreesPerSecond, Infinity);
+    const ttcSeconds = options?.timeToContactSeconds == null ? Infinity : finite(options.timeToContactSeconds, Infinity);
+    const framesToContact = Number.isFinite(ttcSeconds) ? Math.max(0, ttcSeconds) / dt : Infinity;
+    const jointStep = (budget) => (!Number.isFinite(paceDegreesPerSecond) || framesToContact <= 3
+      ? budget
+      : Math.min(budget, Math.max(paceDegreesPerSecond * dt, (3 * budget) / framesToContact)));
+    const upperArmStepDegrees = jointStep(profile.upperArmMaxDegrees);
+    const lowerArmStepDegrees = jointStep(profile.lowerArmMaxDegrees);
     desiredOffset.set(
       finite(plan?.correction?.x), finite(plan?.correction?.y), finite(plan?.correction?.z),
     );
@@ -398,14 +411,14 @@ export function createGuardThreatTrackingRuntime(THREE, options = {}) {
       for (let iteration = 0; iteration < 2; iteration += 1) {
         const surface = buckler.getWorldParrySurface();
         effector.set(surface.center.x, surface.center.y, surface.center.z);
-        const lowerRemaining = Math.max(0, profile.lowerArmMaxDegrees - appliedDegrees['lowerarm.l']);
+        const lowerRemaining = Math.max(0, lowerArmStepDegrees - appliedDegrees['lowerarm.l']);
         appliedDegrees['lowerarm.l'] += setWorldDirectionDelta(
           THREE, rig.bones['lowerarm.l'], effector, targetCenter, lowerRemaining,
         );
         rig.root?.updateMatrixWorld?.(true);
         const surfaceAfterLower = buckler.getWorldParrySurface();
         effector.set(surfaceAfterLower.center.x, surfaceAfterLower.center.y, surfaceAfterLower.center.z);
-        const upperRemaining = Math.max(0, profile.upperArmMaxDegrees - appliedDegrees['upperarm.l']);
+        const upperRemaining = Math.max(0, upperArmStepDegrees - appliedDegrees['upperarm.l']);
         appliedDegrees['upperarm.l'] += setWorldDirectionDelta(
           THREE, rig.bones['upperarm.l'], effector, targetCenter, upperRemaining,
         );
@@ -428,6 +441,7 @@ export function createGuardThreatTrackingRuntime(THREE, options = {}) {
       achievedOffset: freezeVector({ x: achieved.x, y: achieved.y, z: achieved.z }),
       achievedDistance: achieved.length(),
       snapTravel,
+      jointStepDegrees: Object.freeze({ 'upperarm.l': upperArmStepDegrees, 'lowerarm.l': lowerArmStepDegrees }), // R24D.1
       appliedDegrees: Object.freeze({ ...appliedDegrees }),
       surface: finalSurface,
     });
@@ -443,6 +457,17 @@ export function createGuardThreatTrackingRuntime(THREE, options = {}) {
     );
     const jointBudgetScale = clamp(finite(refinementOptions.jointBudgetScale, 0.35), 0, 1);
     const iterations = Math.max(1, Math.min(4, Math.round(finite(refinementOptions.iterations, 2))));
+    // R24D.1: the caller's pace, yielding to its clock. With more than three frames to contact each
+    // joint moves at least the pace, or enough to still cross three of its budgets by contact; with
+    // three or fewer it has its whole budget, which is what every measurement before had.
+    const paceDegreesPerSecond = finite(refinementOptions.paceDegreesPerSecond, Infinity);
+    const paceDeltaSeconds = finite(refinementOptions.deltaSeconds, 0);
+    const ttcSeconds = refinementOptions.timeToContactSeconds == null ? Infinity : finite(refinementOptions.timeToContactSeconds, Infinity);
+    const framesToContact = paceDeltaSeconds > 0 && Number.isFinite(ttcSeconds) ? Math.max(0, ttcSeconds) / paceDeltaSeconds : Infinity;
+    const stepFor = (budget) => (!(paceDeltaSeconds > 0) || !Number.isFinite(paceDegreesPerSecond) || framesToContact <= 3
+      ? budget
+      : Math.min(budget, Math.max(paceDegreesPerSecond * paceDeltaSeconds, (3 * budget) / framesToContact)));
+    const stepDegrees = { 'upperarm.l': stepFor(profile.upperArmMaxDegrees * jointBudgetScale), 'lowerarm.l': stepFor(profile.lowerArmMaxDegrees * jointBudgetScale) };
     const appliedDegrees = { 'upperarm.l': 0, 'lowerarm.l': 0 };
     const beforeErrorMeters = Math.hypot(
       targetCenter.x - finite(baselineSurface.center?.x),
@@ -454,7 +479,7 @@ export function createGuardThreatTrackingRuntime(THREE, options = {}) {
       for (let iteration = 0; iteration < iterations; iteration += 1) {
         const surface = buckler.getWorldParrySurface();
         effector.set(surface.center.x, surface.center.y, surface.center.z);
-        const lowerBudget = profile.lowerArmMaxDegrees * jointBudgetScale;
+        const lowerBudget = stepDegrees['lowerarm.l'];
         const lowerRemaining = Math.max(0, lowerBudget - appliedDegrees['lowerarm.l']);
         appliedDegrees['lowerarm.l'] += setWorldDirectionDelta(
           THREE, rig.bones['lowerarm.l'], effector, targetCenter, lowerRemaining,
@@ -462,7 +487,7 @@ export function createGuardThreatTrackingRuntime(THREE, options = {}) {
         rig.root?.updateMatrixWorld?.(true);
         const surfaceAfterLower = buckler.getWorldParrySurface();
         effector.set(surfaceAfterLower.center.x, surfaceAfterLower.center.y, surfaceAfterLower.center.z);
-        const upperBudget = profile.upperArmMaxDegrees * jointBudgetScale;
+        const upperBudget = stepDegrees['upperarm.l'];
         const upperRemaining = Math.max(0, upperBudget - appliedDegrees['upperarm.l']);
         appliedDegrees['upperarm.l'] += setWorldDirectionDelta(
           THREE, rig.bones['upperarm.l'], effector, targetCenter, upperRemaining,
@@ -495,6 +520,8 @@ export function createGuardThreatTrackingRuntime(THREE, options = {}) {
       appliedDegrees: Object.freeze({ ...appliedDegrees }),
       jointBudgetScale,
       iterations,
+      stepDegrees: Object.freeze({ ...stepDegrees }), // R24D.1
+      framesToContact, // R24D.1
       surface: finalSurface,
       persistentCarryModified: false,
       authority: 'fixed-world-target-arm-closure-no-persistent-carry-no-contact-authority',

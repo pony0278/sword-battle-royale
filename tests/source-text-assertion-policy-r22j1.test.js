@@ -133,7 +133,12 @@ function census() {
 // R24C.1: three composition claims on the pre-contact controller - the recovery phase joins the
 // engaged gate, and the measurable window is the active start less the guard horizon, handed to
 // the director. KEEP; the tracker's own rules are called.
-const BASELINE = Object.freeze({ total: 1204, srcText: 370, toolsText: 667, html: 159, absence: 150 });
+// R24D.1: one composition claim - the pre-contact controller hands the shield-arm additive its
+// frame, which is what turns the bound into a pace. KEEP; the pace itself is called.
+// R24D.1 (second writer): two more composition claims - the pace caps each joint's budget inside the
+// closure's solve. KEEP; the closure's options are called.
+// R24D.1 (third writer): one composition claim - the primary parry tracking spends the paced step. KEEP.
+const BASELINE = Object.freeze({ total: 1208, srcText: 374, toolsText: 667, html: 159, absence: 150 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();
