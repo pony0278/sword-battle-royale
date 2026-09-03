@@ -18,7 +18,7 @@ test('R20H.1 the guard-raise edge arms the parry gate and drives the accepted ar
   assert.match(entry, /if \(stanceEdge\.justRaisedGuard && attackRuntime\.snapshot\?\.action && !exchangeState\.firstContact\) \{/);
   // R21C.1: the raise edge carries where the player was pointing, because a parry is answered by
   // direction now. Both doors into the gate must carry it or the other one is a way in without aim.
-  assert.match(entry, /parryGate\.arm\(\{ attackSnapshot: attackRuntime\.snapshot, manual: true,\s*\n\s*source: 'guard-raise', aimedSector: guardSector\.sector \}\)/);
+  assert.match(entry, /parryGate\.arm\(\{ attackSnapshot: attackRuntime\.snapshot, manual: true, assist: !directional,\s*\n\s*source: directional \? 'directional-press' : 'guard-raise', aimedSector: guardSector\.sector \}\)/); // R24G.1: a plain raise is assisted
   // An accepted raise gets the same intercept drive as parry mode's manual trigger - without it
   // every in-window LEFT raise still lands on the body (measured; the window sits past the B6b
   // raise-conversion cliff).
@@ -42,7 +42,7 @@ test('R20H.1 confirmation asks the armed gate, mode cannot veto a Sekiro raise',
 
 test('R20H.1 the page identifies the Sekiro build and documents the windows', () => {
   const html = readFileSync(new URL('../tools/action-studio/shield-driven-contact-coupling-lab.html', import.meta.url), 'utf8');
-  assert.match(html, /\?v=g43b5r281-the-thumb-swings-r24f2/);
+  assert.match(html, /\?v=g43b5r281-the-guard-has-three-tiers-r24g1/);
   assert.match(html, /B6c2/);
   assert.match(html, /Sekiro/);
 });

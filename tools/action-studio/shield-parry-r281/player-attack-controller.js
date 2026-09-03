@@ -61,7 +61,7 @@ export function createPlayerAttackController({
     });
     const settled = laneController.settle(playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome);
     if (settled) playerEngagement.exchangeState.latestEngagementGround = settled;
-    duel.spendExchangeOn(playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, playerFighter.condition);
+    duel.spendExchangeOn(playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, playerFighter.condition, { tier: playerEngagement.exchangeState.latestParryConfirmation?.tier }); // R24G.1: the opponent aims their own parry, so it is perfect when it lands
     return resolved;
   }
 
