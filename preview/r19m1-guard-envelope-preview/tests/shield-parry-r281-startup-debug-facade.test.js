@@ -21,7 +21,7 @@ test('R18M.C5 entry delegates asset bootstrap while retaining ready and initial 
   assert.doesNotMatch(source, /loadSkyrimConvertedAnimationLibrary/);
 
   const mainStart = source.indexOf('async function main()');
-  const mainEnd = source.indexOf('\n}\n\nbindShieldParryLabUiEvents', mainStart);
+  const mainEnd = source.indexOf('\n}\n\nconst { startOverlay } = bindShieldParryLabUiEvents', mainStart); // R24F.1: the binder returns the phone's start sequence
   assert.ok(mainStart >= 0 && mainEnd > mainStart);
   const main = source.slice(mainStart, mainEnd);
   // R19I.1: boot no longer raises a guard or fires a demo attack - the lab opens neutral and the

@@ -1,6 +1,7 @@
 // R18M.3 — presentation-only Parry cue/HUD rendering and DOM event binding.
 // Callers provide snapshots/callbacks. This module never decides combat success.
 
+import { createMobileStartRuntime } from '../../../src/game/mobile-start.js'; // R24F.1
 import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from '../../../src/combat/parry-lunge-reach.js';
 import { directionalParryFor } from '../../../src/combat/directional-parry-input.js';
 import {
@@ -587,6 +588,43 @@ function bindFreeLook(canvas, handlers) {
   canvas.addEventListener('pointerleave', end);
 }
 
+// R24F.1 (#35): the phone's start sequence. The decision lives in src/game/mobile-start.js; this
+// reads the pointer and the orientation off the browser, paints the plan, and hands the two
+// verbs to the entry: onStart (set the fight up) and onDriveAllowed (the opponent may swing).
+// The drive verb is only ever sent from a coarse pointer - on a desktop the drive checkbox is the
+// lab's, and the three browser gates depend on it staying so.
+function bindStartOverlay({ documentRef, windowRef, elements, handlers }) {
+  const runtime = createMobileStartRuntime();
+  if (!elements.startOverlay || typeof windowRef.matchMedia !== 'function') return Object.freeze({ runtime, frame: () => runtime.report });
+  const coarse = windowRef.matchMedia('(pointer: coarse)');
+  const portrait = windowRef.matchMedia('(orientation: portrait)');
+  const environment = () => paint(runtime.setEnvironment({ coarse: coarse.matches === true, portrait: portrait.matches === true }));
+  let driveAllowed = null;
+  function paint(plan) {
+    const overlay = elements.startOverlay;
+    overlay.hidden = !plan.visible;
+    overlay.dataset.kind = plan.kind ?? '';
+    elements.startCount.textContent = plan.count == null ? '' : String(plan.count);
+    if (coarse.matches && plan.driveAllowed !== driveAllowed) { driveAllowed = plan.driveAllowed; handlers.onDriveAllowed?.(driveAllowed); }
+    return plan;
+  }
+  coarse.addEventListener?.('change', environment);
+  portrait.addEventListener?.('change', environment);
+  elements.startButton.addEventListener('click', () => {
+    if (!runtime.report.visible) return;
+    handlers.onStart?.();
+    const pressed = runtime.press();
+    if (!pressed.accepted) return;
+    paint(pressed.plan);
+    // Best effort: Android in fullscreen honours it, iOS Safari has no such call. The rotate
+    // prompt is the rule; this only spares a person who did rotate from being asked again.
+    try { windowRef.screen?.orientation?.lock?.('landscape')?.catch?.(() => {}); } catch { /* not lockable here */ }
+  });
+  elements.labToggle.addEventListener('click', () => documentRef.body.classList.toggle('lab-open'));
+  environment();
+  return Object.freeze({ runtime, frame: (deltaMs, duelOver) => paint(runtime.advance(deltaMs, { duelOver })) });
+}
+
 export function bindShieldParryLabUiEvents({
   documentRef,
   windowRef,
@@ -774,4 +812,5 @@ export function bindShieldParryLabUiEvents({
   windowRef.addEventListener('resize', handlers.onResize);
   handlers.onView('three');
   handlers.onResize();
+  return Object.freeze({ startOverlay: bindStartOverlay({ documentRef, windowRef, elements, handlers }) }); // R24F.1
 }
