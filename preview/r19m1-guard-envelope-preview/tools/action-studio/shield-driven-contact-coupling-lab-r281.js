@@ -858,6 +858,7 @@ window.__G43B5R281_LAB__ = createShieldParryDebugApi({
     resetDuel: () => duel.reset(), // R23J.1: both fighters back to full, for a probe or a second duel
     resetLane: () => (combat.active || attackRuntime.active ? null : laneController.resetLane()),
     captureBladeGeometry: () => ({ blade: captureBladePolyline(), surface: buckler.getWorldParrySurface() }),
+    captureOpponentDefenceGeometry: () => ({ blade: playerEngagement?.readBladeForMeasurement?.() ?? null, surface: attackerBuckler.getWorldParrySurface() }), // R24C.1: the mirror pair, for probes
     // R21A.1: the passive half of the call above, safe to read mid-swing. captureBladePolyline only
     // refreshes the sword's matrices and reads three world points; it is getWorldParrySurface that
     // advances anchor matrices outside the frame pipeline and flips outcomes. Measuring where a
