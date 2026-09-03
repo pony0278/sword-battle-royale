@@ -142,7 +142,9 @@ function census() {
 // ends once the ground a blow owes is paid) rather than wherever the yield has got to when the line
 // is written. The ledger half is called (engagement-ground); which number the entry hands the log is
 // entry wiring, and only the text can say so. KEEP.
-const BASELINE = Object.freeze({ total: 1209, srcText: 374, toolsText: 668, html: 159, absence: 150 });
+// R24F.2 raised html and total by two: the pad's blade button and its grid cell are page markup,
+// and where a thumb finds it is a claim only the page can carry. The binding itself is called. KEEP.
+const BASELINE = Object.freeze({ total: 1211, srcText: 374, toolsText: 668, html: 161, absence: 150 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();
