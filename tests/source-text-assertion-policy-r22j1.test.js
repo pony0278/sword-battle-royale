@@ -130,7 +130,10 @@ function census() {
 // two rules are called.
 // R24B.1: two composition claims on the lane (the attacker's sidestep is on the swing lock and
 // reaches the ground verb; their stride is turned along the travel) - the walk needs a scene. KEEP.
-const BASELINE = Object.freeze({ total: 1201, srcText: 367, toolsText: 667, html: 159, absence: 150 });
+// R24C.1: three composition claims on the pre-contact controller - the recovery phase joins the
+// engaged gate, and the measurable window is the active start less the guard horizon, handed to
+// the director. KEEP; the tracker's own rules are called.
+const BASELINE = Object.freeze({ total: 1204, srcText: 370, toolsText: 667, html: 159, absence: 150 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();
