@@ -57,6 +57,7 @@ export function createShieldParryDebugApi({
     get laneGround() { return runtimes.laneController?.report ?? null; },
     get laneDefenderIntent() { return runtimes.laneController?.defenderIntent ?? 0; },
     get laneDefenderLateralIntent() { return runtimes.laneController?.defenderLateralIntent ?? 0; },
+    get laneAttackerLateralIntent() { return runtimes.laneController?.attackerLateralIntent ?? 0; }, // R24B.1
     get laneAttackerIntent() { return runtimes.laneController?.attackerIntent ?? 0; },
     get laneAttackerGait() { return runtimes.laneController?.attackerGait ?? null; },
     get laneDefenderGait() { return runtimes.laneController?.defenderGait ?? null; },
