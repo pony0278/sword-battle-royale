@@ -21,7 +21,7 @@ test('R21C.2 counts attempts per direction and why they missed', () => {
   // presses, which is what keeps this pre-R21G.1 reading of the split intact. R21G.3 split
   // mistimed into tooEarly/tooLate and kept mistimed as their derived total.
   const row = (extra) => ({
-    thrown: 0, attempts: 0, armed: 0, wrongDirection: 0, unaimed: 0,
+    thrown: 0, attempts: 0, armed: 0, assisted: 0, wrongDirection: 0, unaimed: 0, // R24G.1: assisted
     tooEarly: 0, tooLate: 0, other: 0, noAnswer: 0, mistimed: 0,
     // R21M.1: these presses carry no aimed sector at all, so none of them is classified as
     // moved or unmoved - pointing nowhere says nothing about movement.

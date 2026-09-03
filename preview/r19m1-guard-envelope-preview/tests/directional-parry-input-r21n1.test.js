@@ -169,7 +169,7 @@ test('R21N.1 the entry names the direction before the guard rises', () => {
   // The guard's RISING EDGE is the parry attempt (R20H.1). Choosing the sector after raising it
   // would arm every directional press against wherever the pointer happened to be left - the exact
   // failure this stage exists to remove.
-  assert.ok(handler[0].indexOf('guardSector.select(direction)') < handler[0].indexOf('setGuardHeld(pressed)'));
+  assert.ok(handler[0].indexOf('guardSector.select(direction)') < handler[0].indexOf('setGuardHeld(pressed, { directional: true })')); // R24G.1: and says it is directional
   // F is still bound, and still omnidirectional: the directional press is an addition.
   assert.match(entry, /onGuardKey:/);
 });

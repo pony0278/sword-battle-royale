@@ -56,7 +56,7 @@ export function createSwingLedger({ capacity = 40, shown = 6 } = {}) {
     return true;
   }
 
-  function settle({ bodyHit = null, outcome = null, separationMeters = null, receiverStaggered = false, superseded = false } = {}) {
+  function settle({ bodyHit = null, outcome = null, tier = null, separationMeters = null, receiverStaggered = false, superseded = false } = {}) {
     if (!open) return false;
     const approach = bodyHit?.closestApproach || {};
     push(Object.freeze({
@@ -71,6 +71,7 @@ export function createSwingLedger({ capacity = 40, shown = 6 } = {}) {
       shortMeters: Number(approach.planeGapMeters ?? 0),
       besideMeters: Number(approach.radialGapMeters ?? 0),
       outcome: outcome ?? null,
+      tier: tier ?? null, // R24G.1: 'perfect' | 'assisted' | null
     }));
     open = null;
     return true;
@@ -82,6 +83,11 @@ export function createSwingLedger({ capacity = 40, shown = 6 } = {}) {
     const mine = entry.who !== 'opponent';
     const outcome = String(entry.outcome || '').toLowerCase();
     if (outcome === 'perfect-parry') return mine ? '被完美 parry' : '你完美 parry';
+    // R24G.1 (#37): the tier the press earned. Perfect is the read-and-timed parry; assisted is
+    // timed only, with the direction answered by the system, and the log says so because the
+    // stagger it bought is shorter.
+    if (outcome === 'parry' && entry.tier === 'perfect') return mine ? '被完美 parry' : '你完美 parry';
+    if (outcome === 'parry' && entry.tier === 'assisted') return mine ? '被 parry（自動瞄準）' : '你 parry（自動瞄準）';
     if (outcome === 'parry') return mine ? '被 parry' : '你 parry';
     if (outcome === 'block') return mine ? '被擋' : '你擋下';
     return null;

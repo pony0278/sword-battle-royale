@@ -1,5 +1,5 @@
 import { GUARD_OUTCOMES } from '../combat/guard-outcome-resolution.js';
-import { PARRY_STAGGER_SECONDS, judgeDuel } from '../combat/fighter-condition.js';
+import { ASSISTED_PARRY_STAGGER_SECONDS, PARRY_STAGGER_SECONDS, judgeDuel } from '../combat/fighter-condition.js';
 
 export const DUEL_STAGE = 'R23J.1';
 
@@ -40,9 +40,11 @@ export function createDuel({ playerCondition, opponentCondition, publishStatus =
     // What an exchange cost the one who threw it. A parried SWINGER is staggered, not the one who
     // answered: parrying is the reward for reading the swing, and the reward is the second the
     // other one loses. Blocking costs neither, which is why a block is still worth a swing.
-    spendExchangeOn(outcome, swingerCondition) {
+    // R24G.1 (#37): and by how much depends on the tier the press earned - an assisted parry
+    // (timed, not aimed) buys less than the follow-up needs; a perfect one buys the whole second.
+    spendExchangeOn(outcome, swingerCondition, { tier = null } = {}) {
       if (outcome === GUARD_OUTCOMES.PARRY || outcome === GUARD_OUTCOMES.PERFECT_PARRY) {
-        swingerCondition.stagger(PARRY_STAGGER_SECONDS);
+        swingerCondition.stagger(tier === 'assisted' ? ASSISTED_PARRY_STAGGER_SECONDS : PARRY_STAGGER_SECONDS);
       }
       this.announce();
       return outcome ?? null;

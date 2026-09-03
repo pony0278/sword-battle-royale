@@ -57,7 +57,7 @@ test('R20G.1 (B6c) the entry wires the choice: input raises the guard, the stanc
   assert.match(entry, /function requestDodge\(direction\) \{\n  if \(!defenderStance\.mayDodge\(\)\)/);
   assert.match(entry, /tryDodge: requestDodge,/);
   // The stance refreshes on the input edge so a same-tick guard press and dodge see each other.
-  const setGuard = entry.indexOf('function setGuardHeld(held)');
+  const setGuard = entry.indexOf('function setGuardHeld(held,'); // R24G.1: the raise says which door it came through
   const edgeRefresh = entry.indexOf('defenderStance.update({ guardKeyHeld, dodgeRunning', setGuard);
   assert.ok(setGuard >= 0 && edgeRefresh > setGuard, 'setGuardHeld refreshes the stance synchronously');
   // An unraised guard has no blocking authority, scoped to block mode - parry mode keeps its

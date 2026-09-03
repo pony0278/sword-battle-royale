@@ -109,7 +109,15 @@ export function evaluateCommittedParryInput(input = {}) {
   // 35 times out of 35 across three playtests, and only ever on the lateral pair.
   const defendedSector = defendedSectorFor(attackDirection);
   const directionMatched = Boolean(defendedSector) && aimedSector === defendedSector;
-  const directionAnswered = !directionRequired || directionMatched;
+  // R24G.1 (#37): three tiers of guard. A RAISE (F, the shield button) that is timed but not aimed
+  // at the answering sector is an ASSISTED parry - the system answers the direction, the player
+  // answered the time - and is accepted as such; the same raise aimed right, or a DIRECTIONAL press
+  // (the sector cells, I/J/L) aimed right, is PERFECT. A directional press aimed wrong stays what
+  // R21C.1 made it: refused, so the swing is merely blocked. Measured before: on touch the shield
+  // button never carries a sector, so a perfectly timed tap was always 'parry-input-unaimed'.
+  const assist = input.assist === true && directionRequired && Boolean(defendedSector);
+  const directionAnswered = !directionRequired || directionMatched || assist;
+  const tier = !directionRequired ? null : directionMatched ? 'perfect' : assist ? 'assisted' : null;
 
   let reason = 'parry-input-armed-awaiting-real-contact';
   if (!attack.available) reason = 'missing-authored-attack-timeline';
@@ -131,8 +139,10 @@ export function evaluateCommittedParryInput(input = {}) {
     stage: COMMITTED_PARRY_CONTACT_GATE_STAGE,
     accepted,
     reason,
+    tier: accepted ? tier : null, // R24G.1: 'perfect' | 'assisted'
+    answeredSector: accepted ? (directionMatched ? aimedSector : defendedSector) : null, // R24G.1: the sector the parry actually answers with
     sequence: attack.sequence,
-    input: freeze({ manual: input.manual !== false }),
+    input: freeze({ manual: input.manual !== false, assist: input.assist === true }),
     attack,
     gates: freeze({
       attackCommitted: attack.committed,
@@ -144,6 +154,7 @@ export function evaluateCommittedParryInput(input = {}) {
       trackingClamped,
       directionMatched,
       directionRequired,
+      assisted: accepted && tier === 'assisted', // R24G.1
       realSweptContact: false,
     }),
     aimedSector,
@@ -182,6 +193,7 @@ export function confirmCommittedParryContact(input = {}) {
     stage: COMMITTED_PARRY_CONTACT_GATE_STAGE,
     accepted,
     reason,
+    tier: accepted ? (armed?.tier ?? null) : null, // R24G.1: the tier the press earned, confirmed by the blade
     sequence: attack.sequence,
     armedReport: armed,
     contact,

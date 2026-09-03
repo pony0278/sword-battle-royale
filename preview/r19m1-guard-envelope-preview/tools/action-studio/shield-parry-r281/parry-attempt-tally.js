@@ -85,7 +85,7 @@ function emptyRow() {
   // ttcMs holds one entry per press, so the distribution survives rather than a running mean -
   // a mean over a bimodal set of presses describes neither of its halves.
   return {
-    thrown: 0, attempts: 0, armed: 0, wrongDirection: 0, unaimed: 0, tooEarly: 0, tooLate: 0, other: 0,
+    thrown: 0, attempts: 0, armed: 0, assisted: 0, wrongDirection: 0, unaimed: 0, tooEarly: 0, tooLate: 0, other: 0, // R24G.1: assisted counts inside armed
     ttcMs: [],
     // R21L.1: which way the player pointed when they pointed the wrong way. Kept per swing
     // direction, so the two tables together say "this attack was mistaken for that one".
@@ -196,7 +196,7 @@ export function createParryAttemptTally(options = {}) {
       // landing exactly on contact, which is a real-looking sample invented out of a missing one.
       const ttc = report.timeToContactSeconds == null ? null : Number(report.timeToContactSeconds);
       if (ttc != null && Number.isFinite(ttc)) row.ttcMs.push(Math.round(ttc * 1000));
-      if (report.accepted) row.armed += 1;
+      if (report.accepted) { row.armed += 1; if (report.tier === 'assisted') row.assisted += 1; } // R24G.1
       else if (report.reason === 'parry-input-wrong-direction') {
         row.wrongDirection += 1;
         const aimed = String(report.aimedSector || '').toLowerCase();
@@ -217,6 +217,7 @@ export function createParryAttemptTally(options = {}) {
         const row = rows.get(direction);
         if (!thrownOf(row)) return `${direction} —`;
         const missReasons = [
+          row.assisted ? `${row.assisted} 自動瞄準` : null, // R24G.1: accepted, but the direction was the system's
           row.wrongDirection ? `${row.wrongDirection} 方向` : null,
           row.tooEarly ? `${row.tooEarly} 太早` : null,
           row.tooLate ? `${row.tooLate} 太晚` : null,
@@ -231,8 +232,8 @@ export function createParryAttemptTally(options = {}) {
     // eye off a HUD line is a playtest report with transcription errors in it, and the split this
     // tally exists to show is exactly the part that gets lost.
     get reportText() {
-      const cols = ['thrown', 'armed', 'wrongDirection', 'tooEarly', 'tooLate', 'unaimed', 'other', 'noAnswer'];
-      const head = ['方向', '揮出', '成功', '方向錯', '太早', '太晚', '沒瞄', '其他', '沒答'];
+      const cols = ['thrown', 'armed', 'assisted', 'wrongDirection', 'tooEarly', 'tooLate', 'unaimed', 'other', 'noAnswer'];
+      const head = ['方向', '揮出', '成功', '自動瞄準', '方向錯', '太早', '太晚', '沒瞄', '其他', '沒答'];
       const total = Object.fromEntries(cols.map((c) => [c, 0]));
       const lines = [conditionLine(readConditions()), head.join('\t')].filter(Boolean);
       for (const direction of DIRECTIONS) {
