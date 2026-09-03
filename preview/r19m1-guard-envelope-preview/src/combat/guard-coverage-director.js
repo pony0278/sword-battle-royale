@@ -52,13 +52,14 @@ export function createGuardCoverageDirector({
   }
 
   // 1. Aim. The ladder picks the target; the latch decides what the arm is allowed to do with it.
-  function aim({ sequence, direction, committed, previousBlade, currentBlade, deltaSeconds, surface }) {
+  function aim({ sequence, direction, committed, previousBlade, currentBlade, deltaSeconds, surface, measurable = true }) {
     const profile = getGuardThreatTrackingProfile('guard');
     const approach = measure(previousBlade, currentBlade, surface);
     const target = targetTracker.select({
       sequence,
       deltaSeconds,
       direction,
+      measurable, // R24C.1
       predictedThreat: predictGuardThreat({
         previousBlade,
         currentBlade,
@@ -132,12 +133,12 @@ export function createGuardCoverageDirector({
 
   // snapTravel is the caller's answer to one question: did this guard come up before the swing, or
   // into it? R20J.1 - a guard thrown up mid-swing places its cover (see the tracking runtime).
-  function update({ sequence, direction, committed, previousBlade, currentBlade, deltaSeconds, snapTravel = false } = {}) {
+  function update({ sequence, direction, committed, previousBlade, currentBlade, deltaSeconds, snapTravel = false, measurable = true } = {}) {
     const tracking = Boolean(previousBlade) && committed === true;
     const neutralSurface = readShieldSurface();
 
     const aimed = tracking
-      ? aim({ sequence, direction, committed, previousBlade, currentBlade, deltaSeconds, surface: neutralSurface })
+      ? aim({ sequence, direction, committed, previousBlade, currentBlade, deltaSeconds, surface: neutralSurface, measurable })
       : {
           approach: null,
           target: null,

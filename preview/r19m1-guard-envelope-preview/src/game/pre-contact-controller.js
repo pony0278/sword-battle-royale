@@ -1,4 +1,5 @@
 import { createBoundedShieldArmAdditiveRuntime } from '../combat/predictive-parry-arm-additive.js';
+import { getGuardThreatTrackingProfile } from '../combat/guard-threat-tracking.js'; // R24C.1: the guard horizon, for the measurable window
 import { GUARD_COVERAGE, planGuardSectorGate } from '../combat/guard-sector-gate.js';
 import { createTopPrepReadabilityHoldRuntime } from '../combat/parry-top-prep-readability-hold.js';
 import { createGuardCoverageDirector } from '../combat/guard-coverage-director.js';
@@ -149,7 +150,10 @@ export function createShieldParryPreContactController({
     const sectorGate = planGuardSectorGate({ direction: snapshot.direction, aimedSector, coverage: guardCoverage });
     exchangeState.latestSectorGate = sectorGate;
     const baselineSurface = buckler.getWorldParrySurface();
+    // R24C.1: and not once the blade is on its way home. Measured: a swing that missed kept the
+    // shield chasing the recovering blade for 0.28m at 30mm/frame, a defence of nothing.
     const engaged = snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
+      && snapshot.phase !== LONGSWORD_ATTACK_PHASES.RECOVERY
       && relevance.relevant
       && coneGate.plan.engaged
       && sectorGate.covers
@@ -172,10 +176,17 @@ export function createShieldParryPreContactController({
         })
       : zeroBracePlan();
     bracingRuntime.update(bracePlan, deltaSeconds);
+    // R24C.1: the measured aim is worth taking only once the blade could still arrive - the swing's
+    // active window, less the guard horizon it looks ahead by. Before that the blade being swept
+    // past the shield is the LAST swing's, on its way home.
+    const activeStartSeconds = Number(snapshot.action?.runtime?.activeStartSeconds);
+    const measurable = !Number.isFinite(activeStartSeconds)
+      || Number(snapshot.elapsedSeconds) + getGuardThreatTrackingProfile('guard').horizonSeconds >= activeStartSeconds;
     const coverage = guardCoverageDirector.update({
       sequence: snapshot.sequence,
       direction: snapshot.direction,
       committed: engaged,
+      measurable,
       previousBlade,
       currentBlade,
       deltaSeconds,
