@@ -37,6 +37,8 @@ export function createShieldParryLaneController({
   const defenderBaseFacing = createBaseFacingRuntime();
   const defenderFeet = createLaneLocomotionRuntime();
   let defenderLateralIntent = 0; // R19V.1: A/D, the defender's own left/right
+  let attackerLateralIntent = 0; // R24B.1: the drive's circling, the attacker's own left/right
+  let lastAttackerTravelPlan = null; // R24B.1: the attacker's stride, turned along their travel like the defender's
   // R20F.1: the dodge state. A committed 0.4s burst that owns the defender's feet while it
   // runs; its i-frames are read by the contact lifecycle, its guard cost by the pre-contact
   // commitment chain - this controller only moves the body and plays the clip.
@@ -114,10 +116,10 @@ export function createShieldParryLaneController({
   // R20X.1: swing the stride to point along travel. Only the two upper legs are touched, so the
   // knees and feet follow and the pelvis - and with it the spine, the guard and the shield - does
   // not. The quaternion maths is in travel-relative-legs.js; this is the part that needs a scene.
-  function applyTravelYawToLegs() {
-    const yaw = lastTravelPlan?.legYawRadians || 0;
+  function applyTravelYawToLegs(fighter = labScene.defender, plan = lastTravelPlan) { // R24B.1: for either fighter
+    const yaw = plan?.legYawRadians || 0;
     if (Math.abs(yaw) < 1e-3) return false;
-    const bones = labScene.defender?.rig?.bones;
+    const bones = fighter?.rig?.bones;
     const hips = bones?.hips;
     if (!hips?.getWorldQuaternion) return false;
     const parentWorld = hips.quaternion.clone();
@@ -126,7 +128,7 @@ export function createShieldParryLaneController({
     const applied = hips.quaternion.clone();
     applied.set(delta.x, delta.y, delta.z, delta.w);
     for (const id of TRAVEL_YAW_BONES) bones[id]?.quaternion.premultiply(applied);
-    labScene.defender.rig.root.updateMatrixWorld(true);
+    fighter.rig.root.updateMatrixWorld(true);
     return true;
   }
 
@@ -190,6 +192,11 @@ export function createShieldParryLaneController({
     setDefenderLateralIntent(intent) {
       defenderLateralIntent = Math.sign(Number(intent) || 0);
       return defenderLateralIntent;
+    },
+    // R24B.1: the attacker's sidestep, the drive's verb. Same normalisation, same lock under a swing.
+    setAttackerLateralIntent(intent) {
+      attackerLateralIntent = Math.sign(Number(intent) || 0);
+      return attackerLateralIntent;
     },
     setAttackerIntent(intent) {
       return attackerFeet.setIntent(intent);
@@ -261,8 +268,19 @@ export function createShieldParryLaneController({
         ? null
         : attackerFeet.update({ deltaSeconds, separationMeters: ground.separationMeters });
       if (attackerStep && attackerStep.meters !== 0) ground.moveAttacker(attackerStep.meters);
+      // R24B.1: and their sidestep, on the same lock - a swinging attacker's feet are the swing's.
+      const attackerLateral = planLateralStep({
+        intent: feetLockedFor('attacker') ? 0 : attackerLateralIntent, deltaSeconds,
+      });
+      if (attackerLateral.meters !== 0) ground.moveAttackerLateral(attackerLateral.meters);
       // Closing the gap is walking forward, so the sign flips: the ledger speaks in separation.
-      if (attackerStep) attackerGait.advance({ travelledMeters: -attackerStep.meters, deltaSeconds });
+      // R24B.1: the whole travel on one gait, the stride turned along it (R20X.1's plan, in the
+      // attacker's own frame: their left is the plan's negative lateral, as the defender's is).
+      lastAttackerTravelPlan = planTravelRelativeLegs({
+        forwardMeters: attackerStep ? -attackerStep.meters : 0,
+        lateralMeters: -attackerLateral.meters,
+      });
+      if (attackerStep || attackerLateral.meters !== 0) attackerGait.advance({ travelledMeters: lastAttackerTravelPlan.signedTravelMeters, deltaSeconds });
       else attackerGait.settle();
       // R20W.1: both ways the defender can move, spent on one gait. The lane step speaks in
       // separation, so closing the gap is forward and the sign flips; the world travel is turned
@@ -289,6 +307,8 @@ export function createShieldParryLaneController({
     },
     get defenderIntent() { return defenderFeet.intent; },
     get defenderLateralIntent() { return defenderLateralIntent; },
+    get attackerLateralIntent() { return attackerLateralIntent; }, // R24B.1
+    get attackerTravelPlan() { return lastAttackerTravelPlan; }, // R24B.1
     get attackerIntent() { return attackerFeet.intent; },
     get attackerFeetLocked() { return attackerFeetLocked(); },
     get defenderFeetLocked() { return feetLockedFor('defender'); },
@@ -425,6 +445,7 @@ export function createShieldParryLaneController({
       if (!pendingAttackerLegPose) return false;
       services.applyRigPose(labScene.attacker.rig, pendingAttackerLegPose);
       pendingAttackerLegPose = null;
+      applyTravelYawToLegs(labScene.attacker, lastAttackerTravelPlan); // R24B.1
       return true;
     },
     overlayDefenderWalkLegs() {
@@ -484,6 +505,7 @@ export function createShieldParryLaneController({
     },
     resetLane() {
       defenderLateralIntent = 0;
+      attackerLateralIntent = 0; // R24B.1
       dodge.reset();
       guardFacingTurn.reset();
       labScene.setDefenderYawOffset(0);
