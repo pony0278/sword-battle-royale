@@ -34,20 +34,35 @@ test('R19Y.1 a shield slung behind the body hands the question to the body', () 
   assert.equal(backTurned.reason, 'shield-behind-the-body-along-the-approach');
 });
 
-test('R19Y.1 an edge-on plane keeps the measured order, because doubt resolves to the shield', () => {
-  // A -90 rotation lays the shield plane along the attack axis; both side readings collapse
-  // toward zero and the collapse band already misses on its own (0/4 measured) - taking blocks
-  // away on a degenerate sign would be noise deciding a fight.
+test('R19Y.1 / R24I.1 an edge-on or tilted plane cannot take the block away: the order reads positions, not the normal', () => {
+  // A -90 rotation lays the shield plane along the attack axis. Under the R19Y.1 plane-sign test
+  // this was a doubt case; in the approach frame the shield center simply sits between the two of
+  // them, and the orientation never enters the answer.
   const edgeOn = decideContactDepthOrder({
     attackerPoint: { x: 0.05, y: 1, z: -1.2 },
     bodyPoint: { x: -0.04, y: 1, z: 1.2 },
     shieldSurface: { center: { x: 0, y: 1, z: 0 }, normal: { x: 1, y: 0, z: 0 } },
   });
   assert.equal(edgeOn.order, 'shield-first');
-  assert.equal(edgeOn.reason, 'plane-nearly-edge-on-doubt-resolves-to-the-shield');
+  assert.equal(edgeOn.reason, 'shield-between-attacker-and-body');
+  // R24I.1 (#39): the geometry the plane-sign test got wrong, measured in play. The opponent
+  // covers TOP, the disc pitches toward flat, and at 2.1m the old test put both fighters on the
+  // same side of that near-flat plane and called an honest frontal block a backstab - a player
+  // TOP at 1.2-2.3m fell through a covered shield to the chest, every time, while 2.4m held.
+  const tiltedCover = decideContactDepthOrder({
+    attackerPoint: { x: 0, y: 1, z: 2.1 },
+    bodyPoint: { x: 0, y: 1, z: 0 },
+    shieldSurface: { center: { x: 0.1, y: 1.4, z: 0.5 }, normal: { x: 0, y: -0.95, z: 0.31 } },
+  });
+  assert.equal(tiltedCover.order, 'shield-first', 'a shield in front of the chest blocks, whatever its pitch');
+  // Doubt still resolves to the shield: no approach to order along, and malformed input.
+  const onTop = decideContactDepthOrder({
+    attackerPoint: { x: 0, y: 1, z: 0.01 },
+    bodyPoint: { x: 0, y: 1, z: 0 },
+    shieldSurface: { center: { x: 0, y: 1, z: 0.5 }, normal: { x: 0, y: 0, z: -1 } },
+  });
+  assert.equal(onTop.reason, 'plane-nearly-edge-on-doubt-resolves-to-the-shield');
   assert.ok(CONTACT_DEPTH_PLANE_EPSILON_METERS > 0);
-
-  // And malformed input keeps the measured order too.
   assert.equal(decideContactDepthOrder({}).order, 'shield-first');
 });
 
