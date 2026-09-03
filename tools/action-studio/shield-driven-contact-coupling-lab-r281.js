@@ -173,7 +173,7 @@ function syncGuardToStance() {
   if (guardActive && guardMachine.state === GUARD_STATES.NEUTRAL) enterGuard();
   else if (!guardActive && guardMachine.state !== GUARD_STATES.NEUTRAL) { guardMachine.send(GUARD_EVENTS.RESET, { stage: LAB_STAGE }); guardRuntime.sync(camera); }
 }
-function setGuardHeld(held) {
+function setGuardHeld(held, { directional = false } = {}) { // R24G.1 (#37): a raise (F, the shield button) may be assisted; a directional press may not
   guardKeyHeld = held === true;
   if (selectedMode !== 'block') return guardKeyHeld;
   // The stance refreshes on the input edge, not the next frame: a guard press and a dodge
@@ -185,8 +185,8 @@ function setGuardHeld(held) {
   // silent - the shield still rose, and that is already the answer the player asked for.
   if (stanceEdge.justRaisedGuard && attackRuntime.snapshot?.action && !exchangeState.firstContact) {
     lateGuardRaise = true; // R20J.1: raised into a live swing, whatever the gate makes of the timing
-    exchangeState.latestParryInput = parryGate.arm({ attackSnapshot: attackRuntime.snapshot, manual: true,
-      source: 'guard-raise', aimedSector: guardSector.sector }); // R21C.1: point, then press
+    exchangeState.latestParryInput = parryGate.arm({ attackSnapshot: attackRuntime.snapshot, manual: true, assist: !directional,
+      source: directional ? 'directional-press' : 'guard-raise', aimedSector: guardSector.sector }); // R21C.1: point, then press; R24G.1: a plain raise is assisted
     parryTally.record(exchangeState.latestParryInput);
     if (exchangeState.latestParryInput.accepted) driveAcceptedParry(attackRuntime.snapshot);
   }
@@ -451,7 +451,7 @@ function triggerParryNow(source = 'button') {
   exchangeState.latestParryInput = parryGate.arm({
     attackSnapshot: snapshot,
     predictiveAnalysis: exchangeState.latestPredictiveAnalysis,
-    manual: true,
+    manual: true, assist: true, // R24G.1: F in parry mode is a raise too - aimed right it is perfect, otherwise assisted
     source,
     aimedSector: guardSector.sector, // R21C.1: the other door into the same gate
   });
@@ -601,7 +601,7 @@ function resolveContact(snapshot, currentBlade, deltaSeconds) {
   parryTally.recordOutcome(selectedDirection, snapshot?.sequence, exchangeState.latestCombatResult?.resolution?.outcome, exchangeState.latestBodyHit?.contact === true);
   const settled = laneController.settle(exchangeState.latestCombatResult?.resolution?.outcome);
   if (settled) exchangeState.latestEngagementGround = settled;
-  duel.spendExchangeOn(exchangeState.latestCombatResult?.resolution?.outcome, attackerFighter.condition); // they swung, so a parry staggers them
+  duel.spendExchangeOn(exchangeState.latestCombatResult?.resolution?.outcome, attackerFighter.condition, { tier: exchangeState.latestParryConfirmation?.tier }); // they swung, so a parry staggers them; R24G.1: for as long as the tier bought
   return resolved;
 }
 
@@ -698,7 +698,7 @@ const { startOverlay } = bindShieldParryLabUiEvents({ // R24F.1: the phone's sta
     // pointer happened to be left.
     onDirectionalParry: (direction, pressed) => {
       if (pressed) guardSector.select(direction);
-      return setGuardHeld(pressed);
+      return setGuardHeld(pressed, { directional: true }); // R24G.1: aimed by the player, so wrong stays wrong
     },
     onShowSurface: (checked) => buckler.setParrySurfaceVisible(checked),
     onResize: resize,
@@ -740,9 +740,9 @@ function frame(timestamp) {
     // nothing was telling it this one had stopped. The opponent's side banks at the START of its
     // next attack instead, which is what the golden grid was measured against and is therefore not
     // changed here; the two ought to agree, and that is its own change with its own evidence.
-    if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; swingLedger.settle({ bodyHit: playerEngagement.exchangeState.latestBodyHit, outcome: playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.settledSeparationMeters, receiverStaggered: defenderFighter.condition.report.staggered }); } // R23X.1: a parried player is staggered, and their line says so
+    if (playerWasSwinging && !playerSnapshot?.action) { laneController.endExchange(); playerWasSwinging = false; swingLedger.settle({ bodyHit: playerEngagement.exchangeState.latestBodyHit, outcome: playerEngagement.exchangeState.latestCombatResult?.resolution?.outcome, tier: playerEngagement.exchangeState.latestParryConfirmation?.tier, separationMeters: laneController.settledSeparationMeters, receiverStaggered: defenderFighter.condition.report.staggered }); } // R23X.1: a parried player is staggered, and their line says so
     playerWasSwinging = Boolean(playerSnapshot?.action);
-    if (opponentWasSwinging && !snapshot?.action) swingLedger.settle({ bodyHit: exchangeState.latestBodyHit, outcome: exchangeState.latestCombatResult?.resolution?.outcome, separationMeters: laneController.settledSeparationMeters, receiverStaggered: attackerFighter.condition.report.staggered }); // R23W.1: a parry staggers the swinger, and the log says so
+    if (opponentWasSwinging && !snapshot?.action) swingLedger.settle({ bodyHit: exchangeState.latestBodyHit, outcome: exchangeState.latestCombatResult?.resolution?.outcome, tier: exchangeState.latestParryConfirmation?.tier, separationMeters: laneController.settledSeparationMeters, receiverStaggered: attackerFighter.condition.report.staggered }); // R23W.1: a parry staggers the swinger, and the log says so
     opponentWasSwinging = Boolean(snapshot?.action);
     const laneSwing = playerSnapshot?.action ? playerSnapshot : snapshot;
     laneController.update(laneSwing.elapsedSeconds, Boolean(laneSwing.action), laneSwing.phase); // R20B.1 phase rides along

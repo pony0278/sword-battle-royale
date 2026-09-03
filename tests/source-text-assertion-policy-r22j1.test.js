@@ -144,7 +144,10 @@ function census() {
 // entry wiring, and only the text can say so. KEEP.
 // R24F.2 raised html and total by two: the pad's blade button and its grid cell are page markup,
 // and where a thumb finds it is a claim only the page can carry. The binding itself is called. KEEP.
-const BASELINE = Object.freeze({ total: 1211, srcText: 374, toolsText: 668, html: 161, absence: 150 });
+// R24G.1 raised toolsText and total by two: which door a press came through - the sector cells and
+// I/J/L are directional, a plain raise is assisted - is decided where the entry arms the gate, and
+// the gate's own behaviour is called. Only the text can say the entry tells it. KEEP.
+const BASELINE = Object.freeze({ total: 1213, srcText: 374, toolsText: 670, html: 161, absence: 150 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

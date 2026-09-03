@@ -102,7 +102,11 @@
     aside{display:none}
     body.lab-open aside{display:block;position:fixed;inset:0;z-index:50;overflow:auto;background:#0b1220;border:0}
     .lab-toggle{display:block;position:fixed;right:12px;top:12px;z-index:60;flex:none;min-height:0;padding:6px 10px;font-size:12px;opacity:.75}
-    .hud{left:10px;right:70px;top:10px;min-width:0;font-size:11px;pointer-events:auto}
+    /* R24G.1: the HUD hides over the fight on touch - even folded it stood 81px tall across the top
+       and a person said it was in the way - and comes back under the Lab lid, where the log is. */
+    .hud{display:none;left:10px;right:70px;top:10px;min-width:0;font-size:11px;pointer-events:auto}
+    body.lab-open .hud{display:block;position:fixed;z-index:55}
+    body.lab-open aside{padding-top:150px}
     .hud.expanded{max-height:40vh;overflow-y:auto}
     .hud button{flex:none;min-height:0;font-size:11px}
     .legend{display:none}
@@ -277,6 +281,6 @@
       });
     })();
   </script>
-  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-the-thumb-swings-r24f2"></script>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-the-log-says-how-fast-the-phone-ran-r24g2"></script>
 </body>
 </html>

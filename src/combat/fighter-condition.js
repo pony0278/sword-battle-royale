@@ -39,6 +39,11 @@ export const BODY_HIT_DAMAGE = 10;
 // 0.763s, or 0.910s to honour a perfect parry. One second is the smallest round number that covers
 // both, and the assertion that it still does lives in this stage's test rather than in this comment.
 export const PARRY_STAGGER_SECONDS = 1;
+// R24G.1 (#37): an ASSISTED parry - timed by the player, aimed by the system - staggers for less
+// than the follow-up needs. 0.763s is where the last legal follow-up lands (above); half a second
+// is deliberately short of it, so the punish is not guaranteed: the swinger can be back in guard
+// before the blade arrives. Reading the direction is what buys the guaranteed second.
+export const ASSISTED_PARRY_STAGGER_SECONDS = 0.5;
 
 // The blow every fighter's swing lands at, kept here because the stagger above is derived from it.
 export const MEASURED_CONTACT_SECONDS = getLongswordDirectionalAttackProfile('top').contactSeconds;
