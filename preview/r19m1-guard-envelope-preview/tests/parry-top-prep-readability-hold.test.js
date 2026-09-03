@@ -157,7 +157,7 @@ test('R18N.4.3-B.1.3 integration captures anchor only after first actual-target 
   const additiveIndex = preContact.indexOf('shieldArmAdditiveRuntime.update({');
   const holdIndex = preContact.indexOf('topPrepReadabilityHoldRuntime.update({');
   const holdTapIndex = preContact.indexOf('visualOwnership.afterTopPrepReadabilityHold(topPrepReadabilityHold)');
-  const closureIndex = preContact.indexOf('parryInterceptDirector.finalClosure({ activeIntent })');
+  const closureIndex = preContact.indexOf('parryInterceptDirector.finalClosure({ activeIntent, deltaSeconds, timeToContactSeconds:'); // R24D.1: paced against the clock
   const captureIndex = preContact.indexOf('topPrepReadabilityHoldRuntime.arm({', closureIndex);
   const closureTapIndex = preContact.indexOf('visualOwnership.afterFinalClosure(activeInterceptArmClosure)');
   assert.ok(additiveIndex >= 0 && holdIndex > additiveIndex, 'readability hold must run after authored bounded additive');

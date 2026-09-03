@@ -39,6 +39,19 @@ const FINAL_CLOSURE_REFINEMENT = Object.freeze({
   jointBudgetScale: 0.6,
   iterations: 2,
 });
+// R24D.1: the closure's budget above is per call, and it was called once a frame against a target
+// 0.09-0.60m away - so the first frame of every parry spent the whole 12/15.6 degrees at once
+// (measured with the additive already paced: 18.3/21.9 degrees on the arm frame, of which the
+// closure was 12/15.6). With the frame's length the closure is paced like the additive: 420 deg/s
+// is seven degrees a frame at 60Hz, its budget in two, inside the seven a parry armed at 0.12s has.
+// A caller without a clock (the tests' harness) gets the budget alone, as before.
+// R24D.1: the closure's pace when it has time. Measured: the closure wrote its whole per-frame
+// budget (12/15.6 degrees at scale 0.6) on the frame a parry armed and the shield hand jumped
+// 13-24cm. Paced flat at 7 degrees a frame the TOP perfect parry - pressed 0.05s before contact,
+// three frames to arrive - stopped resolving. So the pace yields to the clock: with more than
+// three frames left the arm takes at least this, or enough to still cross three budgets by
+// contact; with three or fewer it has the budget it always had.
+const FINAL_CLOSURE_PACE_DEGREES_PER_SECOND = 420;
 const RESIDUAL_ACTIVATION = Object.freeze({
   gapMeters: 1e-5,
   correctionMeters: 1e-6,
@@ -115,7 +128,10 @@ export function createParryInterceptDirector({
     // The presentation is allowed to rebuild its authored pose every frame. The tracking runtime's
     // bounded carry survives that and is applied after it, so its offset acts as an absolute
     // world-space correction rather than something that stacks frame on frame.
-    const tracking = announce('primaryArm', trackingRuntime.update(plan, deltaSeconds));
+    const tracking = announce('primaryArm', trackingRuntime.update(plan, deltaSeconds, {
+      paceDegreesPerSecond: FINAL_CLOSURE_PACE_DEGREES_PER_SECOND, // R24D.1: the arm is paced whoever drives it
+      timeToContactSeconds: predictiveAnalysis?.timeToContactSeconds ?? null,
+    }));
     const residualCarryBeforeMeters = magnitude(tracking?.carriedResidualOffset);
 
     const residualBeforeRefinement = measure(previousBlade, currentBlade, readShieldSurface());
@@ -186,10 +202,13 @@ export function createParryInterceptDirector({
 
   // Deliberately silent, unlike every other stage: the caller has a read-only capture of its own
   // to take between this write and the observation of it, so it owns when this one is announced.
-  function finalClosure({ activeIntent = null } = {}) {
-    return activeIntent?.plan
-      ? trackingRuntime.refineWorldTarget(activeIntent.targetCenter, FINAL_CLOSURE_REFINEMENT)
-      : null;
+  function finalClosure({ activeIntent = null, deltaSeconds = null, timeToContactSeconds = null } = {}) {
+    if (!activeIntent?.plan) return null;
+    const dt = Number(deltaSeconds);
+    const paced = Number.isFinite(dt) && dt > 0
+      ? { ...FINAL_CLOSURE_REFINEMENT, paceDegreesPerSecond: FINAL_CLOSURE_PACE_DEGREES_PER_SECOND, deltaSeconds: dt, timeToContactSeconds: Number.isFinite(Number(timeToContactSeconds)) ? Number(timeToContactSeconds) : null }
+      : FINAL_CLOSURE_REFINEMENT;
+    return trackingRuntime.refineWorldTarget(activeIntent.targetCenter, paced);
   }
 
   // What the ladder actually moved, stage by stage. Measured after every writer has finished,

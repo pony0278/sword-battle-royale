@@ -194,7 +194,7 @@ test('R18N.4.1-B wires taps after existing writers and exposes diagnostics witho
   ]) {
     assert.ok(preContact.includes(`${stage}: (report) => ${tap}`), 'tap must stay wired to writer: ' + stage);
   }
-  assert.match(director, /announce\('primaryArm', trackingRuntime\.update\(plan, deltaSeconds\)\)/);
+  assert.match(director, /announce\('primaryArm', trackingRuntime\.update\(plan, deltaSeconds, \{/); // R24D.1: the arm's pace rides along
   assert.match(director, /announce\(\s*\n?\s*'residualArm',/);
   // The lab's own authored-arm writers still sit between the ladder's stance and its final
   // closure, and each is still observed the instant it has written.
