@@ -113,6 +113,7 @@ export function createShieldParryDebugApi({
     // and what its exchange concluded - the same three questions the opponent's side already
     // answers, now askable of the half a person is driving.
     get playerAttackRefusal() { return runtimes.playerAttackRefusal?.() ?? null; }, // R23J.1
+    get playerExchangeState() { return runtimes.playerEngagement?.()?.exchangeState ?? null; }, // R24C.1: the opponent's defence of the player's swing, for probes
     get playerSwing() {
       const player = runtimes.playerEngagement?.();
       if (!player) return null;
