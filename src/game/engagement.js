@@ -66,6 +66,12 @@ export function createEngagement(THREE, {
   let idleClockSeconds = 0;
   let idleDuration = 1;
   let previousBlade = null;
+  // R24H.1 (#38): the held guard's shield arm, captured on the first frame of a swing thrown with
+  // the guard machine in HOLD and laid over every frame the swing, the contact and the recovery
+  // own the body. Null when the guard was not held, which is every gate's case - the browser
+  // gates never swing a guarding fighter - and cleared when the body goes back to idle.
+  let shieldArmPose = null;
+  let shieldArmSequence = null;
 
   const presentation = createAttackerPresentationAdapter({
     THREE,
@@ -87,6 +93,7 @@ export function createEngagement(THREE, {
     sampleFrozenContactPose(interruption) {
       presentation.sampleFrozenContactPose(interruption, {
         ownsLiveContact: contactHandoff.ownsLiveContact(),
+        shieldArmPose, // R24H.1
       });
     },
   });
@@ -202,11 +209,18 @@ export function createEngagement(THREE, {
       return idleDuration;
     },
     sampleBase(snapshot, deltaMs, walkSample) {
+      // R24H.1: one capture attempt per swing, on its first sampled frame - asking again every
+      // frame would paint the guard over a swing whose guard is down, once per frame, for nothing.
+      if (snapshot?.action && snapshot.sequence !== shieldArmSequence) {
+        shieldArmSequence = snapshot.sequence;
+        shieldArmPose = presentation.captureShieldArmPose();
+      }
       const state = presentation.sampleBase({
-        snapshot, deltaMs, recovery, idleClockSeconds, idleDuration, walkSample,
+        snapshot, deltaMs, recovery, idleClockSeconds, idleDuration, walkSample, shieldArmPose,
       });
       recovery = state.recovery;
       idleClockSeconds = state.idleClockSeconds;
+      if (!snapshot?.action && !recovery) shieldArmPose = null; // the guard writers own the arm again
       return state;
     },
     get previousBlade() { return previousBlade; },

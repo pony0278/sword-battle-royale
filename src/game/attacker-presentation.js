@@ -1,3 +1,5 @@
+import { filterPoseToShieldArm } from '../combat/shield-arm-hold.js'; // R24H.1
+
 export function createAttackerPresentationAdapter({
   THREE,
   attacker,
@@ -23,6 +25,26 @@ export function createAttackerPresentationAdapter({
     // idle as before.
     captureResumePose,
   } = services || {};
+  // R24H.1 (#38): the held guard's shield arm, as an overlay. Captured through the same
+  // captureResumePose service - which paints the guard onto the rig - so the visible pose is
+  // saved first and put back after, exactly as createRecovery does.
+  function captureShieldArmPose() {
+    if (typeof captureResumePose !== 'function') return null;
+    const visiblePose = captureRigPose(attacker.rig);
+    const resumePose = captureResumePose();
+    if (!resumePose) return null;
+    applyRigPose(attacker.rig, visiblePose);
+    attacker.update(0, camera);
+    return filterPoseToShieldArm(resumePose);
+  }
+  // The overlay itself: the last writer on these five bones before the caller's repaint. A partial
+  // pose only writes the bones it names, so the swing keeps the torso it turned.
+  function overlayShieldArm(shieldArmPose) {
+    if (!shieldArmPose) return false;
+    applyRigPose(attacker.rig, shieldArmPose);
+    attacker.update(0, camera);
+    return true;
+  }
 
   for (const [name, fn] of Object.entries({
     captureRigPose,
@@ -75,7 +97,7 @@ export function createAttackerPresentationAdapter({
     return true;
   }
 
-  function sampleFrozenContactPose(interruption, { ownsLiveContact = false } = {}) {
+  function sampleFrozenContactPose(interruption, { ownsLiveContact = false, shieldArmPose = null } = {}) {
     if (ownsLiveContact && exchangeState.frozenAttackerContactPose) {
       applyRigPose(attacker.rig, exchangeState.frozenAttackerContactPose);
     } else if (exchangeState.step3AReleaseBlend?.sourcePose && exchangeState.step3AReleaseBlend?.targetPose) {
@@ -97,6 +119,9 @@ export function createAttackerPresentationAdapter({
       sampleCanonicalInterruptionPose(interruption);
     }
     attacker.update(0, camera);
+    // R24H.1: the frozen contact pose froze the shield arm wherever the swing had flung it, for
+    // 18-41 frames. A held shield holds through the contact too.
+    overlayShieldArm(shieldArmPose);
   }
 
   function createRecovery(direction) {
@@ -121,7 +146,7 @@ export function createAttackerPresentationAdapter({
     return { direction, elapsedMs: 0, sourcePose, targetPose, resumes: resumePose ? 'guard' : 'idle' };
   }
 
-  function sampleBase({ snapshot, deltaMs, recovery, idleClockSeconds, idleDuration, walkSample }) {
+  function sampleBase({ snapshot, deltaMs, recovery, idleClockSeconds, idleDuration, walkSample, shieldArmPose = null }) {
     // R19C.2: walking replaces the idle as the base clip rather than layering over it. Sampling a
     // clip restores the whole rig to rest first, so two clips cannot be mixed here - but the
     // procedural corrections that run after this still compose on top either way, which is what
@@ -150,6 +175,7 @@ export function createAttackerPresentationAdapter({
         { loop: false, inPlace: true, rootRotationPolicy: 'lock' },
       );
       attacker.update(0, camera);
+      overlayShieldArm(shieldArmPose); // R24H.1: the swing owns the sword arm and the body, not the shield
       return { recovery, idleClockSeconds };
     }
 
@@ -168,6 +194,9 @@ export function createAttackerPresentationAdapter({
         },
       ));
       attacker.update(0, camera);
+      // R24H.1: with the arm already at the guard, the recovery has nothing to whip - the blend
+      // still moves the body, and the overlay pins the arm where it stayed.
+      overlayShieldArm(shieldArmPose);
       return {
         recovery: recoverySample.complete ? null : recovery,
         idleClockSeconds,
@@ -187,6 +216,7 @@ export function createAttackerPresentationAdapter({
   return Object.freeze({
     captureWorldSilhouette,
     captureCanonicalOldB3Base,
+    captureShieldArmPose,
     sampleFrozenContactPose,
     createRecovery,
     sampleBase,
