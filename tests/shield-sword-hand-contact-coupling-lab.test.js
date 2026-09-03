@@ -398,7 +398,7 @@ test('armed Parry samples a continuous post-tracking shield surface before selec
   const measure = parryInterceptDirectorSource.indexOf('measure(previousBlade, currentBlade, selectorSurface)');
   const select = parryInterceptDirectorSource.indexOf('selectReachableParryInterceptTarget({');
   const plan = parryInterceptDirectorSource.indexOf('planGuardThreatCorrection({');
-  const drive = parryInterceptDirectorSource.indexOf('trackingRuntime.update(plan, deltaSeconds)');
+  const drive = parryInterceptDirectorSource.indexOf('trackingRuntime.update(plan, deltaSeconds, {');
   assert.ok(measure >= 0 && select > measure && plan > select && drive > plan);
   assert.match(preContactSource, /selectorBaseline: 'previous-frame-post-tracking-world-shield-surface'/);
   assert.match(
@@ -420,7 +420,7 @@ test('armed Parry recruits predicted or measured low stance, holds it, and prese
   // R18S.3: each rung is measured against the shield the rung before it just moved, so the order
   // is the whole contract - and it is the director's.
   const ladder = parryInterceptDirectorSource;
-  const primaryDrive = ladder.indexOf('trackingRuntime.update(plan, deltaSeconds)');
+  const primaryDrive = ladder.indexOf('trackingRuntime.update(plan, deltaSeconds, {');
   const residualBefore = ladder.indexOf('const residualBeforeRefinement', primaryDrive);
   const residualSelect = ladder.indexOf('const residualInterceptTarget', residualBefore);
   const refine = ladder.indexOf('trackingRuntime.refineMeasuredContact', residualSelect);

@@ -287,6 +287,7 @@ export function createShieldParryPreContactController({
         authoredDelta: exchangeState.latestPredictiveReport?.shieldArmAuthoredDelta,
         sequence: snapshot.sequence,
         enabled: Boolean(activeIntentPlan),
+        deltaSeconds, // R24D.1: paced - the first frame wrote the whole bound at once
       });
       visualOwnership.afterShieldArmAdditive(shieldArmBoundedAdditive);
       const topPrepReadabilityHold = topPrepReadabilityHoldRuntime.update({
@@ -298,7 +299,7 @@ export function createShieldParryPreContactController({
         timeToContactSeconds: exchangeState.latestPredictiveAnalysis?.timeToContactSeconds,
       });
       visualOwnership.afterTopPrepReadabilityHold(topPrepReadabilityHold);
-      const activeInterceptArmClosure = parryInterceptDirector.finalClosure({ activeIntent });
+      const activeInterceptArmClosure = parryInterceptDirector.finalClosure({ activeIntent, deltaSeconds, timeToContactSeconds: exchangeState.latestPredictiveAnalysis?.timeToContactSeconds }); // R24D.1: paced against the clock
       if (activeIntentPlan
         && snapshot.direction === 'top'
         && !topPrepReadabilityHoldRuntime.armed) {

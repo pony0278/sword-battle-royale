@@ -7,6 +7,11 @@ export const R18N_BOUNDED_SHIELD_ARM_ADDITIVE_POLICY = Object.freeze({
     'lowerarm.l': Object.freeze({ weight: 0.72, maxAngleDegrees: 22, enabled: true }),
     'wrist.l': Object.freeze({ weight: 0, maxAngleDegrees: 0, enabled: false, solverOnly: true }),
   }),
+  // R24D.1: the bound above is an angle, not a speed - measured, the first frame of a parry wrote the
+  // whole 18/22 degrees at once and the shield hand jumped 13-24cm (both fighters, the same code).
+  // A caller that passes its clock gets the increment paced at this rate: 360 deg/s is 6 degrees a
+  // frame at 60Hz, the cap in three to four frames, inside the seven a parry armed at 0.12s has.
+  maxStepDegreesPerSecond: 360,
   writer: 'predictive-shield-arm-bounded-additive',
   finalPoseOwner: 'active-intercept-final-arm-closure',
   authority: 'bounded-authored-increment-before-active-intercept-final-solve-no-contact-authority',
@@ -154,6 +159,12 @@ export function createBoundedShieldArmAdditiveRuntime(options = {}) {
     }
 
     const plan = planBoundedShieldArmAdditive(input.authoredDelta, policy);
+    // R24D.1: paced only when the caller says how long the frame was; without a clock the bound
+    // alone applies, which is what every measurement before this stage was taken against.
+    const deltaSeconds = Number(input.deltaSeconds);
+    const stepCapDegrees = Number.isFinite(deltaSeconds) && deltaSeconds > 0
+      ? Math.max(0, finite(policy.maxStepDegreesPerSecond)) * deltaSeconds
+      : Infinity;
     const boneReports = {};
     const appliedBones = [];
     for (const [boneId, targetPlan] of Object.entries(plan.bones)) {
@@ -161,16 +172,22 @@ export function createBoundedShieldArmAdditiveRuntime(options = {}) {
       const currentTarget = targetPlan.quaternion || IDENTITY_QUATERNION;
       const increment = multiplyQuaternion(conjugateQuaternion(previousTarget), currentTarget);
       const incrementalAngleDegrees = quaternionAngleDegrees(increment);
+      const rateLimited = incrementalAngleDegrees > stepCapDegrees + 1e-9;
+      const paced = rateLimited ? scaleQuaternionAngle(increment, stepCapDegrees) : increment;
+      const appliedAngleDegrees = rateLimited ? stepCapDegrees : incrementalAngleDegrees;
       const boneQuaternion = input.rig?.bones?.[boneId]?.quaternion;
-      const canApply = targetPlan.enabled && Boolean(boneQuaternion) && incrementalAngleDegrees > 1e-7;
+      const canApply = targetPlan.enabled && Boolean(boneQuaternion) && appliedAngleDegrees > 1e-7;
       if (canApply) {
-        writeQuaternion(boneQuaternion, multiplyQuaternion(boneQuaternion, increment));
+        writeQuaternion(boneQuaternion, multiplyQuaternion(boneQuaternion, paced));
         appliedBones.push(boneId);
       }
-      previousTargets[boneId] = currentTarget;
+      // The carry is where the bone actually got to, so a paced increment keeps closing next frame.
+      previousTargets[boneId] = rateLimited ? multiplyQuaternion(previousTarget, paced) : currentTarget;
       boneReports[boneId] = Object.freeze({
         ...targetPlan,
         incrementalAngleDegrees,
+        appliedAngleDegrees,
+        rateLimited,
         applied: canApply,
       });
     }
