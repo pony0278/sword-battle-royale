@@ -138,7 +138,11 @@ function census() {
 // R24D.1 (second writer): two more composition claims - the pace caps each joint's budget inside the
 // closure's solve. KEEP; the closure's options are called.
 // R24D.1 (third writer): one composition claim - the primary parry tracking spends the paced step. KEEP.
-const BASELINE = Object.freeze({ total: 1208, srcText: 374, toolsText: 667, html: 159, absence: 150 });
+// R24E.2 raised toolsText and total by one: the swing log reads the SETTLED gap (where the exchange
+// ends once the ground a blow owes is paid) rather than wherever the yield has got to when the line
+// is written. The ledger half is called (engagement-ground); which number the entry hands the log is
+// entry wiring, and only the text can say so. KEEP.
+const BASELINE = Object.freeze({ total: 1209, srcText: 374, toolsText: 668, html: 159, absence: 150 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

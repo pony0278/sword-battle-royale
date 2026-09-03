@@ -66,15 +66,22 @@ test('R23P.1 from the floor a blow still moves somebody: the receiver yields at 
   assert.ok(near(ground.separationMeters, 0.9 + 0.45), `off the floor: ${ground.separationMeters}`);
 });
 
-test('R23P.1 a parry and a block are as they were: given at once, in their measured amounts', () => {
+test('R23P.1 / R24E.2 a parry and a block give their measured amounts - over the reaction now, both halves', () => {
   for (const [outcome, swinger, receiver] of [['parry', -0.16, 0.05], ['block', -0.07, ENGAGEMENT_GROUND_TRANSFERS.block.receiverMeters]]) {
     const ground = createEngagementGround({ startSeparationMeters: 2.4 });
     ground.setSwing(0.86, FACING, { swinger: 'attacker' });
     ground.settleImpact(outcome, { swinger: 'attacker' });
-    assert.equal(ground.report.yieldMeters.attacker, 0, `${outcome} owes nothing later`);
-    assert.equal(ground.report.yieldMeters.defender, 0);
+    // R24E.2 (#34): at contact the step is banked and both throws are still owed - the swinger's
+    // too, which R23P.1 had left instant.
+    assert.ok(near(ground.report.attackerMeters, 0.86), `${outcome} banks the step at once`);
+    assert.ok(near(ground.report.yieldMeters.attacker, swinger), `${outcome} swinger owes ${swinger}`);
+    assert.ok(near(ground.report.yieldMeters.defender, receiver), `${outcome} receiver owes ${receiver}`);
+    assert.ok(near(ground.report.settledSeparationMeters, 2.4 - 0.86 - swinger + receiver), `${outcome} the ledger already knows where it ends`);
+    ground.advanceYield(1);
+    assert.equal(ground.report.yieldMeters.attacker, 0, `${outcome} nothing owed once paid`);
     assert.ok(near(ground.report.attackerMeters, 0.86 + swinger), `${outcome} swinger ${ground.report.attackerMeters}`);
     assert.ok(near(ground.report.defenderMeters, receiver), `${outcome} receiver ${ground.report.defenderMeters}`);
+    assert.ok(near(ground.report.separationMeters, ground.report.settledSeparationMeters), `${outcome} and it ended there`);
   }
 });
 

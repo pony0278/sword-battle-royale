@@ -52,9 +52,12 @@ test('B1 golden: a scripted exchange replays the ledger bit-for-bit', () => {
   expect('swing clamped at pushbox', 0.8999999999999999, 1.25, -0.25);
   // A block settles the transfers in full: attacker thrown back 0.07, defender gives 0.09.
   g.settleImpact('block');
-  expect('block settles', 1.0599999999999996, 1.1800000000000002, -0.16);
+  // R24E.2: the throw is added after the step rather than in the same sum, which moves the last
+  // bit of two rows (1.0599999999999996 -> ...98, 1.1800000000000002 -> 1.18); the metres are the same.
+  g.advanceYield(1);
+  expect('block settles', 1.0599999999999998, 1.18, -0.16);
   g.moveDefender(0.3);
-  expect('defender retreats', 1.3599999999999999, 1.1800000000000002, 0.13999999999999999);
+  expect('defender retreats', 1.36, 1.18, 0.13999999999999999);
   g.setAttackerSwing(0.9);
   expect('second swing clamped', 0.8999999999999999, 1.6400000000000001, 0.13999999999999999);
   // A whiff banks the swing as ground gained and moves nobody.
