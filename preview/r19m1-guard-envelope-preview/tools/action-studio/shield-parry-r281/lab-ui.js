@@ -1,6 +1,7 @@
 // R18M.3 — presentation-only Parry cue/HUD rendering and DOM event binding.
 // Callers provide snapshots/callbacks. This module never decides combat success.
 
+import { createFrameTimeSampler } from '../../../src/game/frame-time-sampler.js'; // R24G.2
 import { createMobileStartRuntime } from '../../../src/game/mobile-start.js'; // R24F.1
 import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from '../../../src/combat/parry-lunge-reach.js';
 import { directionalParryFor } from '../../../src/combat/directional-parry-input.js';
@@ -13,6 +14,10 @@ import {
 } from './diagnostic-formatters.js';
 
 import { formatSwingLedgerReport } from '../../../src/game/swing-ledger.js';
+
+// R24G.2: the wall-clock frame times of the fight on this page, sampled where the entry ticks the
+// overlay every frame and read where the log is written. One page, one sampler.
+const frameTimes = createFrameTimeSampler();
 
 export function createShieldParryLabUi(elements) {
   const {
@@ -327,6 +332,7 @@ export function createShieldParryLabUi(elements) {
       copyableSwings = formatSwingLedgerReport({ report: model.swingLedger, context: {
         build: buildVersion(), mode: model.selectedMode, locked: model.lockReport?.locked ?? null,
         weaponMount: model.weaponMount, opponent: model.opponent, duel: model.duel,
+        frameTime: frameTimes.report, // R24G.2
       } });
     }
     // Kept current here rather than assembled on the click, so the button copies exactly the run
@@ -622,7 +628,14 @@ function bindStartOverlay({ documentRef, windowRef, elements, handlers }) {
   });
   elements.labToggle.addEventListener('click', () => documentRef.body.classList.toggle('lab-open'));
   environment();
-  return Object.freeze({ runtime, frame: (deltaMs, duelOver) => paint(runtime.advance(deltaMs, { duelOver })) });
+  // R24G.2: the entry's delta is the frame clock's, clamped at 50ms and pinned by the gates; the
+  // wall clock is what a phone actually did, so it is read here rather than trusted.
+  let lastWallMs = null;
+  return Object.freeze({ runtime, frame: (deltaMs, duelOver) => {
+    const now = windowRef.performance?.now?.();
+    if (Number.isFinite(now)) { if (lastWallMs != null) frameTimes.push(now - lastWallMs); lastWallMs = now; }
+    return paint(runtime.advance(deltaMs, { duelOver }));
+  } });
 }
 
 export function bindShieldParryLabUiEvents({
