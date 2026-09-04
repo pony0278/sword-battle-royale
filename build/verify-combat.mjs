@@ -45,18 +45,26 @@ function run(label, script, args, env) {
   });
 }
 
-await run('probe page', 'build/build-probe-lab.mjs', [], {});
+// Vite - the gates run against the BUILT page, which is the page that ships.
+//
+// Until the bundle existed there were two pages: the published one pulling Three.js from a CDN, and
+// a generated probe copy pointing at node_modules so a runner with no egress could boot it.
+// build-probe-lab.mjs existed to keep those two in step, and R20Z had already paid for the lesson
+// that a hand-synced second page drifts. The bundle removes the reason for the second page
+// entirely: Three.js is a module import now, so what is built is what is served is what is
+// measured, and there is one page again.
+await run('web build', 'node_modules/vite/bin/vite.js', ['build'], {});
 
-const served = await startStaticServer({ root: ROOT, port: Number(process.env.VERIFY_PORT || 0) });
+const served = await startStaticServer({ root: resolve(ROOT, 'dist'), port: Number(process.env.VERIFY_PORT || 0) });
 const browser = findBrowser();
 const base = `${served.url}/tools/action-studio`;
 console.log(`verify:combat · browser ${browser} · serving ${served.url}`);
 
 const results = [];
 try {
-  // The generated page, always: the published one pulls Three.js from a CDN, and a verification run
-  // that can fail because a CDN was slow is not a verification.
-  const env = { PARRY_GATE_PAGE: 'probe.lab.html' };
+  // The built page - the one the site serves. No CDN is involved any more, so a verification run
+  // can no longer fail because someone else's origin was slow.
+  const env = { PARRY_GATE_PAGE: 'shield-driven-contact-coupling-lab.html' };
   results.push(await run('golden grid', 'tools/action-studio/b1-golden/verify-golden-grid.mjs', [browser, base], env));
   results.push(await run('parry gate', 'tools/action-studio/verify-shield-parry-gate.mjs', [browser, base], env));
   // R21P.1: the third question - not "did the parry compose" but "was a legal press defended".

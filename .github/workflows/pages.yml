@@ -44,6 +44,11 @@ jobs:
       - name: Build Action Studio
         run: npm run build:action-studio
 
+      # Vite: the page the community plays is bundled. publish-gh-pages.sh overlays the built
+      # page and its chunks onto the repository copy, and refuses to publish without them.
+      - name: Build the web bundle
+        run: npm run build:web
+
       # main is the published site and stays gated. A preview exists precisely
       # so work in progress can be looked at, so a failing gate is reported
       # without blocking the deploy.

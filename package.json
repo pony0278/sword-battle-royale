@@ -9,12 +9,14 @@
     "probe:skyrim-hkx": "node tools/skyrim-hkx-bridge/inspect-hkx.mjs",
     "validate:skyrim-bake-pair": "node tools/skyrim-hkx-bridge/real-bake-contract.mjs",
     "extract:kaykit": "node build/extract-kaykit-assets.mjs && node build/extract-v3-sword-geometry.mjs",
-    "build:probe-lab": "node build/build-probe-lab.mjs",
-    "verify:combat": "node build/verify-combat.mjs"
+    "verify:combat": "node build/verify-combat.mjs",
+    "build:web": "vite build",
+    "verify:built-lab": "node build/verify-built-lab.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1",
     "three": "0.128.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
   }
 }

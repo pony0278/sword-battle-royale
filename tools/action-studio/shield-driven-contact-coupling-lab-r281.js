@@ -1,3 +1,4 @@
+import { THREE } from './three-namespace.js'; // Vite: the renderer, bundled. See that file for why the namespace is composed.
 import { GUARD_INTENT_AGE_MS } from '../../src/combat/contact-lifecycle-director.js';
 import { GUARD_COVERAGE } from '../../src/combat/guard-sector-gate.js'; // R23Z.1: the player's block is a wall, the opponent's guards one sector
 import { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } from '../../src/combat/guard-state-machine.js';
@@ -94,7 +95,6 @@ import { createDuel } from '../../src/game/duel.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
-const THREE = window.THREE;
 if (!THREE?.WebGLRenderer || !THREE?.GLTFLoader) throw new Error(`${LAB_STAGE} requires Three.js r128 + GLTFLoader`);
 
 const HUD_INTERVAL_MS = 50; const REPORT_INTERVAL_MS = 240;

@@ -56,12 +56,21 @@ jobs:
       - name: Typecheck the opted-in seams
         run: npm run typecheck
 
+      # Vite: the bundled page has to boot before the combat gates drive it. A separate step from
+      # verify:combat because the two answer different questions - this one asks whether the page
+      # runs at all, and names the resource when it does not.
+      - name: Verify the bundled lab boots
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm run build:web && npm run verify:built-lab
+
       # R20Z.1: the two gates that protect the measured combat. The golden grid replays eleven
       # exchanges and diffs every outcome, posture, relevance verdict and separation against the
       # committed record; the parry gate plays one parry per direction and reads the in-page
       # verdicts. Both existed before this and neither ran anywhere - they drive a page that was
-      # gitignored, so CI could not have run them even if a workflow had asked. The page is
-      # generated from the published lab now, and verify:combat serves the repo itself.
+      # gitignored, so CI could not have run them even if a workflow had asked.
+      # Vite: they drive the BUILT page now. verify:combat runs the build itself and serves dist/,
+      # so what is measured is what the site publishes - there is no second page to keep in step.
       - name: Verify measured combat (golden grid + parry gate)
         env:
           CHROME_PATH: /usr/bin/google-chrome
