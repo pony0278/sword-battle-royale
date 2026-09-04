@@ -668,7 +668,10 @@ function bindTouchControls({ documentRef, windowRef, elements, handlers }) {
   let plan = null;
   let guardHeld = false;
   let noticeTimer = null;
-  const homeLeft = base.style.left || '';
+  // R24J.2: the ring is bottom-anchored at home and centred on the thumb while it is held, so the
+  // grab swaps which edge it is pinned to and the release hands it back to the stylesheet.
+  const goHome = () => { base.style.left = ''; base.style.top = ''; base.style.bottom = ''; base.style.transform = ''; };
+  const followThumb = (x, y) => { base.style.left = `${x}px`; base.style.top = `${y}px`; base.style.bottom = 'auto'; base.style.transform = 'translate(-50%, -50%)'; };
 
   // The label on the buttons, so a player can see that these verbs have a direction at all - the
   // discoverable half of a swipe, without the swipe's cost. The glyph follows the stick's dominant
@@ -703,7 +706,7 @@ function bindTouchControls({ documentRef, windowRef, elements, handlers }) {
   function release() {
     pointerId = null; origin = null; plan = null;
     zone.classList.remove('holding');
-    base.style.left = homeLeft; base.style.top = '';
+    goHome();
     publishMove(); paint();
   }
   zone.addEventListener('pointerdown', (event) => {
@@ -713,8 +716,7 @@ function bindTouchControls({ documentRef, windowRef, elements, handlers }) {
     try { zone.setPointerCapture(event.pointerId); } catch { /* capture is best-effort */ }
     const rect = zone.getBoundingClientRect();
     origin = { x: event.clientX, y: event.clientY };
-    base.style.left = `${event.clientX - rect.left}px`;
-    base.style.top = `${event.clientY - rect.top}px`;
+    followThumb(event.clientX - rect.left, event.clientY - rect.top);
     zone.classList.add('holding');
     plan = planTouchStick({ originX: origin.x, originY: origin.y, pointerX: event.clientX, pointerY: event.clientY });
     publishMove(); paint();

@@ -110,7 +110,11 @@
   @media (pointer: coarse){
     #touchPad{display:none}
     .touch-zone{display:block;position:fixed;left:0;bottom:0;width:42%;height:82%;z-index:30;touch-action:none}
-    .touch-stick{position:absolute;left:110px;top:50%;width:180px;height:180px;margin:-90px 0 0 -90px;border-radius:50%;
+    /* R24J.2: anchored to the bottom, not the middle of its zone. At top:50% the ring's centre sat
+       160px above the screen's foot while the blade's sat 90px - the left thumb was reaching up for
+       a stick the right thumb never had to. Bottom-anchored it centres 114px up, near the blade's,
+       and it scales with the screen instead of with the zone's height. */
+    .touch-stick{position:absolute;left:110px;bottom:24px;width:180px;height:180px;transform:translateX(-50%);border-radius:50%;
       border:1px solid #3a4a5a66;background:rgba(20,30,42,.30);opacity:.55;transition:opacity .12s linear}
     .touch-zone.holding .touch-stick{opacity:1}
     .touch-stick-knob{position:absolute;left:50%;top:50%;width:76px;height:76px;margin:-38px 0 0 -38px;border-radius:50%;
@@ -329,6 +333,6 @@
       });
     })();
   </script>
-  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-the-left-thumb-steers-r24j1"></script>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-the-stick-sits-lower-r24j2"></script>
 </body>
 </html>
