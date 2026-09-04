@@ -147,7 +147,11 @@ function census() {
 // R24G.1 raised toolsText and total by two: which door a press came through - the sector cells and
 // I/J/L are directional, a plain raise is assisted - is decided where the entry arms the gate, and
 // the gate's own behaviour is called. Only the text can say the entry tells it. KEEP.
-const BASELINE = Object.freeze({ total: 1213, srcText: 374, toolsText: 670, html: 161, absence: 150 });
+// R24J.1 raised toolsText and total by four: where a thumb can reach and what it does not cover are
+// claims only the page's own geometry can carry (the three button rules, measured against a 45mm
+// arc and the fighters' 604px edge, plus the retired pad), and the entry's refused-press answer is
+// entry wiring. The stick's arithmetic underneath is all called rather than read. KEEP.
+const BASELINE = Object.freeze({ total: 1217, srcText: 374, toolsText: 674, html: 161, absence: 150 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();
