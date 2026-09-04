@@ -98,6 +98,27 @@ export function stripPresentationMeshes(buffer) {
     }
   }
 
+  // How many bytes one accessor actually occupies.
+  //
+  // NOT the bufferView's length. Several accessors commonly share one view - shd_blockidle packs
+  // 323 of them into 294 KB - and copying view.byteLength per accessor duplicates almost the whole
+  // view once per accessor. Measured when that bug shipped into a first attempt: a 380 KB file came
+  // out at 6878 KB. The size is the accessor's own: count times the element it holds.
+  //
+  // byteStride is deliberately not handled: it applies to interleaved vertex attributes, and the
+  // accessors kept here are animation inputs and outputs, which are always tightly packed. A view
+  // that declares one is refused rather than copied wrongly.
+  const COMPONENT_BYTES = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 };
+  const COMPONENT_COUNT = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16 };
+  function accessorByteLength(accessor) {
+    const componentBytes = COMPONENT_BYTES[accessor.componentType];
+    const components = COMPONENT_COUNT[accessor.type];
+    if (!componentBytes || !components) {
+      throw new Error(`unsupported accessor: componentType=${accessor.componentType} type=${accessor.type}`);
+    }
+    return accessor.count * componentBytes * components;
+  }
+
   // Repack: one bufferView per kept accessor, copied in order, so the binary carries nothing else.
   const oldAccessors = json.accessors || [];
   const oldViews = json.bufferViews || [];
@@ -115,14 +136,17 @@ export function stripPresentationMeshes(buffer) {
       continue;
     }
     const view = oldViews[accessor.bufferView];
+    if (view.byteStride != null) {
+      throw new Error('interleaved animation accessor: byteStride is not handled here');
+    }
     const start = (view.byteOffset || 0) + (accessor.byteOffset || 0);
-    const length = view.byteLength - (accessor.byteOffset || 0);
+    const length = accessorByteLength(accessor);
+    if (start + length > bin.length) throw new Error('accessor runs past the binary chunk');
     const slice = bin.subarray(start, start + length);
     const padding = Buffer.alloc(pad4(cursor), 0);
     if (padding.length) { chunks.push(padding); cursor += padding.length; }
     chunks.push(slice);
     const newView = { buffer: 0, byteOffset: cursor, byteLength: slice.length };
-    if (view.byteStride != null) newView.byteStride = view.byteStride;
     cursor += slice.length;
     accessor.bufferView = bufferViews.length;
     delete accessor.byteOffset;

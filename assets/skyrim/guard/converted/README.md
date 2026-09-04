@@ -62,3 +62,21 @@ tools/action-studio/skyrim-guard-visual-review.html
 Action Studio loads this directory through **Skyrim Guard Probe → Load selected pack**. The production converted-source list now contains the Hold plus the three accepted G3.3.2 reactions.
 
 Do not place raw `.hkx` files in this directory. New experimental GLBs should remain ignored unless they have passed an explicit adoption decision and are deliberately force-added as product assets.
+
+## Presentation meshes are stripped
+
+These files carry the animation and the node hierarchy the retarget matches by name, and nothing
+else. `skyrim-animation-retarget.js` reads the source through `root.traverse()` and
+`getObjectByName` - it needs the 23 names in `SKYRIM_BONE_RETARGETS`, not geometry - and
+`skyrim-weapon-bind-calibration.js` builds its own root from the TARGET rig definition.
+
+Measured before removing anything, per file: node count unchanged at 122, sampler count unchanged,
+every sampler's bytes identical, and all 23 source bone names still present. 335 KB came off each
+of three files and 125 KB off shd_blockidle - just over 1 MB.
+
+**A re-bake must strip again.** These are committed artifacts rather than build output - the hkx
+bridge's inputs are gitignored - so nothing regenerates them automatically:
+
+```bash
+node build/strip-presentation-meshes.mjs assets/skyrim/guard/converted/*.source.glb
+```
