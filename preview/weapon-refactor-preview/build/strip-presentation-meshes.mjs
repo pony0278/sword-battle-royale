@@ -71,24 +71,13 @@ export function buildGlb(json, bin) {
   return Buffer.concat(parts);
 }
 
-export function stripPresentationMeshes(buffer) {
-  const { json, bin } = parseGlb(buffer);
-  if (!json.meshes?.length) return { buffer, removedMeshes: 0, savedBytes: 0 };
-
-  const removedMeshes = json.meshes.length;
-  for (const node of json.nodes || []) {
-    delete node.mesh;
-    delete node.skin;
-  }
-  delete json.meshes;
-  delete json.materials;
-  delete json.textures;
-  delete json.images;
-  delete json.samplers;
-  // Every skin is now unreferenced, because only a node's `skin` pointed at one and those are gone.
-  // The joints themselves are nodes and stay.
-  delete json.skins;
-
+// Rewrite a glTF so its binary carries only what its animations still read, and return that
+// binary. Split out of stripPresentationMeshes when a second caller needed it: pruning foreign
+// animation tracks leaves the same debris behind - accessors nothing points at any more.
+//
+// Animations are assumed to be the only accessor holder, which is true for both callers: one has
+// just deleted every mesh, the other never had one.
+export function repackAnimationAccessors(json, bin) {
   // Which accessors anything still alive uses. Animations are the only holder left.
   const keptAccessors = new Set();
   for (const animation of json.animations || []) {
@@ -164,7 +153,28 @@ export function stripPresentationMeshes(buffer) {
 
   json.accessors = accessors;
   json.bufferViews = bufferViews;
-  const newBin = Buffer.concat(chunks);
+  return Buffer.concat(chunks);
+}
+
+export function stripPresentationMeshes(buffer) {
+  const { json, bin } = parseGlb(buffer);
+  if (!json.meshes?.length) return { buffer, removedMeshes: 0, savedBytes: 0 };
+
+  const removedMeshes = json.meshes.length;
+  for (const node of json.nodes || []) {
+    delete node.mesh;
+    delete node.skin;
+  }
+  delete json.meshes;
+  delete json.materials;
+  delete json.textures;
+  delete json.images;
+  delete json.samplers;
+  // Every skin is now unreferenced, because only a node's `skin` pointed at one and those are gone.
+  // The joints themselves are nodes and stay.
+  delete json.skins;
+
+  const newBin = repackAnimationAccessors(json, bin);
   json.buffers = newBin.length ? [{ byteLength: newBin.length }] : [];
   const out = buildGlb(json, newBin);
   return { buffer: out, removedMeshes, savedBytes: buffer.length - out.length };

@@ -12,6 +12,8 @@ import {
   loadUal2AnimationLibrary,
 } from '../../src/animation/ual2-animation-library.js';
 import {
+  SKYRIM_GREATSWORD_BASE_URL,
+  SKYRIM_GREATSWORD_CONVERTED_FILES,
   SKYRIM_GUARD_CONVERTED_FILES,
   importSkyrimConvertedAnimationFile,
   loadSkyrimConvertedAnimationLibrary,
@@ -28,6 +30,7 @@ const SOURCE_INFO = Object.freeze({
   ual2: Object.freeze({ label: 'UAL2 Sword Combat', count: UAL2_ANIMATION_FILES.length, defaultClip: 'UAL2/Sword_Regular_A' }),
   ual1: Object.freeze({ label: 'UAL1 Sword Basics', count: UAL1_ANIMATION_FILES.length, defaultClip: 'UAL1/Sword_Attack' }),
   skyrim: Object.freeze({ label: 'Skyrim Guard Probe', count: SKYRIM_GUARD_CONVERTED_FILES.length, defaultClip: 'SKYRIM_GUARD/shd_blockidle' }),
+  greatsword: Object.freeze({ label: 'Skyrim Greatsword', count: SKYRIM_GREATSWORD_CONVERTED_FILES.length, defaultClip: 'SKYRIM_GREATSWORD/2hm_idle' }),
   kaykit: Object.freeze({ label: 'KayKit Base', count: KAYKIT_ANIMATION_PACKS.length, defaultClip: 'Idle_A' }),
 });
 
@@ -36,6 +39,7 @@ const MOTION_CONTACT_STORAGE_KEY = 'ACTION_STUDIO_MOTION_CONTACTS_V1';
 function shouldLoopClip(name) {
   const clipId = String(name || '');
   if (clipId === 'SKYRIM_GUARD/shd_blockidle') return true;
+  if (clipId === 'SKYRIM_GREATSWORD/2hm_idle') return true;
   if (/^SKYRIM_GUARD\/shd_block(?:hit|bash|bashpower)$/i.test(clipId)) return false;
   return /Idle|Walking|Running|Block|Crouching|Sneaking|Crawling/i.test(clipId);
 }
@@ -211,7 +215,9 @@ export function createStudioExternalAnimationController(options) {
       ? `${library.clips.size} unique clips · ${library.duplicates.length} duplicates ignored`
       : source === 'skyrim'
         ? `${library.clips.size} converted Guard clip${library.clips.size === 1 ? '' : 's'} retargeted at ${library.retargetFps} fps`
-        : `${library.clips.size} sword clips retargeted at ${library.retargetFps} fps`;
+        : source === 'greatsword'
+          ? `${library.clips.size} converted greatsword clip${library.clips.size === 1 ? '' : 's'} retargeted at ${library.retargetFps} fps · the off hand does not reach the hilt yet`
+          : `${library.clips.size} sword clips retargeted at ${library.retargetFps} fps`;
     setStatus(`ready · ${info.label} · ${detail} · ${Object.keys(character.rig.bones).length} target bones`);
     renderBinding();
     return library;
@@ -247,6 +253,14 @@ export function createStudioExternalAnimationController(options) {
         THREE,
         rig: character.rig,
         baseUrl: '../../assets/skyrim/guard/converted/',
+        fps: 30,
+      });
+    } else if (source === 'greatsword') {
+      library = await loadSkyrimConvertedAnimationLibrary(loader, {
+        THREE,
+        rig: character.rig,
+        files: SKYRIM_GREATSWORD_CONVERTED_FILES,
+        baseUrl: SKYRIM_GREATSWORD_BASE_URL,
         fps: 30,
       });
     } else {

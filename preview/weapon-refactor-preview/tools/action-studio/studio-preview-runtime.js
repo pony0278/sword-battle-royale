@@ -104,10 +104,13 @@ export function createStudioPreviewRuntime(THREE, options) {
   const {
     canvas,
     character,
-    sword,
     impactFlash,
     isDummyEnabled,
   } = options;
+  // The weapon can be swapped while the studio is running (the stage weapon selector), so this is
+  // held rather than destructured: a captured reference would keep drawing the trail of a sword
+  // that is no longer in the hand.
+  let sword = options.sword;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputEncoding = THREE.sRGBEncoding;
@@ -410,6 +413,7 @@ export function createStudioPreviewRuntime(THREE, options) {
     toggleGameCamera,
     clearWeaponTrail,
     recordWeaponTrail,
+    setSword(next) { sword = next; clearWeaponTrail(); },
     triggerImpact,
     consumeHitstop,
     setFeel,

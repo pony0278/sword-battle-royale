@@ -8,13 +8,17 @@
     "typecheck": "tsc -p tsconfig.json",
     "probe:skyrim-hkx": "node tools/skyrim-hkx-bridge/inspect-hkx.mjs",
     "validate:skyrim-bake-pair": "node tools/skyrim-hkx-bridge/real-bake-contract.mjs",
+    "build:havok-toolset": "bash tools/skyrim-hkx-bridge/build-havok-toolset.sh",
+    "convert:hkx": "node tools/skyrim-hkx-bridge/convert-hkx.mjs",
+    "compare:source-bakes": "node build/compare-source-bakes.mjs",
     "extract:kaykit": "node build/extract-kaykit-assets.mjs && node build/extract-v3-sword-geometry.mjs",
     "verify:combat": "node build/verify-combat.mjs",
     "build:web": "vite build",
     "verify:built-lab": "node build/verify-built-lab.mjs",
     "verify:built-studio": "node build/verify-built-studio.mjs",
     "extract:greatsword": "node build/extract-greatsword-geometry.mjs",
-    "measure:grip-reach": "node build/measure-grip-reach.mjs"
+    "measure:grip-reach": "node build/measure-grip-reach.mjs",
+    "measure:skyrim-grip-reach": "node build/measure-skyrim-grip-reach.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1",

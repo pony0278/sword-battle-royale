@@ -1,0 +1,173 @@
+# 46 — The decoder came inside
+
+handoff/45 concluded that HKX decoding stays outside this repository, and gave two reasons. One was
+right and one was wrong, and it matters which.
+
+**Wrong:** "this environment cannot fetch them." That was tested exactly one way — `curl` against
+`github.com`, which the proxy 403s — and generalised into a property of the environment. `git clone`
+goes through the session's git proxy, which serves anonymous reads of public repositories. HavokLib
+cloned on the first try once a `Bash(git clone *)` permission rule existed.
+
+**Right, and load-bearing:** *"A wrong decoder does not throw; it yields bone rotations that look
+plausible and are wrong."* That argument is why the fetched decoder was not simply trusted either.
+
+## What made it checkable
+
+`g2-3-1-input-manifest.json` froze the sha256 of `shd_blockidle.hkx` in 2025, and the GLB that was
+baked from it — through Blender, reviewed by hand — is committed. A frozen input with a reviewed
+output turns "trust this decoder" into "reproduce a known-good bake".
+
+```text
+46 curves across the 23 retarget bones
+worst absolute difference   0.0000e+0
+```
+
+`build/compare-source-bakes.mjs` is that comparison and
+`tests/the-hkx-bake-is-reproducible.test.js` is the test. The comparison is per-retarget rather than
+per-file: a byte diff fails on things that are not motion (the committed files kept four orphaned
+mesh nodes from `strip-presentation-meshes.mjs`; a `visualize=false` bake never creates them), and
+per-*node* counting would have hidden that `wrist.r` and `hand.r` read the same source node — losing
+it loses two readers, not one.
+
+The test also asserts the comparison can **fail**. A comparator that compares nothing also reports
+zero, and "worst difference 0.0" is exactly the number a broken one produces.
+
+## The toolset
+
+`tools/skyrim-hkx-bridge/build-havok-toolset.sh` — clone at `ef5d5c6`, two patches, build with
+clang. HavokLib is GPLv3, so its source is fetched into `/tmp` and the repository carries a recipe
+rather than a copy; it is used the way Blender is, offline, and nothing it builds is linked into the
+game.
+
+Both patches are additive and the 0.0 reproduction is the evidence they changed nothing:
+
+- `#include <cstdint>` in `reflector_class.hpp` and `reflector_enum.hpp`. Newer libstdc++ dropped a
+  transitive include these relied on, so they no longer compile anywhere without it.
+- clang, not g++. HavokLib's README names clang 10; g++ 13 rejects Spike's reflection templates
+  outright (`union mutate has no member named 'i'`). clang 18 compiles them.
+
+`tools/skyrim-hkx-bridge/convert-hkx.mjs` holds the settings a source bake must use — `sample-rate
+30`, `visualize false`, the frozen skeleton — written into `havok_toolset.config` rather than passed
+as flags, because `hk_to_gltf` announces *"CLI option detected, config won't be loaded, all booleans
+set to false"* the moment any flag appears and silently loses them.
+
+## The greatsword, and the defect that nearly shipped with it
+
+`2hm_idle.hkx` converted, validated, and was copied into
+`assets/skyrim/greatsword/converted/`. Then a routine measurement asked how many nodes the clip
+animates and got **210 — from a file with 118 nodes.**
+
+`2hm_idle.hkx` carries 210 transform tracks. `skeleton.hkx` declares 99 animation bones (plus a
+19-bone ragdoll and a wrapper). Skyrim animation packs are routinely authored against an extended
+skeleton — XPMSE and friends add weapon-style, twist and physics bones — and `hk_to_gltf` numbers
+its output channels by track index, so the surplus came out as:
+
+```text
+184 channels  →  nodes 118..209, which do not exist        invalid glTF
+ 37 channels  →  the ragdoll skeleton                      a stranger's rotation on a named node
+  2 channels  →  the wrapper above the bones               would have moved the whole character
+```
+
+**Is the rest of the file still right?** The bind offsets answer it. A node's translation in a
+skeletal bake is the skeleton's own bone length, so any shift in track numbering scrambles them.
+All 23 retarget bones' offsets match `shd_blockidle`'s to every printed decimal — with one
+exception, `handslot.r`, the WEAPON node, which is exactly the one a two-handed clip is supposed to
+place differently. So the surplus is pruned rather than the pair refused.
+
+`build/prune-foreign-animation-tracks.mjs` does it, `convert-hkx.mjs` runs it before writing
+anything, and the result has the reviewed shape exactly: 198 channels on nodes 0..98, which is what
+all four guard bakes carry, with the 46 retarget curves bit-for-bit unchanged.
+
+### Two things this cost, and both are worth keeping
+
+**A name test was not good enough.** The first rule excluded nodes named `Ragdoll_` and let two
+channels through onto the wrapper — which is named `NPC Root [Root]`, like the bone it parents, and
+which carries the entire character. The rule is structural now: the bones are the largest scene-root
+subtree, minus that root when it duplicates a descendant's name. A bake whose skeleton root really
+*is* the scene root keeps its track, and there is a test for that too.
+
+**The validator asked the wrong kind of question.** `validate-source-glb.mjs` returned
+`acceptedForG23Review: true` for a file with 184 dangling channels, because every check it ran asked
+what the file *has* — all 19 semantic bones present, self-contained, an animation exists — and none
+asked what it points *at*. It refuses dangling channels now, and the four committed guard bakes are
+unaffected.
+
+## The method note worth carrying
+
+Both mistakes in this cycle were the same mistake. handoff/45 tested reachability one way and
+concluded a property of the environment. The greatsword bake was validated one way — the checks that
+existed — and concluded a property of the file. In both cases the missing question was *what would
+this look like if it were wrong?*, and in both cases asking it took one command.
+
+## Where the greatsword stands
+
+```text
+2hm_idle.source.glb   6.667 s @ 30 fps   198 channels   23/23 retarget bones
+                      NPC L Hand 190 rotation keys, NPC R Hand 197
+```
+
+Both wrists are busy, which is what a two-handed hold should look like.
+
+## The clip holds the sword. The retarget does not.
+
+handoff/44 pinned the authored pose failing to reach the hilt and said a real clip was what it
+wanted. `npm run measure:skyrim-grip-reach` puts the real clip through the production bridge:
+
+```text
+best 0.4134 · worst 0.4186 · 0/31 samples within tolerance (0.10)
+
+hands apart, as a fraction of head-to-root height
+  in the source clip     13.6%
+  after retargeting      30.0%   (2.21x the source)
+```
+
+**The animation is the part that is right.** 13.6% of head-to-root is two hands on one haft; the
+shield hold measures 52.3% by the same method, which is the control that says the number is a
+property of the clip and not of the measurement. The hold is lost in the bridge.
+
+Why: a rotation-only retarget does not preserve *reach* across skeletons with different limb
+proportions. Matching every joint angle on a differently-proportioned arm does not put the hand in
+the same place. Two things rule out the cheaper explanations — the gap varies by under 0.006 across
+6.667 s, so it is a fixed offset rather than a pose that swings past and misses; and HAND_R sits
+exactly on PRIMARY_GRIP, so the mount is not it.
+
+So **option C, the off-hand IK, is needed after all**. handoff/44 hoped a real clip would make it
+unnecessary. It does not, and now there is a measurement saying why rather than a look.
+
+A second, smaller finding fell out of the same run, independent of the retarget: the greatsword's
+`SECONDARY_GRIP` sits **0.0881** from the main hand, against the **0.192** the source clip
+authors — 46% of it. The node was placed proportionally from the longsword's, and the clip is the
+first thing to say where a two-handed grip actually goes.
+
+`tests/the-clip-holds-the-sword-the-retarget-does-not.test.js` pins all of it, the control included,
+in the same spirit as handoff/44's record of failure: numbers for a fix to beat.
+
+## It is loadable now
+
+Action Studio's **External Motion Library → Skyrim Greatsword → Load selected pack** fetches it and
+retargets it, and **V3 Rig Line Only → Stage weapon** swaps the figure's blade so the pose can be
+read against the sword it is meant to hold. Both are driven end to end by
+`build/verify-built-studio.mjs` against the built page, alongside the Guard Runtime sample it
+already reproduced.
+
+Three decisions worth keeping:
+
+- **Its own pack, not a fifth guard entry.** `SKYRIM_GREATSWORD_CONVERTED_FILES` and its own base
+  URL. The Guard state machine plays every entry in its own list, and the derived parry-deflect
+  clips are built from the `shd_*` family by name — a greatsword clip in that list would end up
+  inside the Guard machine. The test asserts the pack produces no virtual clips.
+- **The weapon is held, not captured.** The preview runtime and the motion-guide overlay each read
+  the sword once at construction — the trail reads its tip, the off-hand guide reads its secondary
+  grip — so both now take a `setSword`. Without it the swap leaves the old blade's trail behind.
+- **The 82 KB is paid by the authoring page only.** The standalone studio bundle went 512,092 →
+  600,348 bytes; the community lab chunk stayed at 495.66 kB and carries no reference to the
+  greatsword at all. That is the split R22J.1's absence assertion exists to protect.
+
+The status line says what the measurement found, where an author will read it: *"1 converted
+greatsword clip retargeted at 30 fps · the off hand does not reach the hilt yet"*.
+
+## Still not done
+
+Nothing in the fight plays it — the Guard machine does not reach for it and
+`greatsword-attack-timings.js` is still ten `null`s — and the off-hand IK does not exist, which is
+what the grip measurement above says is now required.

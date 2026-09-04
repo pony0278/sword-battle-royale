@@ -67,16 +67,26 @@ function externalUris(gltf) {
 function animationFacts(gltf, semanticMatches) {
   const animations = Array.isArray(gltf?.animations) ? gltf.animations : [];
   const semanticNodeIndexes = new Set(Object.values(semanticMatches).map((entry) => entry.index));
+  const nodeCount = Array.isArray(gltf?.nodes) ? gltf.nodes.length : 0;
   return animations.map((animation, index) => {
     const channels = Array.isArray(animation?.channels) ? animation.channels : [];
     const animatedNodeIndexes = new Set(channels.map((channel) => channel?.target?.node).filter(Number.isInteger));
     const animatedSemanticCount = [...animatedNodeIndexes].filter((nodeIndex) => semanticNodeIndexes.has(nodeIndex)).length;
+    // A channel pointing past the end of the node array. This validator passed the greatsword idle
+    // with 184 of them, because every check it ran was about what the file HAS - the 19 semantic
+    // bones were all present and correct - and none about what it points at. A clip authored
+    // against an extended skeleton produces exactly that: the bones you look for, plus tracks for
+    // bones this skeleton never had, numbered off the end.
+    const danglingChannelCount = channels
+      .filter((channel) => !Number.isInteger(channel?.target?.node) || channel.target.node >= nodeCount)
+      .length;
     return {
       index,
       name: animation?.name || '',
       channelCount: channels.length,
       animatedNodeCount: animatedNodeIndexes.size,
       animatedSemanticCount,
+      danglingChannelCount,
     };
   });
 }
@@ -87,10 +97,12 @@ export function validateSkyrimSourceGlb(bytes, options = {}) {
   const external = externalUris(gltf);
   const animations = animationFacts(gltf, semantics.matches);
   const hasAnimation = animations.some((animation) => animation.channelCount > 0);
+  const danglingChannelCount = animations.reduce((total, animation) => total + animation.danglingChannelCount, 0);
   const acceptedForG23Review = version === 2
     && semantics.missing.length === 0
     && external.length === 0
-    && hasAnimation;
+    && hasAnimation
+    && danglingChannelCount === 0;
   return {
     stage: 'G2.3.1',
     filename: options.filename || '',
@@ -104,6 +116,7 @@ export function validateSkyrimSourceGlb(bytes, options = {}) {
     semanticMatches: semantics.matches,
     missingSemanticBones: semantics.missing,
     animationCount: animations.length,
+    danglingChannelCount,
     animations,
     warning: animations.some((animation) => animation.animatedSemanticCount < 10)
       ? 'Animation has fewer than 10 channels targeting the 19 review semantics; inspect the export before visual review.'
