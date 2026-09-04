@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import { fileURLToPath } from 'node:url';
-import { cp } from 'node:fs/promises';
+import { cp, rename } from 'node:fs/promises';
 
 // Cold start — the published page, bundled.
 //
@@ -42,6 +42,12 @@ export default defineConfig({
     rollupOptions: {
       input: {
         lab: fileURLToPath(new URL('./tools/action-studio/shield-driven-contact-coupling-lab.html', import.meta.url)),
+        // The second page, added after the lab. Its input is the TEMPLATE, not the generated
+        // index.html: the generated one picks its entry at runtime by creating script elements, so
+        // there is nothing static for Rollup to follow. The template already carries the module
+        // bootstrap the ?g252=1 path uses, which is exactly the entry a bundle wants. Output is
+        // renamed to index.html below.
+        studio: fileURLToPath(new URL('./tools/action-studio/index.template.html', import.meta.url)),
       },
       output: {
         // Three in its own chunk. It is most of the bytes and changes only when the pin does, so a
@@ -58,6 +64,45 @@ export default defineConfig({
   // output root, which puts the packs one level above where the page looks for them.
   publicDir: false,
   plugins: [{
+    // Action Studio, bundled. The standalone classic build is untouched and still opens over
+    // file://; this is the same page delivered the way the lab page is, so that the published site
+    // reaches one origin instead of three.
+    name: 'bundle-action-studio-page',
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html, context) {
+        if (!context.filename.endsWith('index.template.html')) return html;
+        // The two CDN tags are the whole point of the change: r128 from cdnjs and its classic
+        // examples/js GLTFLoader from jsdelivr, two origins before the renderer can be built.
+        // three-namespace.js composes the same shape from the pinned package - and sets
+        // globalThis.THREE, which action-studio.js reads at module scope.
+        const withoutCdn = html
+          .replace(/[ \t]*<script src="https:\/\/cdnjs\.cloudflare\.com[^\n]*\n/, '')
+          .replace(/[ \t]*<script src="https:\/\/cdn\.jsdelivr\.net[^\n]*\n/, '  <script type="module" src="./three-namespace.js"></script>\n');
+        if (withoutCdn === html) throw new Error('index.template.html no longer carries the two CDN renderer tags this plugin replaces');
+        // The runtime globals the generated page sets, kept so that anything reading them sees a
+        // named entry rather than 'unknown'. The dataset attributes are what the boot gate reads.
+        return withoutCdn.replace(
+          "  <script type=\"module\">\n",
+          [
+            '  <script type="module">',
+            "    window.__ACTION_STUDIO_RUNTIME_STAGE = 'G2.5.2';",
+            "    window.__ACTION_STUDIO_ENTRY_MODE = 'vite';",
+            "    document.documentElement.dataset.actionStudioEntry = 'vite';",
+            '',
+          ].join('\n'),
+        );
+      },
+    },
+    // Rollup names an HTML output after its input, and this input is a template. Renamed on disk
+    // in closeBundle rather than in generateBundle, because the HTML asset is emitted after that
+    // hook runs - generateBundle sees no .html keys at all.
+    async closeBundle() {
+      const built = fileURLToPath(new URL('./dist/tools/action-studio/index.template.html', import.meta.url));
+      const wanted = fileURLToPath(new URL('./dist/tools/action-studio/index.html', import.meta.url));
+      await rename(built, wanted);
+    },
+  }, {
     name: 'copy-animation-packs',
     async closeBundle() {
       // The page asks for '../../assets/…' from dist/tools/action-studio/, so they go to

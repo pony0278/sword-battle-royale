@@ -56,6 +56,14 @@ jobs:
         continue-on-error: ${{ github.ref_name != 'main' }}
         run: bash tools/action-studio/verify-guard-runtime-surface.sh
 
+      # The Action Studio this workflow publishes is the BUILT page, so the built page is what has
+      # to answer before it ships. Same posture as the gate above: main is gated, a preview reports.
+      - name: Verify the bundled Action Studio boots and its Guard Runtime answers
+        continue-on-error: ${{ github.ref_name != 'main' }}
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm run verify:built-studio
+
       # The script clones gh-pages into its own directory, which does not
       # inherit the credentials actions/checkout scoped to this workspace.
       - name: Publish to gh-pages

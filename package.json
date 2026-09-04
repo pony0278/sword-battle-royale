@@ -11,7 +11,8 @@
     "extract:kaykit": "node build/extract-kaykit-assets.mjs && node build/extract-v3-sword-geometry.mjs",
     "verify:combat": "node build/verify-combat.mjs",
     "build:web": "vite build",
-    "verify:built-lab": "node build/verify-built-lab.mjs"
+    "verify:built-lab": "node build/verify-built-lab.mjs",
+    "verify:built-studio": "node build/verify-built-studio.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1",

@@ -64,6 +64,16 @@ jobs:
           CHROME_PATH: /usr/bin/google-chrome
         run: npm run build:web && npm run verify:built-lab
 
+      # The same question of the authoring page, plus the Guard Runtime sampler the shell gate above
+      # asks from inside the standalone page. Both are kept: the shell gate drives the classic
+      # bundle, which still has to open over file://, and this one drives the Vite build. The
+      # difference that matters day to day is that this one needs no network, so it can be run on a
+      # laptop - the standalone page fetches Three.js from cdnjs and its loader from jsdelivr.
+      - name: Verify the bundled Action Studio boots and its Guard Runtime answers
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm run verify:built-studio
+
       # R20Z.1: the two gates that protect the measured combat. The golden grid replays eleven
       # exchanges and diffs every outcome, posture, relevance verdict and separation against the
       # committed record; the parry gate plays one parry per direction and reads the in-page
