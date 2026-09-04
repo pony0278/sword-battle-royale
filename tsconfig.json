@@ -41,6 +41,9 @@
 //                                         per-direction measurements become its parameters, and a
 //                                         greatsword is a second record shaped like the longsword's.
 //   longsword-attack-timings.js           the longsword's six tables.
+//   greatsword-attack-timings.js          G1 - the same record with the numbers missing. Typed so
+//                                         that when the measurements arrive, a table of the wrong
+//                                         shape is caught here rather than in the golden grid.
 {
   "compilerOptions": {
     "allowJs": true,
