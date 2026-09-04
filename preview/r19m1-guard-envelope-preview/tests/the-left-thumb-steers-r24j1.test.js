@@ -79,6 +79,9 @@ test('R24J.1 the page carries the controls, and the old pad steps aside on a tou
   assert.match(page, /\.touch-attack\{right:32px;bottom:46px;width:88px;height:88px/);
   assert.match(page, /\.touch-guard\{right:146px;bottom:88px;width:68px;height:68px/);
   assert.match(page, /\.touch-dodge\{right:100px;bottom:172px;width:56px;height:56px/);
+  // R24J.2: the stick is anchored to the foot of the screen, not the middle of its zone - at
+  // top:50% its centre sat 160px up while the blade's sat 90px, and the left thumb had to reach.
+  assert.match(page, /\.touch-stick\{position:absolute;left:110px;bottom:24px;width:180px;height:180px/);
 });
 
 test('R24J.1 a refused press answers with its reason, and the page has somewhere to say it', () => {
