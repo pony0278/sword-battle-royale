@@ -7,7 +7,7 @@
     {
       "id": "general",
       "file": "animations/general.glb",
-      "byteLength": 828240,
+      "byteLength": 430568,
       "clips": [
         "Death_A",
         "Death_A_Pose",
@@ -29,7 +29,7 @@
     {
       "id": "basic",
       "file": "animations/basic.glb",
-      "byteLength": 689624,
+      "byteLength": 292060,
       "clips": [
         "Jump_Full_Long",
         "Jump_Full_Short",
@@ -47,7 +47,7 @@
     {
       "id": "advanced",
       "file": "animations/advanced.glb",
-      "byteLength": 719628,
+      "byteLength": 321896,
       "clips": [
         "Crawling",
         "Crouching",
@@ -67,7 +67,7 @@
     {
       "id": "melee",
       "file": "animations/melee.glb",
-      "byteLength": 999416,
+      "byteLength": 601548,
       "clips": [
         "Melee_1H_Attack_Chop",
         "Melee_1H_Attack_Jump_Chop",
@@ -96,7 +96,7 @@
     {
       "id": "ranged",
       "file": "animations/ranged.glb",
-      "byteLength": 1014852,
+      "byteLength": 617136,
       "clips": [
         "Ranged_1H_Aiming",
         "Ranged_1H_Reload",
@@ -123,7 +123,7 @@
     {
       "id": "simulation",
       "file": "animations/simulation.glb",
-      "byteLength": 855904,
+      "byteLength": 458732,
       "clips": [
         "Cheering",
         "Lie_Down",
@@ -144,7 +144,7 @@
     {
       "id": "special",
       "file": "animations/special.glb",
-      "byteLength": 924308,
+      "byteLength": 527148,
       "clips": [
         "EXPERIMENTAL_Medium_Transform",
         "Skeletons_Awaken_Floor",
@@ -166,7 +166,7 @@
     {
       "id": "tools",
       "file": "animations/tools.glb",
-      "byteLength": 1461204,
+      "byteLength": 1063880,
       "clips": [
         "Chop",
         "Chopping",

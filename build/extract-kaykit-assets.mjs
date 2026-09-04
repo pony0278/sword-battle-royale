@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { stripPresentationMeshes } from './strip-presentation-meshes.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -138,15 +139,31 @@ const manifest = {
   packs: [],
 };
 
+const stripped = [];
 await mkdir(animationOutputDir, { recursive: true });
 for (const pack of animationPacks) {
   const filename = `${pack.id}.glb`;
   const outputPath = path.join(animationOutputDir, filename);
-  const buffer = pack.embeddedId
+  const extracted = pack.embeddedId
     ? Buffer.from(readEmbeddedBase64(source, pack.embeddedId), 'base64')
     : await readFile(outputPath);
+  // The Mannequin goes. assets/kaykit/README.md has said since these were first extracted that
+  // "The Knight model and its skinned presentation mesh are not runtime dependencies", and
+  // kaykit-animation-library.js proves it every load: it keeps gltf.animations and calls
+  // disposePackScene(gltf.scene) on everything else. Measured, each pack carried 388 KB of a
+  // six-part Mannequin - 1.14 MB across the three the page loads, downloaded and thrown away.
+  //
+  // The OUTPUT is stable across runs, which is what matters, but the log line is not: the four
+  // packs with an embeddedId are re-read from the generator HTML every time and so arrive with
+  // their meshes again, while the four read from disk are already stripped and come back unchanged.
+  // Both paths land on the same bytes.
+  const { buffer, removedMeshes, savedBytes } = stripPresentationMeshes(extracted);
+  if (removedMeshes > 0) {
+    stripped.push({ id: pack.id, removedMeshes, savedBytes });
+  }
   const glb = parseGlbJson(buffer);
-  if (pack.embeddedId) await writeFile(outputPath, buffer);
+  // Written whether embedded or not: a pack read from disk still has its meshes to lose.
+  await writeFile(outputPath, buffer);
   manifest.packs.push({
     id: pack.id,
     file: `animations/${filename}`,
@@ -161,3 +178,7 @@ await writeFile(definitionOutputFile, generatedDefinitionModule(rigDefinition), 
 
 console.log(`Generated ${path.relative(repositoryRoot, definitionOutputFile)} (${rigDefinition.bones.length} bones).`);
 console.log(`Extracted ${manifest.packs.length} animation packs with ${manifest.packs.reduce((sum, pack) => sum + pack.clips.length, 0)} clips.`);
+if (stripped.length) {
+  const saved = stripped.reduce((sum, pack) => sum + pack.savedBytes, 0);
+  console.log(`Stripped the presentation mesh from ${stripped.length} packs, saving ${(saved / 1024).toFixed(0)} KB.`);
+}
