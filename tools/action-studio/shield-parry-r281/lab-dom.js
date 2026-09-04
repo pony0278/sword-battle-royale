@@ -2,6 +2,7 @@
 
 const REQUIRED_IDS = Object.freeze([
   'startOverlay', 'startButton', 'startCount', 'labToggle', // R24F.1: the phone's start sequence and the lab lid
+  'touchStickZone', 'touchStick', 'touchStickKnob', 'touchAttack', 'touchGuard', 'touchDodge', 'touchNotice', // R24J.1: the phone's controls
   'hudDuel',
   'hudAttack',
   'hudInput',

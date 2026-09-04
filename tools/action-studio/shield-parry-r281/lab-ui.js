@@ -1,6 +1,7 @@
 // R18M.3 — presentation-only Parry cue/HUD rendering and DOM event binding.
 // Callers provide snapshots/callbacks. This module never decides combat success.
 
+import { planTouchStick } from '../../../src/game/touch-stick.js'; // R24J.1
 import { createFrameTimeSampler } from '../../../src/game/frame-time-sampler.js'; // R24G.2
 import { createMobileStartRuntime } from '../../../src/game/mobile-start.js'; // R24F.1
 import { PARRY_LUNGE_TRAVEL_BUDGET_METERS } from '../../../src/combat/parry-lunge-reach.js';
@@ -638,6 +639,119 @@ function bindStartOverlay({ documentRef, windowRef, elements, handlers }) {
   } });
 }
 
+// R24J.1 (#40) - the phone's controls: the left thumb steers and names the direction, the right
+// thumb acts. The arithmetic is in src/game/touch-stick.js; this is the DOM half.
+//
+// Two rules earn their place here. The direction is read AT THE PRESS - measured at zero frames,
+// where a swipe would have cost 30-60ms of a 120ms parry window - and it is only read while an
+// action is being taken, so a thumb pushed forward to close the distance never restates the
+// guard's sector. And a refused press now says why: 45% of a person's attack presses did nothing
+// at all, with nothing on screen to say so.
+const TOUCH_REFUSAL_TEXT = Object.freeze({
+  'the-opponent-is-mid-exchange': '對手正在出手',
+  'still-being-struck': '你正被打中',
+  'staggered-or-down': '你暈眩中',
+  'already-swinging': '你正在揮刀',
+  'still-recovering': '收刀中',
+  'your-last-exchange-has-not-cleared': '上一刀還沒結算',
+  'not-ready': '尚未就緒',
+});
+
+function bindTouchControls({ documentRef, windowRef, elements, handlers }) {
+  const zone = elements.touchStickZone;
+  const base = elements.touchStick;
+  const knob = elements.touchStickKnob;
+  const notice = elements.touchNotice;
+  if (!zone || !base || !knob) return null;
+  let pointerId = null;
+  let origin = null;
+  let plan = null;
+  let guardHeld = false;
+  let noticeTimer = null;
+  // R24J.2: the ring is bottom-anchored at home and centred on the thumb while it is held, so the
+  // grab swaps which edge it is pinned to and the release hands it back to the stylesheet.
+  const goHome = () => { base.style.left = ''; base.style.top = ''; base.style.bottom = ''; base.style.transform = ''; };
+  const followThumb = (x, y) => { base.style.left = `${x}px`; base.style.top = `${y}px`; base.style.bottom = 'auto'; base.style.transform = 'translate(-50%, -50%)'; };
+
+  // The label on the buttons, so a player can see that these verbs have a direction at all - the
+  // discoverable half of a swipe, without the swipe's cost. The glyph follows the stick's dominant
+  // axis; the sector itself is decided by the aim planner, which adds hysteresis this does not.
+  const glyphOf = () => (plan?.naming
+    ? (Math.abs(plan.knob.y) >= Math.abs(plan.knob.x) ? '▲' : (plan.knob.x > 0 ? '▶' : '◀'))
+    : '自動');
+  function paint() {
+    const at = plan ? plan.knob : { x: 0, y: 0 };
+    knob.style.transform = `translate(${at.x.toFixed(1)}px, ${at.y.toFixed(1)}px)`;
+    const glyph = glyphOf();
+    for (const id of ['touchAttack', 'touchGuard']) {
+      const label = elements[id]?.querySelector('small');
+      if (label) label.textContent = glyph;
+    }
+  }
+  function publishMove() {
+    handlers.onDefenderIntent?.(plan ? plan.laneIntent : 0);
+    handlers.onDefenderLateralIntent?.(plan ? plan.lateralIntent : 0);
+  }
+  function say(text) {
+    if (!notice) return;
+    notice.textContent = text;
+    notice.hidden = false;
+    if (noticeTimer) windowRef.clearTimeout(noticeTimer);
+    noticeTimer = windowRef.setTimeout(() => { notice.hidden = true; }, 900);
+  }
+  // The sector, named the instant it is needed and never in between.
+  function aimNow() {
+    if (plan?.aim) handlers.onAim?.(plan.aim);
+  }
+  function release() {
+    pointerId = null; origin = null; plan = null;
+    zone.classList.remove('holding');
+    goHome();
+    publishMove(); paint();
+  }
+  zone.addEventListener('pointerdown', (event) => {
+    if (pointerId != null) return;
+    event.preventDefault();
+    pointerId = event.pointerId;
+    try { zone.setPointerCapture(event.pointerId); } catch { /* capture is best-effort */ }
+    const rect = zone.getBoundingClientRect();
+    origin = { x: event.clientX, y: event.clientY };
+    followThumb(event.clientX - rect.left, event.clientY - rect.top);
+    zone.classList.add('holding');
+    plan = planTouchStick({ originX: origin.x, originY: origin.y, pointerX: event.clientX, pointerY: event.clientY });
+    publishMove(); paint();
+  });
+  zone.addEventListener('pointermove', (event) => {
+    if (pointerId !== event.pointerId || !origin) return;
+    event.preventDefault();
+    plan = planTouchStick({ originX: origin.x, originY: origin.y, pointerX: event.clientX, pointerY: event.clientY });
+    publishMove(); paint();
+    // A guard already up follows the thumb: the sector it will answer with is live while it is held.
+    if (guardHeld) aimNow();
+  });
+  for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
+    zone.addEventListener(type, (event) => { if (pointerId === event.pointerId) release(); });
+  }
+  const actions = {
+    attack: () => { aimNow(); const refusal = handlers.onAttack?.(); if (refusal) say(TOUCH_REFUSAL_TEXT[refusal] || String(refusal)); },
+    guard: () => { aimNow(); guardHeld = true; handlers.onGuardKey?.(true); },
+    dodge: () => { handlers.onDodge?.(plan?.dodgeDirection ?? 'back'); },
+  };
+  documentRef.querySelectorAll('[data-touch-action]').forEach((button) => {
+    const action = button.dataset.touchAction;
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      try { button.setPointerCapture(event.pointerId); } catch { /* capture is best-effort */ }
+      actions[action]?.();
+    });
+    const up = () => { if (action === 'guard' && guardHeld) { guardHeld = false; handlers.onGuardKey?.(false); } };
+    for (const type of ['pointerup', 'pointercancel', 'pointerleave']) button.addEventListener(type, up);
+    button.addEventListener('contextmenu', (event) => event.preventDefault());
+  });
+  paint();
+  return Object.freeze({ get plan() { return plan; }, get guardHeld() { return guardHeld; } });
+}
+
 export function bindShieldParryLabUiEvents({
   documentRef,
   windowRef,
@@ -834,5 +948,8 @@ export function bindShieldParryLabUiEvents({
   windowRef.addEventListener('resize', handlers.onResize);
   handlers.onView('three');
   handlers.onResize();
-  return Object.freeze({ startOverlay: bindStartOverlay({ documentRef, windowRef, elements, handlers }) }); // R24F.1
+  return Object.freeze({
+    startOverlay: bindStartOverlay({ documentRef, windowRef, elements, handlers }), // R24F.1
+    touch: bindTouchControls({ documentRef, windowRef, elements, handlers }), // R24J.1
+  });
 }

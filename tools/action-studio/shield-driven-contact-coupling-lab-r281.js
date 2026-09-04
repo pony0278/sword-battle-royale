@@ -683,7 +683,7 @@ const { startOverlay } = bindShieldParryLabUiEvents({ // R24F.1: the phone's sta
     onDebugResetDefaults: resetDebugStanceDefaults,
     onDefenderIntent: (intent) => laneController.setDefenderIntent(intent), onAttackerIntent: (intent) => laneController.setAttackerIntent(intent),
     onDefenderLateralIntent: (intent) => laneController.setDefenderLateralIntent(intent), onGuardKey: (held) => setGuardHeld(held), // R19V.1 + R20G.1
-    onAttack: () => playerAttack.start(), // R23G.1 the player's own swing
+    onAttack: () => (playerAttack.start() ? null : playerAttack.refusal), // R23G.1 the player's own swing; R24J.1: a refused press answers with why, so a phone can show it
     onDodge: (direction) => requestDodge(direction), // R20F.1 through the stance gate
     onMoveIntent: (moveIntent) => playerController.setMoveIntent(moveIntent), // R20S.3 WASD, world frame
     onLockToggle: () => playerController.toggleLock(), // R20S.3 Tab

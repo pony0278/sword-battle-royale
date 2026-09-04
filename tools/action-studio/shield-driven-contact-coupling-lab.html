@@ -102,7 +102,42 @@
     aside{display:none}
     body.lab-open aside{display:block;position:fixed;inset:0;z-index:50;overflow:auto;background:#0b1220;border:0}
     .lab-toggle{display:block;position:fixed;right:12px;top:12px;z-index:60;flex:none;min-height:0;padding:6px 10px;font-size:12px;opacity:.75}
-    /* R24G.1: the HUD hides over the fight on touch - even folded it stood 81px tall across the top
+    /* R24J.1 (#40): the phone's controls. Hidden until the pointer is coarse; every offset below is
+     a fixed pixel count because CSS px per mm measured 5.65-5.90 across four phone sizes - a 4%
+     spread - so a fixed size is the same physical size on all of them. */
+  .touch-zone,.touch-actions,.touch-notice{display:none}
+  .touch-notice[hidden]{display:none}
+  @media (pointer: coarse){
+    #touchPad{display:none}
+    .touch-zone{display:block;position:fixed;left:0;bottom:0;width:42%;height:82%;z-index:30;touch-action:none}
+    /* R24J.2: anchored to the bottom, not the middle of its zone. At top:50% the ring's centre sat
+       160px above the screen's foot while the blade's sat 90px - the left thumb was reaching up for
+       a stick the right thumb never had to. Bottom-anchored it centres 114px up, near the blade's,
+       and it scales with the screen instead of with the zone's height. */
+    .touch-stick{position:absolute;left:110px;bottom:24px;width:180px;height:180px;transform:translateX(-50%);border-radius:50%;
+      border:1px solid #3a4a5a66;background:rgba(20,30,42,.30);opacity:.55;transition:opacity .12s linear}
+    .touch-zone.holding .touch-stick{opacity:1}
+    .touch-stick-knob{position:absolute;left:50%;top:50%;width:76px;height:76px;margin:-38px 0 0 -38px;border-radius:50%;
+      border:1px solid #7ea8d8aa;background:rgba(60,90,130,.6)}
+    .touch-actions{display:block;position:fixed;right:0;bottom:0;width:270px;height:290px;z-index:30;pointer-events:none}
+    .touch-btn{position:absolute;pointer-events:auto;flex:none;min-height:0;padding:0;border-radius:50%;
+      border:1px solid #3a4a5a;background:rgba(20,30,42,.78);color:#cfe3f7;touch-action:none;
+      user-select:none;-webkit-user-select:none;display:flex;align-items:center;justify-content:center}
+    .touch-btn:active{background:rgba(70,110,150,.92)}
+    .touch-btn small{position:absolute;bottom:5px;font:700 10px/1 ui-monospace,monospace;color:#7ef0ad}
+    /* Centres measured against a 45mm (259px) thumb arc from the bottom-right corner: 21mm, 38mm,
+       41mm - and x never below 630, where the fighters end at 604. */
+    .touch-attack{right:32px;bottom:46px;width:88px;height:88px;font-size:34px;border-color:#7ef0ad99}
+    .touch-guard{right:146px;bottom:88px;width:68px;height:68px;font-size:26px}
+    .touch-dodge{right:100px;bottom:172px;width:56px;height:56px;font-size:20px}
+    .touch-notice{display:block;position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:35;
+      padding:6px 12px;border-radius:8px;background:rgba(46,22,30,.88);color:#ffb4b4;
+      font:600 12px/1.4 system-ui,sans-serif;pointer-events:none;white-space:nowrap}
+    /* The sector cells become a read-out: the stick aims now, and they sat where it lives. */
+    .guard-sector{left:50%;top:10px;bottom:auto;transform:translateX(-50%);pointer-events:none}
+    .guard-sector div{pointer-events:none}
+  }
+  /* R24G.1: the HUD hides over the fight on touch - even folded it stood 81px tall across the top
        and a person said it was in the way - and comes back under the Lab lid, where the log is. */
     .hud{display:none;left:10px;right:70px;top:10px;min-width:0;font-size:11px;pointer-events:auto}
     body.lab-open .hud{display:block;position:fixed;z-index:55}
@@ -110,9 +145,12 @@
     .hud.expanded{max-height:40vh;overflow-y:auto}
     .hud button{flex:none;min-height:0;font-size:11px}
     .legend{display:none}
-    /* The three sector cells go to the left thumb, the pad has the right one. Measured: raising them
-       in place put them on the player's chest, and at the bottom centre they sat on the sword. */
-    .guard-sector{left:14px;bottom:14px;transform:none}
+    /* R24J.1: the cells were the left thumb's aim until the stick took that job; the read-out now
+       sits clear of both thumbs, at the top, where the folded HUD used to be. */
+    .guard-sector{left:50%;right:auto;top:10px;bottom:auto;transform:translateX(-50%)}
+    .guard-sector div small{display:none} /* J/I/L name keys nobody has here */
+    /* The Lab lid moves off the parry cue's idle corner; the top left is the only free one now. */
+    .lab-toggle{right:auto;left:12px}
   }
   .pad-up { grid-area: up; } .pad-down { grid-area: down; }
   .pad-left { grid-area: left; } .pad-right { grid-area: right; }
@@ -146,6 +184,20 @@
       <div id="startCount" class="start-count"></div>
     </div>
     <button id="labToggle" type="button" class="lab-toggle">Lab</button>
+    <!-- R24J.1 (#40): the phone's controls. Left thumb steers and, while an action is held, names
+         the direction; the right thumb acts, MOBA-style with the blade biggest and nearest the
+         corner. Shown only on a coarse pointer - the desktop keeps its keyboard and mouse, and the
+         pad above stays for them. Geometry measured: the fighters occupy x 266-604 of 844, both
+         clusters sit in the free strips and inside a 45mm thumb arc. -->
+    <div id="touchStickZone" class="touch-zone" aria-hidden="true">
+      <div id="touchStick" class="touch-stick"><div id="touchStickKnob" class="touch-stick-knob"></div></div>
+    </div>
+    <div id="touchActions" class="touch-actions" aria-hidden="true">
+      <button id="touchAttack" type="button" data-touch-action="attack" class="touch-btn touch-attack">⚔<small></small></button>
+      <button id="touchGuard" type="button" data-touch-action="guard" class="touch-btn touch-guard">🛡<small></small></button>
+      <button id="touchDodge" type="button" data-touch-action="dodge" class="touch-btn touch-dodge">✦<small></small></button>
+    </div>
+    <div id="touchNotice" class="touch-notice" hidden></div>
     <div id="parryCue" class="parry-cue wait"><span>BEST PARRY TIMING · R18I5</span><strong id="parryCueMain">LOADING…</strong><small id="parryCueDetail">等待即時 attack gate</small></div>
     <!-- R21N.1: press one of these to parry in that direction - the press names the direction AND
          is the timed input, so there is nothing to aim first. Keys I/J/L do the same. -->
@@ -281,6 +333,6 @@
       });
     })();
   </script>
-  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-the-shield-blocks-at-every-distance-r24i1"></script>
+  <script type="module" src="./shield-driven-contact-coupling-lab-r281.js?v=g43b5r281-the-stick-sits-lower-r24j2"></script>
 </body>
 </html>
