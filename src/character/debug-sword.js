@@ -1,5 +1,5 @@
 import { WEAPON_SOCKET_ID } from './character-sockets.js';
-import { createProceduralV3Longsword } from './procedural-v3-longsword.js';
+import { createProceduralV3Weapon, V3_LONGSWORD_DEFINITION } from './procedural-v3-weapon.js';
 
 export const DEFAULT_SWORD_MOUNT = Object.freeze({
   position: Object.freeze({ x: 0, y: 0, z: 0 }),
@@ -8,8 +8,9 @@ export const DEFAULT_SWORD_MOUNT = Object.freeze({
 });
 
 export function createDebugSword(THREE, options = {}) {
-  return createProceduralV3Longsword(THREE, {
-    definition: options.definition,
+  return createProceduralV3Weapon(THREE, {
+    // The longsword stays the default, so every existing caller keeps the weapon it had.
+    definition: options.definition || V3_LONGSWORD_DEFINITION,
     style: options.style,
   });
 }

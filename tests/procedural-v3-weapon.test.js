@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  createProceduralV3Longsword,
-  createV3LongswordStyle,
-  validateV3LongswordDefinition,
+  createProceduralV3Weapon,
+  createV3WeaponStyle,
+  validateV3WeaponDefinition,
   V3_LONGSWORD_DEFINITION,
-} from '../src/character/procedural-v3-longsword.js';
+} from '../src/character/procedural-v3-weapon.js';
 import { V3_SWORD_GEOMETRY_DEFINITION } from '../src/character/v3-sword-geometry-definition.js';
 import { createDebugSword, mountDebugSword } from '../src/character/debug-sword.js';
 
@@ -91,7 +91,7 @@ const THREE = {
 };
 
 test('v3 longsword definition is a complete topological weapon rig', () => {
-  const definition = validateV3LongswordDefinition(V3_LONGSWORD_DEFINITION);
+  const definition = validateV3WeaponDefinition(V3_LONGSWORD_DEFINITION);
   assert.equal(definition.nodes.length, 11);
   assert.equal(definition.nodes.at(-1).id, 'blade.tip');
   assert.equal(definition.nodes.find((node) => node.id === 'secondary_grip').parent, 'grip');
@@ -101,7 +101,7 @@ test('v3 longsword definition is a complete topological weapon rig', () => {
 });
 
 test('procedural v3 longsword builds bones, wire outline, nodes and combat points without box meshes', () => {
-  const sword = createProceduralV3Longsword(THREE);
+  const sword = createProceduralV3Weapon(THREE);
   assert.equal(Object.keys(sword.bones).length, 11);
   assert.equal(sword.jointNodes.length, 10);
   assert.equal(sword.lines.skeleton.geometry.attributes.position.array.length, 10 * 2 * 3);
@@ -133,10 +133,10 @@ test('debug sword compatibility factory mounts the v3 weapon rig on HAND_R', () 
 });
 
 test('v3 weapon nodes and glow are presentation toggles only', () => {
-  const sword = createProceduralV3Longsword(THREE, { style: { outlineOpacity: 2 } });
+  const sword = createProceduralV3Weapon(THREE, { style: { outlineOpacity: 2 } });
   sword.setNodesVisible(false);
   sword.setGlowVisible(false);
   assert.ok(sword.jointNodes.every((node) => node.visible === false));
   assert.equal(sword.lines.glow.visible, false);
-  assert.equal(createV3LongswordStyle({ outlineOpacity: 2 }).outlineOpacity, 1);
+  assert.equal(createV3WeaponStyle({ outlineOpacity: 2 }).outlineOpacity, 1);
 });

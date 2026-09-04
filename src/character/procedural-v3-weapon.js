@@ -1,7 +1,18 @@
+// The line weapon, for any weapon.
+//
+// This was procedural-v3-longsword.js, and the name was only half a lie: the rig hierarchy, the
+// edge outline and the skeleton overlay were always generic, but two things reached past the
+// definition it was handed and read the longsword's geometry module directly - the outline, and the
+// validator that rejected any definition not built from it. So `createProceduralV3Longsword({
+// definition })` accepted a second weapon's definition and then drew the first weapon's blade.
+//
+// Both now come from the definition. A weapon rig carries its own source geometry, and the outline
+// is built from that - which is what makes a greatsword look like a greatsword and, more to the
+// point, what makes the contact sampler read a blade twice as long instead of the same one.
 import { WEAPON_SOCKET_ID } from './character-sockets.js';
 import { V3_SWORD_GEOMETRY_DEFINITION } from './v3-sword-geometry-definition.js';
 
-export const V3_LONGSWORD_REQUIRED_NODE_IDS = Object.freeze([
+export const V3_WEAPON_REQUIRED_NODE_IDS = Object.freeze([
   'weapon.root',
   'pommel',
   'grip',
@@ -15,16 +26,33 @@ export const V3_LONGSWORD_REQUIRED_NODE_IDS = Object.freeze([
   'blade.tip',
 ]);
 
-export const V3_LONGSWORD_DEFINITION = Object.freeze({
-  format: 'procedural-weapon-rig',
-  version: 2,
+function defineV3Weapon({ id, weaponType, sourceGeometry }) {
+  return Object.freeze({
+    format: 'procedural-weapon-rig',
+    version: 2,
+    id,
+    weaponType,
+    sourceGeometryId: sourceGeometry.id,
+    // Carried, not looked up. This is the field the outline and the validator used to reach around
+    // the definition to find.
+    sourceGeometry,
+    nodes: sourceGeometry.rigNodes,
+  });
+}
+
+export const V3_LONGSWORD_DEFINITION = defineV3Weapon({
   id: 'v3_procedural_longsword',
   weaponType: 'longsword',
-  sourceGeometryId: V3_SWORD_GEOMETRY_DEFINITION.id,
-  nodes: V3_SWORD_GEOMETRY_DEFINITION.rigNodes,
+  sourceGeometry: V3_SWORD_GEOMETRY_DEFINITION,
 });
 
-export const DEFAULT_V3_LONGSWORD_STYLE = Object.freeze({
+// The greatsword is NOT imported here, and that is deliberate. Its geometry is 82 KB of source -
+// 10.8 KB gzipped - and this module is reached by every page that draws a sword. Eagerly importing
+// a weapon nobody has equipped yet would undo, in one line, the work that took the published page
+// from ~180 requests to 14: see v3-greatsword-weapon.js, which a page opts into.
+export { defineV3Weapon };
+
+export const DEFAULT_V3_WEAPON_STYLE = Object.freeze({
   outlineColor: 0xf7fbff,
   skeletonColor: 0x96e8ff,
   glowColor: 0x39c7ff,
@@ -64,22 +92,26 @@ function finiteOpacity(value, fallback) {
   return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : fallback;
 }
 
-export function createV3LongswordStyle(input = {}) {
+export function createV3WeaponStyle(input = {}) {
   return {
-    ...DEFAULT_V3_LONGSWORD_STYLE,
+    ...DEFAULT_V3_WEAPON_STYLE,
     ...input,
-    outlineOpacity: finiteOpacity(input.outlineOpacity, DEFAULT_V3_LONGSWORD_STYLE.outlineOpacity),
-    skeletonOpacity: finiteOpacity(input.skeletonOpacity, DEFAULT_V3_LONGSWORD_STYLE.skeletonOpacity),
-    glowOpacity: finiteOpacity(input.glowOpacity, DEFAULT_V3_LONGSWORD_STYLE.glowOpacity),
-    jointOpacity: finiteOpacity(input.jointOpacity, DEFAULT_V3_LONGSWORD_STYLE.jointOpacity),
-    jointRadius: finitePositive(input.jointRadius, DEFAULT_V3_LONGSWORD_STYLE.jointRadius),
+    outlineOpacity: finiteOpacity(input.outlineOpacity, DEFAULT_V3_WEAPON_STYLE.outlineOpacity),
+    skeletonOpacity: finiteOpacity(input.skeletonOpacity, DEFAULT_V3_WEAPON_STYLE.skeletonOpacity),
+    glowOpacity: finiteOpacity(input.glowOpacity, DEFAULT_V3_WEAPON_STYLE.glowOpacity),
+    jointOpacity: finiteOpacity(input.jointOpacity, DEFAULT_V3_WEAPON_STYLE.jointOpacity),
+    jointRadius: finitePositive(input.jointRadius, DEFAULT_V3_WEAPON_STYLE.jointRadius),
   };
 }
 
-export function validateV3LongswordDefinition(definition = V3_LONGSWORD_DEFINITION) {
+export function validateV3WeaponDefinition(definition = V3_LONGSWORD_DEFINITION) {
   if (definition?.format !== 'procedural-weapon-rig') throw new Error('Invalid procedural weapon rig format');
-  if (definition.sourceGeometryId !== V3_SWORD_GEOMETRY_DEFINITION.id) {
-    throw new Error('V3 longsword source geometry does not match the extracted v3 weapon');
+  const sourceGeometry = definition.sourceGeometry;
+  if (!sourceGeometry?.positions?.length || !sourceGeometry?.indices?.length) {
+    throw new Error('V3 weapon rig ' + definition.id + ' carries no source geometry to draw');
+  }
+  if (definition.sourceGeometryId !== sourceGeometry.id) {
+    throw new Error('V3 weapon rig ' + definition.id + ' names ' + definition.sourceGeometryId + ' but carries ' + sourceGeometry.id);
   }
   const ids = new Set();
   for (const node of definition.nodes || []) {
@@ -87,14 +119,16 @@ export function validateV3LongswordDefinition(definition = V3_LONGSWORD_DEFINITI
     if (node.parent && !ids.has(node.parent)) throw new Error('Weapon node ' + node.id + ' appears before ' + node.parent);
     ids.add(node.id);
   }
-  const missing = V3_LONGSWORD_REQUIRED_NODE_IDS.filter((id) => !ids.has(id));
-  if (missing.length) throw new Error('V3 longsword rig is missing nodes: ' + missing.join(', '));
+  const missing = V3_WEAPON_REQUIRED_NODE_IDS.filter((id) => !ids.has(id));
+  if (missing.length) throw new Error('V3 weapon rig ' + definition.id + ' is missing nodes: ' + missing.join(', '));
   return definition;
 }
 
 function createWeaponHierarchy(THREE, definition) {
   const object3d = new THREE.Group();
-  object3d.name = 'V3_PROCEDURAL_LONGSWORD';
+  // weapon-mount-policy.js documents the scene chain as handr -> handslotr -> HAND_R ->
+  // V3_PROCEDURAL_LONGSWORD, which stays true: the longsword's weaponType is 'longsword'.
+  object3d.name = 'V3_PROCEDURAL_' + String(definition.weaponType || 'weapon').toUpperCase();
   object3d.userData.weaponType = definition.weaponType;
   object3d.userData.weaponRigId = definition.id;
   object3d.userData.sourceGeometryId = definition.sourceGeometryId;
@@ -128,14 +162,18 @@ function makeSegments(THREE, segmentCount, color, opacity, name, glow = false) {
   return line;
 }
 
-function createExactV3Outline(THREE, style) {
+function createExactV3Outline(THREE, style, source) {
   const sourceGeometry = new THREE.BufferGeometry();
   sourceGeometry.setAttribute(
     'position',
-    new THREE.BufferAttribute(new Float32Array(V3_SWORD_GEOMETRY_DEFINITION.positions), 3),
+    new THREE.BufferAttribute(new Float32Array(source.positions), 3),
   );
+  // Uint16 tops out at 65535 vertices and the longsword has 358, so the narrower array was never
+  // wrong - but it is a ceiling a second mesh can reach, and a silently truncated index draws a
+  // blade with holes in it rather than throwing.
+  const IndexArray = source.vertexCount > 65535 ? Uint32Array : Uint16Array;
   sourceGeometry.setIndex(
-    new THREE.BufferAttribute(new Uint16Array(V3_SWORD_GEOMETRY_DEFINITION.indices), 1),
+    new THREE.BufferAttribute(new IndexArray(source.indices), 1),
   );
   const edgeGeometry = new THREE.EdgesGeometry(sourceGeometry, 1);
   sourceGeometry.dispose();
@@ -147,9 +185,9 @@ function createExactV3Outline(THREE, style) {
   line.frustumCulled = false;
   line.userData.appearanceRole = 'weapon-line';
   line.userData.exactV3Source = true;
-  line.userData.sourceGeometryId = V3_SWORD_GEOMETRY_DEFINITION.id;
-  line.userData.sourceVertexCount = V3_SWORD_GEOMETRY_DEFINITION.vertexCount;
-  line.userData.sourceTriangleCount = V3_SWORD_GEOMETRY_DEFINITION.triangleCount;
+  line.userData.sourceGeometryId = source.id;
+  line.userData.sourceVertexCount = source.vertexCount;
+  line.userData.sourceTriangleCount = source.triangleCount;
   return line;
 }
 
@@ -186,7 +224,7 @@ function createJointNode(THREE, bone, style) {
   return node;
 }
 
-export function canCreateProceduralV3Longsword(THREE) {
+export function canCreateProceduralV3Weapon(THREE) {
   return Boolean(
     THREE?.Group
     && THREE?.Bone
@@ -202,19 +240,20 @@ export function canCreateProceduralV3Longsword(THREE) {
   );
 }
 
-export function createProceduralV3Longsword(THREE, options = {}) {
-  if (!canCreateProceduralV3Longsword(THREE)) {
-    throw new Error('Procedural v3 longsword requires a Three.js-compatible namespace');
+export function createProceduralV3Weapon(THREE, options = {}) {
+  if (!canCreateProceduralV3Weapon(THREE)) {
+    throw new Error('Procedural v3 weapon requires a Three.js-compatible namespace');
   }
-  const definition = validateV3LongswordDefinition(options.definition || V3_LONGSWORD_DEFINITION);
-  const style = createV3LongswordStyle(options.style);
+  const definition = validateV3WeaponDefinition(options.definition || V3_LONGSWORD_DEFINITION);
+  const sourceGeometry = definition.sourceGeometry;
+  const style = createV3WeaponStyle(options.style);
   const { object3d, bones } = createWeaponHierarchy(THREE, definition);
   const skeletonLine = makeSegments(THREE, SKELETON_LINKS.length, style.skeletonColor, style.skeletonOpacity, 'V3_WEAPON_SKELETON');
   const glowLine = makeSegments(THREE, SKELETON_LINKS.length, style.glowColor, style.glowOpacity, 'V3_WEAPON_GLOW', true);
-  const outlineLine = createExactV3Outline(THREE, style);
+  const outlineLine = createExactV3Outline(THREE, style, sourceGeometry);
   object3d.add(outlineLine, skeletonLine, glowLine);
   const jointNodes = JOINT_NODE_IDS.map((nodeId) => createJointNode(THREE, bones[nodeId], style));
-  const localPoints = Object.fromEntries(V3_LONGSWORD_REQUIRED_NODE_IDS.map((nodeId) => [nodeId, new THREE.Vector3()]));
+  const localPoints = Object.fromEntries(V3_WEAPON_REQUIRED_NODE_IDS.map((nodeId) => [nodeId, new THREE.Vector3()]));
   const skeletonSegments = SKELETON_LINKS.map(([startId, endId]) => [localPoints[startId], localPoints[endId]]);
   let nodesVisible = true;
   let glowVisible = true;
@@ -248,7 +287,7 @@ export function createProceduralV3Longsword(THREE, options = {}) {
   return {
     id: definition.id,
     definition,
-    sourceGeometry: V3_SWORD_GEOMETRY_DEFINITION,
+    sourceGeometry,
     style,
     object3d,
     bones,

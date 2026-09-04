@@ -41,6 +41,21 @@ jobs:
             exit 1
           fi
 
+      # The same question for the extracted weapon geometry: the committed definition has to be what
+      # the mesh in assets/ yields. It is checked here rather than in a test because re-running an
+      # extractor rewrites a tracked file, and `npm test` should not.
+      - name: Extract the greatsword geometry
+        run: npm run extract:greatsword
+
+      - name: Verify extracted weapon geometry is current
+        shell: bash
+        run: |
+          if ! git diff --exit-code -- src/character/v3-greatsword-geometry-definition.js; then
+            echo 'The extracted greatsword geometry is stale.' >&2
+            echo 'Run npm run extract:greatsword and commit src/character/v3-greatsword-geometry-definition.js.' >&2
+            exit 1
+          fi
+
       - name: Verify Action Studio Guard Runtime browser surface
         shell: bash
         run: bash tools/action-studio/verify-guard-runtime-surface.sh

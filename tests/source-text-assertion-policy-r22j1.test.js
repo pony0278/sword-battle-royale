@@ -151,7 +151,15 @@ function census() {
 // claims only the page's own geometry can carry (the three button rules, measured against a 45mm
 // arc and the fighters' 604px edge, plus the retired pad), and the entry's refused-press answer is
 // entry wiring. The stick's arithmetic underneath is all called rather than read. KEEP.
-const BASELINE = Object.freeze({ total: 1217, srcText: 374, toolsText: 674, html: 161, absence: 150 });
+// Greatsword step one raised srcText, absence and total by one: procedural-v3-weapon.js must not
+// import the greatsword's geometry. It is the KEEP shape exactly - an absence of an import, which
+// cannot be shown by calling the module - and it is load-bearing rather than tidy: the geometry is
+// 82 KB of generated source, this builder is reached by every page that draws a sword, and the
+// cold-start work that took the published page from ~180 requests to 14 would be partly spent on a
+// weapon nobody has equipped. Reads codeOnly() so the header explaining the split cannot satisfy it.
+// The staleness of the extraction itself deliberately did NOT join this pile: it is a generated
+// artifact, so it is checked in CI as a diff, next to the Action Studio bundle's.
+const BASELINE = Object.freeze({ total: 1218, srcText: 375, toolsText: 674, html: 161, absence: 151 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();
