@@ -121,19 +121,61 @@ A method note, since it nearly went into this document wrong: `grep -c "NPC L Ha
 zero because `[LHnd]` is a character class. The counts above are `grep -F`, and the 23/23 is the
 retarget table's own alias list run against the file.
 
-**What is missing is the skeleton.** A spline-compressed animation carries tracks only —
-`hkaSkeleton` and `hkaSkeletonMapper` appear zero times in this file — so the bake needs the paired
-`skeleton.hkx`, and it should be the one the manifest already records (74,048 bytes, sha256
-`16a91abd…`) so the result lands on the same canonical hierarchy as the four existing sources.
+A spline-compressed animation carries tracks only — `hkaSkeleton` and `hkaSkeletonMapper` appear
+zero times in this file — so the bake needs a paired `skeleton.hkx`.
+
+## The skeleton arrived, and it is the frozen one
+
+Supplied after the above was written, and it is not merely a compatible skeleton — it is
+**byte-identical to the one G2.3.1 froze**:
+
+```
+bytes    74,048              manifest 74,048               MATCH
+sha256   16a91abddbdcf4760e922a30f62ac5b1ee053e8ff904fc13470f7b5d52e5b04d
+         16a91abddbdcf4760e922a30f62ac5b1ee053e8ff904fc13470f7b5d52e5b04d   IDENTICAL FILE
+```
+
+That is worth more than passing a check. It is the skeleton the four existing guard sources were
+baked against, so `2hm_idle` will land on the same canonical hierarchy — which is what lets the
+accepted G2.4.5 weapon bind calibration carry over instead of being re-measured for the greatsword.
+
+`npm run validate:skyrim-bake-pair` on the pair:
+
+```
+acceptedForRealBake   true
+sameHavokGeneration   true
+semanticBoneCount     19 / 19        missingBones []
+missingMarkers        []             (both files)
+```
+
+The two files are complementary rather than redundant: the skeleton carries `hkaSkeleton` at offset
+336, the animation carries `hkaSplineCompressedAnimation` at the same offset, and both declare
+`hk_2010.2.0-r1` at offset 40. Every one of the 19 semantic bones resolves inside the skeleton,
+including the alias that ends in a space, `NPC L Foot [Lft ]`.
+
+**A naming trap in that report.** Its `outputContract` still reads:
+
+```json
+"sourceGlb": "shd_blockidle.source.glb",
+"canonicalClipId": "SKYRIM_GUARD/shd_blockidle"
+```
+
+Those are hardcoded from G2.3.1. `real-bake-contract.mjs` validates whether a PAIR can be baked, not
+what it should be called — do not follow it, and do not overwrite `shd_blockidle`. The greatsword's
+stance wants `2hm_idle.source.glb` / `SKYRIM_GUARD/2hm_idle`. The rest of that contract does still
+apply: fps 30, `preserveSourceHierarchy: true`, `retargetInBlender: false`.
+
+Neither HKX is committed, per `commitRawHkx: false`.
 
 ## What to do, unchanged from handoff/10 §4
 
-Route A, on a machine that has it: import `skeleton.hkx`, import the animation onto it, preserve the
-Skyrim source armature and rest pose, export a self-contained GLB with the source hierarchy and one
-animation. **Do not retarget in Blender** — G2.1 owns the retarget math, so every source pack stays
-comparable.
+Both inputs are now validated, so the bake is unblocked. Route A, on a machine that has it: import
+`skeleton.hkx`, import the animation onto it, preserve the Skyrim source armature and rest pose,
+export a self-contained GLB with the source hierarchy and one animation at fps 30. **Do not retarget
+in Blender** — G2.1 owns the retarget math, so every source pack stays comparable.
 
-Hand back `2hm_idle.source.glb`. On this side it needs nothing new.
+Hand back `2hm_idle.source.glb`. On this side it needs nothing new: `validate-source-glb.mjs`, then
+the existing Skyrim retarget, then the measurement below.
 
 ## The one thing worth measuring the moment it arrives
 
