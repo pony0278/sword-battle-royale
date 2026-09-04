@@ -77,6 +77,11 @@ try {
   await page.goto(`${server.url}${PAGE}`, { waitUntil: 'networkidle', timeout: 90000 });
   const state = await page.evaluate(() => ({
     canvas: !!document.querySelector('canvas'),
+    // The source page carries an import map so an unbundled checkout can still resolve `three` out
+    // of node_modules. The built page must not: its imports are already chunks, node_modules is not
+    // published, and a map left behind would point the published site at nothing. Nothing else
+    // catches it - an unused map makes no request, so the cross-origin count stays zero either way.
+    importMap: !!document.querySelector('script[type="importmap"]'),
     renderer: typeof globalThis.THREE?.WebGLRenderer,
     // The classic examples/js build put GLTFLoader on the namespace and bootstrap.js constructs
     // through it five times. The bundle has to preserve that shape, not merely load three.
@@ -84,6 +89,7 @@ try {
   }));
   console.log(`page            ${PAGE}`);
   console.log(`canvas          ${state.canvas ? 'present' : 'MISSING'}`);
+  console.log(`import map      ${state.importMap ? 'PRESENT — should have been stripped' : 'stripped'}`);
   console.log(`THREE           WebGLRenderer:${state.renderer} GLTFLoader:${state.loader}`);
   console.log(`requests        ${requests} total · ${scriptRequests} script · ${crossOrigin} cross-origin`);
   console.log(`console errors  ${errors.length}${faviconMisses ? ` (+${faviconMisses} favicon 404, ignored)` : ''}`);
@@ -93,7 +99,8 @@ try {
     for (const miss of notFound.slice(0, 10)) console.log(`  ! ${miss}`);
   }
 
-  if (!state.canvas) failure = 'no canvas: the renderer never started';
+  if (state.importMap) failure = 'the built page still carries an import map: the Vite strip is not running';
+  else if (!state.canvas) failure = 'no canvas: the renderer never started';
   else if (state.renderer !== 'function') failure = 'THREE.WebGLRenderer is not a function on the global namespace';
   else if (state.loader !== 'function') failure = 'THREE.GLTFLoader is missing: bootstrap.js constructs through it';
   else if (crossOrigin > 0) failure = `${crossOrigin} cross-origin requests: the bundle should need none`;

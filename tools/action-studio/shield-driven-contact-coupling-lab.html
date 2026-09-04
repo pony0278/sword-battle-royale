@@ -4,6 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Step 3A · Live Shield → Sword → Wrist-Grip Constraint</title>
+  <!-- Cold start left this page with a bare `three` specifier: three-namespace.js imports the
+       pinned package and Vite resolves it at build time. A browser cannot, so served RAW - which is
+       what a checkout does, and what tools/action-studio/verify-guard-runtime-surface.sh drives -
+       the page died on "Failed to resolve module specifier". This map is how the unbundled page
+       finds the same pinned copy, out of node_modules rather than off a CDN, so raw costs no origin
+       either. The Vite build strips it: the built page has its imports resolved already, and
+       node_modules is not published. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "../../node_modules/three/build/three.module.js",
+      "three/examples/jsm/loaders/GLTFLoader.js": "../../node_modules/three/examples/jsm/loaders/GLTFLoader.js"
+    }
+  }
+  </script>
   <style>
     *{box-sizing:border-box}html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}
     body{display:grid;grid-template-columns:minmax(0,1fr) 430px;overflow:hidden}main{position:relative;min-width:0;min-height:0}canvas{width:100%;height:100%;display:block}

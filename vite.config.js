@@ -71,6 +71,12 @@ export default defineConfig({
     transformIndexHtml: {
       order: 'pre',
       handler(html, context) {
+        // Every built page drops its import map. A map exists so the RAW page can resolve `three`
+        // out of node_modules; the built page has that import resolved into a chunk already, and
+        // node_modules is not published - a map left behind would point the site at nothing.
+        // The comment above the map goes with it: it explains a thing the built page does not have.
+        html = html.replace(/[ \t]*<!--[\s\S]*?-->\n(?=[ \t]*<script type="importmap">)/, '')
+          .replace(/[ \t]*<script type="importmap">[\s\S]*?<\/script>\n/, '');
         if (!context.filename.endsWith('index.template.html')) return html;
         // The two CDN tags are the whole point of the change: r128 from cdnjs and its classic
         // examples/js GLTFLoader from jsdelivr, two origins before the renderer can be built.
