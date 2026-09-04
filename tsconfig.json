@@ -37,6 +37,10 @@
 //                                         arrives without a correctionLayerId is told so here.
 //   longsword-guard-presentation.js       the longsword's answer to that contract - the first of
 //                                         what should eventually be six.
+//   directional-attack-timings.js         G1 - the attack side's equivalent seam. Six tables of
+//                                         per-direction measurements become its parameters, and a
+//                                         greatsword is a second record shaped like the longsword's.
+//   longsword-attack-timings.js           the longsword's six tables.
 {
   "compilerOptions": {
     "allowJs": true,

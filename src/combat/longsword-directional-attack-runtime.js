@@ -2,17 +2,22 @@
 import {
   SWEPT_CONTACT_TEMPORAL_ELIGIBILITY_AUTHORITY,
 } from './swept-contact-temporal-eligibility.js';
-import { createActionDefinition } from './action-definition.js';
-import {
-  LONGSWORD_ATTACK_DIRECTIONS,
-  LONGSWORD_DIRECTIONAL_ATTACKS,
-} from './longsword-directional-metadata.js';
-import { getAttackTimeWarp, warpSourceToRuntime, warpRuntimeToSource } from './attack-time-warp.js';
-import { clampAttackTempoScale, DEFAULT_ATTACK_TEMPO_SCALE } from './attack-tempo.js';
+import { warpRuntimeToSource } from './attack-time-warp.js';
+import { LONGSWORD_ATTACK_TIMINGS, LONGSWORD_ATTACK_FPS, LONGSWORD_ATTACK_STAGE, PRESENTATION_END_SOURCE_SECONDS } from './longsword-attack-timings.js';
 
-export const LONGSWORD_ATTACK_RUNTIME_STAGE = 'G4.1';
+// G1 — this module used to hold six tables of the longsword's measurements and derive every attack
+// landmark from them at import. handoff/39 listed those as category A: the data a second weapon
+// re-measures rather than retypes. They are now longsword-attack-timings.js, built through the
+// weapon-agnostic createDirectionalAttackTimings, and what remains here is the machine - the phase
+// vocabulary, the phase test, and the stateful runtime that drives one swing at a time.
+//
+// Every export below is kept at this path. Seventeen lab pages, five tests and
+// two-actor-combat-integration.js import from here, and none of them should have to move because
+// the longsword's numbers did.
+export { LONGSWORD_ATTACK_FPS, PRESENTATION_END_SOURCE_SECONDS };
+
+export const LONGSWORD_ATTACK_RUNTIME_STAGE = LONGSWORD_ATTACK_STAGE;
 export const LONGSWORD_ATTACK_INTERRUPTION_STAGE = 'G4.3B.1';
-export const LONGSWORD_ATTACK_FPS = 30;
 
 export const LONGSWORD_ATTACK_PHASES = Object.freeze({
   IDLE: 'idle',
@@ -22,43 +27,17 @@ export const LONGSWORD_ATTACK_PHASES = Object.freeze({
   INTERRUPTED: 'attack_interrupted',
 });
 
-const NATURAL_DURATIONS = Object.freeze({
-  top: 1.533,
-  right: 0.433,
-  left: 0.533,
-});
+// The longsword's answers, as thin wrappers so that every existing caller keeps working. A second
+// weapon calls its own timings record instead of these.
+export function getLongswordDirectionalAttackProfile(direction, options = {}) {
+  return LONGSWORD_ATTACK_TIMINGS.getProfile(direction, options);
+}
 
-// R21J.1 - where the presentation stops sampling the clip, when its authored tail is unusable.
-//
-// Reported from play: RIGHT does not settle after the swing, it looks like a dropped frame.
-// Measured, the blade axis turned per 60fps frame through the tail of each attack:
-//
-//   top     7.6  6.2  5.0  4.0  8.7  8.6  9.1  9.2 ...   never stops moving
-//   left   11.7  2.3  2.3  2.3  2.7  0.7  1.0  1.6 ...   decelerates, then eases out
-//   right  12.3  7.7  0.7  0.7  0.6  1.5  2.2  2.2 ...   stops dead for three frames, then resumes
-//
-// RIGHT is the only one that halts and restarts, and that halt is what reads as a skipped frame.
-// It is NOT the time warp: moving the warp's end from source 0.30 through 0.34, 0.38 and 0.42 left
-// the halt at exactly the same runtime moment, and it is present at the old 1.6 stretch too, which
-// puts it in the clip rather than in anything R21B.1 or R21I.1 did. Converting back through each
-// stretch lands both readings on source 0.306-0.307, so UAL2/Sword_Regular_A simply has a dead
-// interval between its 30fps keys 9 and 10.
-//
-// So the presentation stops sampling this clip where its real motion stops, at source 0.31 - the
-// last frame still turning (7.7 deg) sits at source 0.303, the first dead one at 0.312 - and the
-// existing attack-recovery blend covers the rest, easing to Sword_Idle over 155ms instead of
-// playing 123ms of authored stall and slow drift.
-//
-// The trim is in SOURCE seconds and the clip's own length is still reported unchanged as
-// sourceDurationSeconds: this says when we stop looking at the clip, not how long the clip is.
-export const PRESENTATION_END_SOURCE_SECONDS = Object.freeze({
-  right: 0.31,
-});
+export function createLongswordDirectionalAttackDefinition(direction, options = {}) {
+  return LONGSWORD_ATTACK_TIMINGS.createDefinition(direction, options);
+}
 
-const ACTIVE_LEAD_SECONDS = Object.freeze({ top: 0.055, right: 0.04, left: 0.045 });
-const ACTIVE_TRAIL_SECONDS = Object.freeze({ top: 0.065, right: 0.05, left: 0.055 });
-const TRAIL_LEAD_SECONDS = Object.freeze({ top: 0.16, right: 0.11, left: 0.12 });
-const TRAIL_TAIL_SECONDS = Object.freeze({ top: 0.12, right: 0.09, left: 0.10 });
+export const LONGSWORD_DIRECTIONAL_ATTACK_DEFINITIONS = LONGSWORD_ATTACK_TIMINGS.definitions;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, Number(value) || 0));
@@ -88,129 +67,6 @@ function normalizeDirectionVector(input = {}) {
     z: value.z / magnitude,
   });
 }
-
-function directionEntry(direction) {
-  const key = String(direction || '').toLowerCase();
-  const entry = LONGSWORD_DIRECTIONAL_ATTACKS[key];
-  if (!entry) throw new Error(`Unknown longsword attack direction: ${direction}`);
-  return { key, entry };
-}
-
-function frameFloor(seconds, fps) {
-  return Math.max(0, Math.floor(seconds * fps + 1e-9));
-}
-
-function frameCeil(seconds, fps) {
-  return Math.max(0, Math.ceil(seconds * fps - 1e-9));
-}
-
-export function getLongswordDirectionalAttackProfile(direction, options = {}) {
-  const { key, entry } = directionEntry(direction);
-  const sourceDurationSeconds = Math.max(0.001, Number(options.durationSeconds) || NATURAL_DURATIONS[key]);
-  // R20M.1 (B6h): every window below is authored against the clip, so it is derived in SOURCE time
-  // and then restated in the clock the exchange counts in. Where a direction has no warp - TOP and
-  // RIGHT - the two clocks are the same and this is the identity, byte for byte.
-  const timeWarp = options.timeWarp === null ? null : (options.timeWarp || getAttackTimeWarp(key));
-  // R21O.1: how long the whole swing takes, on top of the per-direction warp that fixes its shape.
-  // Every landmark below is derived through toRuntime, so the tempo reaches all of them at once -
-  // contact, the active window, the trail, the commitment marker and the clip's usable length keep
-  // their relationships to each other exactly and only move together.
-  const tempoScale = clampAttackTempoScale(options.tempoScale ?? DEFAULT_ATTACK_TEMPO_SCALE);
-  const toRuntime = (seconds) => warpSourceToRuntime(seconds, timeWarp, tempoScale);
-  // R21J.1: the clip may be abandoned before it ends, but never extended past it, and never
-  // trimmed back over anything the exchange is calibrated against - the trim is refused if it
-  // would land at or before contact.
-  const presentationEnd = PRESENTATION_END_SOURCE_SECONDS[key];
-  const usableSourceSeconds = presentationEnd != null
-    && presentationEnd > entry.contactSeconds
-    && presentationEnd < sourceDurationSeconds
-    ? presentationEnd
-    : sourceDurationSeconds;
-  const durationSeconds = toRuntime(usableSourceSeconds);
-  const contactSeconds = toRuntime(clamp(entry.contactSeconds, 0, sourceDurationSeconds));
-  const activeStartSeconds = toRuntime(clamp(entry.contactSeconds - ACTIVE_LEAD_SECONDS[key], 0, sourceDurationSeconds));
-  const activeEndSeconds = Math.max(activeStartSeconds, toRuntime(clamp(entry.contactSeconds + ACTIVE_TRAIL_SECONDS[key], 0, sourceDurationSeconds)));
-  const trailStartSeconds = toRuntime(clamp(entry.contactSeconds - TRAIL_LEAD_SECONDS[key], 0, sourceDurationSeconds));
-  const trailEndSeconds = Math.max(trailStartSeconds, toRuntime(clamp(entry.contactSeconds + TRAIL_TAIL_SECONDS[key], 0, sourceDurationSeconds)));
-  const movementStartSeconds = toRuntime(clamp(entry.contactSeconds - Math.max(0.11, TRAIL_LEAD_SECONDS[key]), 0, sourceDurationSeconds));
-  const movementEndSeconds = Math.max(movementStartSeconds, toRuntime(clamp(entry.contactSeconds + 0.04, 0, sourceDurationSeconds)));
-  const cancelStartSeconds = clamp(Math.max(activeEndSeconds, durationSeconds - Math.min(0.16, durationSeconds * 0.28)), 0, durationSeconds);
-  return Object.freeze({
-    timeWarp,
-    tempoScale,
-    sourceDurationSeconds,
-    stage: LONGSWORD_ATTACK_RUNTIME_STAGE,
-    weapon: 'longsword',
-    category: 'attack',
-    direction: key,
-    clipId: entry.clipId,
-    source: entry.clipId.startsWith('UAL1/') ? 'ual1' : 'ual2',
-    durationSeconds,
-    contactSeconds,
-    activeStartSeconds,
-    activeEndSeconds,
-    trailStartSeconds,
-    trailEndSeconds,
-    movementStartSeconds,
-    movementEndSeconds,
-    cancelStartSeconds,
-    inPlace: true,
-    rootRotationPolicy: 'lock',
-  });
-}
-
-export function createLongswordDirectionalAttackDefinition(direction, options = {}) {
-  const fps = Math.max(1, Number(options.fps) || LONGSWORD_ATTACK_FPS);
-  const profile = getLongswordDirectionalAttackProfile(direction, options);
-  const maxFrame = frameCeil(profile.durationSeconds, fps);
-  const action = createActionDefinition({
-    id: `longsword_light_${profile.direction}`,
-    clipId: profile.clipId,
-    category: 'attack',
-    animationBinding: {
-      source: profile.source,
-      clipId: profile.clipId,
-      speed: 1,
-      inPlace: true,
-      loop: false,
-      blendInSeconds: 0.04,
-      blendOutSeconds: 0.08,
-    },
-    windows: {
-      active: [{
-        startFrame: frameFloor(profile.activeStartSeconds, fps),
-        endFrame: frameCeil(profile.activeEndSeconds, fps),
-        label: `${profile.direction} sword contact`,
-      }],
-      movement: [{
-        startFrame: frameFloor(profile.movementStartSeconds, fps),
-        endFrame: frameCeil(profile.movementEndSeconds, fps),
-        label: `${profile.direction} attack commitment`,
-      }],
-      weaponTrail: [{
-        startFrame: frameFloor(profile.trailStartSeconds, fps),
-        endFrame: frameCeil(profile.trailEndSeconds, fps),
-        label: `${profile.direction} sword trail`,
-      }],
-      cancel: [{
-        startFrame: frameFloor(profile.cancelStartSeconds, fps),
-        endFrame: maxFrame,
-        label: `${profile.direction} recovery cancel`,
-      }],
-    },
-  }, maxFrame);
-  return Object.freeze({
-    ...action,
-    direction: profile.direction,
-    runtime: profile,
-    fps,
-    durationFrames: maxFrame,
-  });
-}
-
-export const LONGSWORD_DIRECTIONAL_ATTACK_DEFINITIONS = Object.freeze(Object.fromEntries(
-  LONGSWORD_ATTACK_DIRECTIONS.map((direction) => [direction, createLongswordDirectionalAttackDefinition(direction)]),
-));
 
 export function getLongswordAttackPhase(profile, elapsedSeconds) {
   if (!profile) return LONGSWORD_ATTACK_PHASES.IDLE;
