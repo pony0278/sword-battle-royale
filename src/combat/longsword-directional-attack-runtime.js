@@ -1,3 +1,4 @@
+// @ts-check
 import {
   SWEPT_CONTACT_TEMPORAL_ELIGIBILITY_AUTHORITY,
 } from './swept-contact-temporal-eligibility.js';

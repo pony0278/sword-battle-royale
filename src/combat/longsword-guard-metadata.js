@@ -1,3 +1,4 @@
+// @ts-check
 const freezeRange = (range) => Object.freeze({ ...range });
 const freezeEuler = (value) => Object.freeze({ x:value.x, y:value.y, z:value.z });
 const freezeQuaternion = (value) => Object.freeze([...value]);

@@ -48,6 +48,14 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # S1.C2: type checking, opted into one file at a time. checkJs is off in tsconfig.json and a
+      # file joins by carrying `// @ts-check`, so this gate reports on the seams rather than on the
+      # whole of src/ - which measured 244 errors, none of them defects. Runs after the tests
+      # because a type error is cheaper to read than a failing assertion, but never instead of them:
+      # this repository's bugs are wrong measurements, and those are all correctly typed.
+      - name: Typecheck the opted-in seams
+        run: npm run typecheck
+
       # R20Z.1: the two gates that protect the measured combat. The golden grid replays eleven
       # exchanges and diffs every outcome, posture, relevance verdict and separation against the
       # committed record; the parry gate plays one parry per direction and reads the in-page

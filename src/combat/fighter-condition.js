@@ -1,3 +1,4 @@
+// @ts-check
 import { getLongswordDirectionalAttackProfile } from './longsword-directional-attack-runtime.js';
 import {
   GUARD_REACTION_VARIANTS,
@@ -161,6 +162,14 @@ export function createFighterCondition({ maxHealth = DUEL_MAX_HEALTH } = {}) {
 
 // Who won, if anybody has. Kept as a function of two conditions rather than as state of its own:
 // there is exactly one duel and its result is entirely implied by the two fighters in it.
+// S1.C2: `= {}` makes the parameter's inferred type `{}`, which has neither field. Said explicitly,
+// with the conditions optional because judging a duel that has not started is a real call - the
+// 'no-duel' branch below is what answers it.
+/**
+ * @param {object} [duel]
+ * @param {ReturnType<typeof createFighterCondition>} [duel.playerCondition]
+ * @param {ReturnType<typeof createFighterCondition>} [duel.opponentCondition]
+ */
 export function judgeDuel({ playerCondition, opponentCondition } = {}) {
   const player = playerCondition?.report ?? null;
   const opponent = opponentCondition?.report ?? null;

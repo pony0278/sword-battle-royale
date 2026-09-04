@@ -1,3 +1,4 @@
+// @ts-check
 export const LONGSWORD_ATTACK_DIRECTIONS = Object.freeze(['top', 'right', 'left']);
 
 export const LONGSWORD_DIRECTIONAL_ATTACKS = Object.freeze({

@@ -81,6 +81,11 @@ function deflectRecoveryPlaybackSeconds() {
   return (DEFLECT_END_SECONDS - DEFLECT_POWER_END_SECONDS) / DEFLECT_RECOVERY_RATE;
 }
 
+// S1.C2: the default narrows the parameter to the literal 'parry' unless it is said otherwise, so
+// a checked caller asking for 'perfect-parry' - which resolveVariant below exists to accept - was
+// reported as an error. The union is derived from the frozen constant rather than retyped, so a
+// third variant is covered by adding it there and nowhere else.
+/** @param {typeof PRODUCTION_PARRY_DEFLECT_VARIANTS[keyof typeof PRODUCTION_PARRY_DEFLECT_VARIANTS]} [variant] */
 export function getProductionParryDeflectProfile(variant = PRODUCTION_PARRY_DEFLECT_VARIANTS.PARRY) {
   const base = PROFILES[resolveVariant(variant)];
   const holdEndSeconds = CONTACT_END_SECONDS + base.contactHoldSeconds;

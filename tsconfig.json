@@ -1,0 +1,48 @@
+// S1.C2 — type checking, opted into one file at a time.
+//
+// NOT a TypeScript migration, and deliberately not the first step of one. Measured before this was
+// written: `checkJs` across the whole of src/ reports 244 errors in 53 files, and the ones sampled
+// are inference gaps rather than defects - `Object.freeze` narrowing a 0 to the literal type `0`,
+// and `options = {}` inferring `{}` for a parameter every caller passes something to. Fixing 244 of
+// those to reach a green baseline is a large diff across measured combat modules, and the only
+// thing that proves such a diff did not move the fight is `npm run verify:combat`, which is
+// all-or-nothing: if the golden grid goes red after a sweep, nothing says which file did it.
+//
+// So `checkJs` is OFF here, and a file opts in by carrying `// @ts-check` at the top. A file
+// without it is still part of the program - so imports resolve and types flow across module
+// boundaries - but its own body is not reported on. That makes the checked set a list this
+// repository grows deliberately, one seam at a time, each addition small enough to prove.
+//
+// The seams are where a type is worth having, because a seam's whole purpose is to be a contract
+// that a second implementation has to satisfy: when a katana's guard metadata arrives without a
+// correctionLayerId, this says so before the browser does.
+//
+// The list to date, and why each is on it:
+//   fighter-condition.js                  S1.C1 - measuredContactSecondsFor takes a weapon's own
+//                                         profile accessor, and nothing but a type says what shape
+//                                         that accessor has to return.
+//   guard-state-machine.js                S1.C2 - the presentation table it builds is the thing
+//   longsword-guard-metadata.js           being moved out; these three are its inputs.
+//   guard-counter-presentation.js
+//   guard-reaction-presentation.js
+//   longsword-directional-metadata.js     S1.C1's inputs: the directional profile and the runtime
+//   longsword-directional-attack-runtime.js  that warps it.
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Left off on purpose. The measured 244 is at strict:false; turning it on before the checked
+    // set has grown would make every addition expensive at exactly the moment the habit is
+    // forming. It is a dial to turn once the list below is long, not now.
+    "strict": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  // The whole of src/ is in the program so that types flow through imports. Only the files
+  // carrying `// @ts-check` are reported on.
+  "include": ["src/**/*.js"]
+}

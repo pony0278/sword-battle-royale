@@ -19,6 +19,19 @@ export const GUARD_ACTION_SEMANTIC_ROLES = Object.freeze({
 
 export const GUARD_ACTION_SEMANTIC_STAGE = 'G3.5.1';
 
+// S1.C2: `fit` defaults to MATCH, which narrows the parameter to the literal 'match' unless it is
+// said otherwise - and PROVISIONAL is passed by guard-counter-presentation.js, which is the whole
+// reason the three values exist. Both unions are derived from the frozen constants above rather
+// than retyped, so adding a fit or a role stays a one-place change.
+/**
+ * @param {object} assessment
+ * @param {typeof GUARD_ACTION_SEMANTIC_ROLES[keyof typeof GUARD_ACTION_SEMANTIC_ROLES]} assessment.intendedRole
+ * @param {typeof GUARD_ACTION_SEMANTIC_ROLES[keyof typeof GUARD_ACTION_SEMANTIC_ROLES]} assessment.sourceRole
+ * @param {typeof GUARD_ACTION_SEMANTIC_FIT[keyof typeof GUARD_ACTION_SEMANTIC_FIT]} [assessment.fit]
+ * @param {boolean} [assessment.replacementRequired]
+ * @param {readonly string[]} [assessment.acquisitionCriteria]
+ * @param {string} [assessment.note]
+ */
 export function guardActionSemanticAssessment({
   intendedRole,
   sourceRole,

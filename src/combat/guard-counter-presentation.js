@@ -1,3 +1,4 @@
+// @ts-check
 import {
   GUARD_ACTION_SEMANTIC_FIT,
   GUARD_ACTION_SEMANTIC_ROLES,

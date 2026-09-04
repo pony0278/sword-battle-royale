@@ -1,3 +1,4 @@
+// @ts-check
 import {
   LONGSWORD_GUARD_BASE,
   LONGSWORD_GUARD_AUTHORING_STATE,
