@@ -106,8 +106,43 @@ this look like if it were wrong?*, and in both cases asking it took one command.
                       NPC L Hand 190 rotation keys, NPC R Hand 197
 ```
 
-Both wrists are busy, which is what a two-handed hold should look like. Not yet done: the clip is
-not in `SKYRIM_GUARD_CONVERTED_FILES` or any loader, `greatsword-attack-timings.js` is still ten
-`null`s, and `npm run measure:grip-reach` has not been run against it. handoff/44 pinned the record
-it has to beat — the authored pose leaves gaps of 0.27 to 1.26, and under 0.10 means the clip is
-holding the sword.
+Both wrists are busy, which is what a two-handed hold should look like.
+
+## The clip holds the sword. The retarget does not.
+
+handoff/44 pinned the authored pose failing to reach the hilt and said a real clip was what it
+wanted. `npm run measure:skyrim-grip-reach` puts the real clip through the production bridge:
+
+```text
+best 0.4134 · worst 0.4186 · 0/31 samples within tolerance (0.10)
+
+hands apart, as a fraction of head-to-root height
+  in the source clip     13.6%
+  after retargeting      30.0%   (2.21x the source)
+```
+
+**The animation is the part that is right.** 13.6% of head-to-root is two hands on one haft; the
+shield hold measures 52.3% by the same method, which is the control that says the number is a
+property of the clip and not of the measurement. The hold is lost in the bridge.
+
+Why: a rotation-only retarget does not preserve *reach* across skeletons with different limb
+proportions. Matching every joint angle on a differently-proportioned arm does not put the hand in
+the same place. Two things rule out the cheaper explanations — the gap varies by under 0.006 across
+6.667 s, so it is a fixed offset rather than a pose that swings past and misses; and HAND_R sits
+exactly on PRIMARY_GRIP, so the mount is not it.
+
+So **option C, the off-hand IK, is needed after all**. handoff/44 hoped a real clip would make it
+unnecessary. It does not, and now there is a measurement saying why rather than a look.
+
+A second, smaller finding fell out of the same run, independent of the retarget: the greatsword's
+`SECONDARY_GRIP` sits **0.0881** from the main hand, against the **0.192** the source clip
+authors — 46% of it. The node was placed proportionally from the longsword's, and the clip is the
+first thing to say where a two-handed grip actually goes.
+
+`tests/the-clip-holds-the-sword-the-retarget-does-not.test.js` pins all of it, the control included,
+in the same spirit as handoff/44's record of failure: numbers for a fix to beat.
+
+## Still not done
+
+The clip is not in `SKYRIM_GUARD_CONVERTED_FILES` or any loader, so nothing plays it yet;
+`greatsword-attack-timings.js` is still ten `null`s; and the off-hand IK does not exist.
