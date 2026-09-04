@@ -31,13 +31,20 @@ The reaction GLBs were baked from the real reviewed Skyrim LE HKX motions agains
 
 ### Frozen source hashes
 
-```text
-SHA256 270d68b5c62a7de68c39112ab9a813f27a758ac737a078fe55b21896cfce1f28  shd_blockhit.source.glb
-SHA256 bae74b1cdf8724eb17073a7347192946fef8cc9cedcdb8c9728e6ea9004ea637  shd_blockbash.source.glb
-SHA256 603cf8326501ca2dd3628e8f47c37c6cbad6bec491b224123af418e70c36fd47  shd_blockbashpower.source.glb
+They are not written here any more. Three workflows carried these three hashes inline, the
+mesh-strip below rewrote the files, and none of the copies was updated - so all three gates went red
+on `main` and stayed red, because nothing anyone runs locally checked those bytes.
+
+One record now, checked by `npm test` and by every workflow that cares:
+
+```bash
+npm run verify:frozen-sources     # tools/skyrim-hkx-bridge/frozen-source-assets.json
 ```
 
-All three source GLBs preserve the canonical 99-joint skin and contain 297 animation channels (translation + rotation + scale for 99 transform tracks).
+The hashes below are the pre-strip ones, kept only so the history reads straight:
+`270d68b5…` blockhit, `bae74b1c…` blockbash, `603cf832…` blockbashpower.
+
+All three carry 297 animation channels on the canonical 99 joints - translation, rotation and scale for each. The skin itself went with the presentation mesh (see below); the retarget matches joints by name and never used it.
 
 ## G3.3.2 runtime windows
 

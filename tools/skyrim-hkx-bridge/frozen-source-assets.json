@@ -1,0 +1,30 @@
+{
+  "purpose": "Every committed Skyrim source GLB, with the bytes a workflow and a test both check against.",
+  "assets": [
+    {
+      "file": "assets/skyrim/guard/converted/shd_blockidle.source.glb",
+      "bytes": 260344,
+      "sha256": "e93a5d4e8d7193a8d3a08fa56e1896aa1b9ff55a54c8a108d86f04dbd1fb63d8"
+    },
+    {
+      "file": "assets/skyrim/guard/converted/shd_blockhit.source.glb",
+      "bytes": 194692,
+      "sha256": "b496f3be42b85572dd63827481a75d9bff16efe1ef7a9617d518996acde2d526"
+    },
+    {
+      "file": "assets/skyrim/guard/converted/shd_blockbash.source.glb",
+      "bytes": 139152,
+      "sha256": "b813ee5148aa25091ca093faf16ba8db96f7b24f82b5468277e6288051eadba1"
+    },
+    {
+      "file": "assets/skyrim/guard/converted/shd_blockbashpower.source.glb",
+      "bytes": 182800,
+      "sha256": "a7bfb10c3ccaf2254dcc48e0827f9c12b8a8ebc19a829f3dfadbec3b5785c25f"
+    },
+    {
+      "file": "assets/skyrim/greatsword/converted/2hm_idle.source.glb",
+      "bytes": 154728,
+      "sha256": "5167f9e2a6a06f5a9f596e4d01c529d6e9ea85528fcc00e0bb72078a65f50f93"
+    }
+  ]
+}

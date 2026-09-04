@@ -43,11 +43,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Verify frozen Skyrim source assets
-        shell: bash
-        run: |
-          test "$(sha256sum assets/skyrim/guard/converted/shd_blockhit.source.glb | cut -d' ' -f1)" = "270d68b5c62a7de68c39112ab9a813f27a758ac737a078fe55b21896cfce1f28"
-          test "$(sha256sum assets/skyrim/guard/converted/shd_blockbash.source.glb | cut -d' ' -f1)" = "bae74b1cdf8724eb17073a7347192946fef8cc9cedcdb8c9728e6ea9004ea637"
-          test "$(sha256sum assets/skyrim/guard/converted/shd_blockbashpower.source.glb | cut -d' ' -f1)" = "603cf8326501ca2dd3628e8f47c37c6cbad6bec491b224123af418e70c36fd47"
+        run: node build/verify-frozen-sources.mjs
 
       - name: Run G3.6.3 production motion contract tests
         run: node --test tests/parry-contact-deflect-runtime-clip.test.js tests/guard-reaction-presentation.test.js tests/guard-state-machine.test.js tests/guard-presentation-runtime.test.js tests/power-bash-readability-probe.test.js
