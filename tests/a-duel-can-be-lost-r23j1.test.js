@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BODY_HIT_DAMAGE,
+  CANONICAL_CONTACT_DIRECTION,
   DUEL_MAX_HEALTH,
   FIGHTER_CONDITION_STAGE,
   MEASURED_CONTACT_SECONDS,
@@ -9,7 +10,9 @@ import {
   createFighterCondition,
   judgeDuel,
   latestFollowupStartSeconds,
+  measuredContactSecondsFor,
 } from '../src/combat/fighter-condition.js';
+import { LONGSWORD_ATTACK_DIRECTIONS } from '../src/combat/longsword-directional-metadata.js';
 
 // R23J.1 - the fight gets a result.
 //
@@ -56,6 +59,40 @@ test('R23J.1 the stagger is long enough for the follow-up the game already autho
   assert.ok(PARRY_STAGGER_SECONDS - required < 0.5,
     `${(PARRY_STAGGER_SECONDS - required).toFixed(3)}s of slack turns one parry into more than one blow`);
   assert.equal(MEASURED_CONTACT_SECONDS, 0.43, 'all three directions are warped onto one contact');
+});
+
+// S1.C1 - the assertion above says "all three directions" and reads one of them. It has been true
+// the whole time, but nothing measured it, and the whole point of asking a weapon for its contact
+// rather than resolving one at import is that the direction asked must not matter.
+//
+// Not equality: RIGHT lands 0.4301 against TOP's and LEFT's 0.4300. That 0.1ms is the warp's own
+// arithmetic - a tenth of a millisecond, against a 33.4ms animation frame - and not the +5e-17 of
+// float noise that LEFT carries. A tolerance is the honest assertion; equality would be a lie that
+// happened to pass on two directions out of three.
+test('S1.C1 every direction is warped onto the same contact, so the direction asked does not matter', () => {
+  const contacts = LONGSWORD_ATTACK_DIRECTIONS.map((direction) => ({
+    direction,
+    seconds: measuredContactSecondsFor({ direction }),
+  }));
+  const spread = Math.max(...contacts.map((c) => c.seconds)) - Math.min(...contacts.map((c) => c.seconds));
+  assert.ok(spread < 0.0002,
+    `directions disagree by ${(spread * 1000).toFixed(2)}ms: ${contacts.map((c) => `${c.direction} ${c.seconds}`).join(', ')}`);
+  assert.equal(measuredContactSecondsFor({ direction: CANONICAL_CONTACT_DIRECTION }), MEASURED_CONTACT_SECONDS,
+    'the exported constant is the canonical direction asked through the same seam');
+});
+
+// S1.C1 - a second weapon answers with its own measurement. Nothing here is the longsword: the
+// stand-in returns a contact of its own, and the point is that both rules built on this number -
+// the stagger covering the follow-up, and the opponent's guard beating the blade - can be asked
+// about a weapon that does not exist yet without touching this module again.
+test('S1.C1 a weapon that is not the longsword answers with its own contact', () => {
+  const katanaStandIn = () => Object.freeze({ contactSeconds: 0.31 });
+  const contact = measuredContactSecondsFor({ getDirectionalAttackProfile: katanaStandIn });
+  assert.equal(contact, 0.31, 'the injected weapon decides its own contact');
+  assert.notEqual(contact, MEASURED_CONTACT_SECONDS, 'and it is not resolved from the longsword');
+  // The rule the constant exists to serve, restated for that weapon rather than for this one.
+  assert.ok(PARRY_STAGGER_SECONDS >= latestFollowupStartSeconds() + contact,
+    'the authored stagger still covers a follow-up behind a faster blade');
 });
 
 test('R23J.1 a staggered fighter cannot act, and recovers on the clock rather than on an event', () => {
