@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createShieldParryLaneController } from '../src/game/lane-controller.js';
-import { LONGSWORD_ATTACK_PHASES } from '../src/combat/longsword-directional-attack-runtime.js';
+import { ATTACK_PHASES } from '../src/combat/attack-phases.js';
 import { ATTACK_ADVANCE_PROFILES } from '../src/combat/attack-advance.js';
 import { DODGE_DURATION_SECONDS } from '../src/combat/dodge-state.js';
 import { planGuardFacingTurn } from '../src/combat/guard-facing-turn.js';
@@ -39,7 +39,7 @@ function frame(laneController, { deltaSeconds = 1 / 60, elapsedSeconds = null, p
   if (elapsedSeconds != null) laneController.update(elapsedSeconds, phase != null, phase);
   laneController.walk(deltaSeconds, plan);
 }
-function swing(laneController, { direction = 'top', seconds, phase = LONGSWORD_ATTACK_PHASES.WINDUP, plan = null } = {}) {
+function swing(laneController, { direction = 'top', seconds, phase = ATTACK_PHASES.WINDUP, plan = null } = {}) {
   const step = 1 / 60;
   for (let elapsed = 0; elapsed < seconds - 1e-9; elapsed += step) {
     frame(laneController, { deltaSeconds: step, elapsedSeconds: elapsed + step, phase, plan });
@@ -112,12 +112,12 @@ test('R20T.4 the attacker facing tracks through the windup and freezes for the a
 
   laneController.startAttack('top', 0.43);
   const beforeWindup = laneController.attackerBaseFacingRadians;
-  swing(laneController, { seconds: 0.2, phase: LONGSWORD_ATTACK_PHASES.WINDUP });
+  swing(laneController, { seconds: 0.2, phase: ATTACK_PHASES.WINDUP });
   const afterWindup = laneController.attackerBaseFacingRadians;
   assert.ok(Math.abs(afterWindup - beforeWindup) > 1e-4, 'the windup tracks');
 
   laneController.setDefenderLateralIntent(1); // keep the bearing moving under them
-  swing(laneController, { seconds: 0.2, phase: LONGSWORD_ATTACK_PHASES.ACTIVE });
+  swing(laneController, { seconds: 0.2, phase: ATTACK_PHASES.ACTIVE });
   assert.ok(Math.abs(laneController.attackerBaseFacingRadians - afterWindup) < 1e-9,
     'and the active window does not - the release point is frozen');
 });

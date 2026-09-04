@@ -44,7 +44,7 @@ test('R18M.6 real swept Sword × Shield contact remains the only Parry success a
     'gripReport = gripConstraint.start({',
   ]);
   assert.match(director, /active: true/);
-  assert.match(director, /fallbackEligible: attackSnapshot\.phase === LONGSWORD_ATTACK_PHASES\.ACTIVE/);
+  assert.match(director, /fallbackEligible: attackSnapshot\.phase === ATTACK_PHASES\.ACTIVE/);
   assert.match(director, /realSweptContact: true/);
 });
 

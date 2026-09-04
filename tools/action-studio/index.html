@@ -257,7 +257,7 @@
 
   <script>
     window.__ACTION_STUDIO_RUNTIME_STAGE = 'G2.5.2';
-    window.__ACTION_STUDIO_BUNDLE_VERSION = 'fdabadab01b0';
+    window.__ACTION_STUDIO_BUNDLE_VERSION = 'db43ec27617e';
     const actionStudioParams = new URLSearchParams(location.search);
     if (location.protocol === 'file:') {
       window.__ACTION_STUDIO_ENTRY_MODE = 'bundle-file';
@@ -275,7 +275,7 @@
       window.__ACTION_STUDIO_ENTRY_MODE = 'bundle-http';
       document.documentElement.dataset.actionStudioEntry = 'bundle-http';
       const script = document.createElement('script');
-      script.src = './action-studio.bundle.js?v=fdabadab01b0';
+      script.src = './action-studio.bundle.js?v=db43ec27617e';
       script.dataset.actionStudioVersion = window.__ACTION_STUDIO_BUNDLE_VERSION;
       script.onload = async () => {
         document.documentElement.dataset.actionStudioBoot = 'pass';

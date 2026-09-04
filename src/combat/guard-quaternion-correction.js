@@ -1,7 +1,16 @@
+// @ts-check
+// Generic rig maths for a guard correction: normalise a quaternion, build one from Euler degrees,
+// scale it toward identity by a weight, and write the result onto named bones.
+//
+// handoff/39 classified this whole module as category B, and the function signatures are the
+// argument. Every one of them takes the offsets as a parameter. Nothing here reads a clip, a
+// contact time, or a blade; nothing here can tell a longsword from a greatsword, because nothing
+// here is ever told. It was called longsword-guard-correction.js only because the longsword was
+// the first thing to need it.
 import {
-  LONGSWORD_GUARD_CORRECTION_SCOPE,
-  getLongswordGuardCorrectionBones,
-} from './longsword-guard-metadata.js';
+  GUARD_CORRECTION_SCOPE,
+  getGuardCorrectionBones,
+} from './guard-correction-scope.js';
 
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
@@ -18,6 +27,7 @@ function clamp01(value) {
   return Math.max(0, Math.min(1, finite(value)));
 }
 
+/** @param {readonly number[]} input */
 export function normalizeQuaternionArray(input = [0, 0, 0, 1]) {
   const values = Array.from(input || [0, 0, 0, 1], (value) => finite(value));
   while (values.length < 4) values.push(values.length === 3 ? 1 : 0);
@@ -26,6 +36,7 @@ export function normalizeQuaternionArray(input = [0, 0, 0, 1]) {
   return Object.freeze(values.slice(0, 4).map((value) => value / length));
 }
 
+/** @param {readonly number[]} input */
 export function quaternionAngleDegrees(input = [0, 0, 0, 1]) {
   const quaternion = normalizeQuaternionArray(input);
   const w = Math.min(1, Math.max(-1, Math.abs(quaternion[3])));
@@ -46,6 +57,10 @@ export function quaternionFromEulerDegrees(input = {}) {
   ]);
 }
 
+/**
+ * @param {readonly number[]} input
+ * @param {number} weight
+ */
 export function scaleQuaternionOffset(input = [0, 0, 0, 1], weight = 1) {
   const t = clamp01(weight);
   let [x, y, z, w] = normalizeQuaternionArray(input);
@@ -72,7 +87,7 @@ export function scaleQuaternionOffset(input = [0, 0, 0, 1], weight = 1) {
 }
 
 export function buildGuardQuaternionOffsets(eulerByBone = {}) {
-  const allowed = new Set(getLongswordGuardCorrectionBones());
+  const allowed = new Set(getGuardCorrectionBones());
   return Object.freeze(Object.fromEntries(
     Object.entries(eulerByBone)
       .filter(([bone]) => allowed.has(bone))
@@ -81,8 +96,8 @@ export function buildGuardQuaternionOffsets(eulerByBone = {}) {
 }
 
 export function validateGuardQuaternionOffsets(offsets = {}) {
-  const allowed = new Set(getLongswordGuardCorrectionBones());
-  const limits = LONGSWORD_GUARD_CORRECTION_SCOPE.maxLocalCorrectionDegrees;
+  const allowed = new Set(getGuardCorrectionBones());
+  const limits = GUARD_CORRECTION_SCOPE.maxLocalCorrectionDegrees;
   const entries = [];
   const invalidBones = [];
   const overBudget = [];
@@ -152,7 +167,7 @@ export function resetGuardQuaternionOffsetRuntime(rig, offsets = null) {
   if (!rig?.bones) return 0;
   const boneIds = offsets
     ? Object.keys(offsets)
-    : getLongswordGuardCorrectionBones();
+    : getGuardCorrectionBones();
   let cleared = 0;
   for (const boneId of boneIds) {
     const bone = rig.bones[boneId];

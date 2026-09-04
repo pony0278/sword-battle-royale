@@ -11,16 +11,14 @@ import {
   TWO_ACTOR_PARRY_SYNC_PROFILE,
   TWO_ACTOR_PARRY_SYNC_STAGE,
 } from '../src/combat/two-actor-combat-integration.js';
-import {
-  createLongswordDirectionalAttackRuntime,
-  LONGSWORD_ATTACK_PHASES,
-} from '../src/combat/longsword-directional-attack-runtime.js';
+import { createLongswordDirectionalAttackRuntime } from '../src/combat/longsword-directional-attack-runtime.js';
 import {
   createGuardStateMachine,
   GUARD_EVENTS,
   GUARD_STATES,
 } from '../src/combat/guard-state-machine.js';
 import { PARRIED_REACTION_DEFINITION_STAGE } from '../src/combat/parried-reaction-definition.js';
+import { ATTACK_PHASES } from '../src/combat/attack-phases.js';
 
 function createFakeAttackerRecoil({ completeAfter = 2 } = {}) {
   let activePlan = null;
@@ -114,7 +112,7 @@ function startIntoActive(harness, direction = 'right') {
   assert.equal(started.accepted, true);
   const profile = harness.attackRuntime.snapshot.action.runtime;
   harness.attackRuntime.update(profile.activeStartSeconds * 1000 + 1);
-  assert.equal(harness.attackRuntime.snapshot.phase, LONGSWORD_ATTACK_PHASES.ACTIVE);
+  assert.equal(harness.attackRuntime.snapshot.phase, ATTACK_PHASES.ACTIVE);
   return harness.attackRuntime.snapshot;
 }
 
@@ -140,7 +138,7 @@ test('R18I resolves Parry by selecting OLD B3 while live contact owns the frozen
   assert.equal(harness.attackerRecoil.lastStartOptions.profileOverrides.impulseEndMs, 112);
   assert.equal(harness.attackerRecoil.lastStartOptions.profileOverrides.legStrengthScale, 1.95);
   assert.equal(harness.attackRuntime.interrupted, true);
-  assert.equal(harness.attackRuntime.snapshot.phase, LONGSWORD_ATTACK_PHASES.INTERRUPTED);
+  assert.equal(harness.attackRuntime.snapshot.phase, ATTACK_PHASES.INTERRUPTED);
   assert.equal(harness.guardMachine.state, GUARD_STATES.PARRY);
   assert.equal(harness.guardMachine.snapshot.lastTransition.authority, 'authoritative-combat');
   assert.equal(harness.attackerRecoil.starts, 1);
@@ -415,7 +413,7 @@ test('G4.3B.4 samples the exact contact base pose before every shared-clock addi
   assert.equal(harness.sampled.length, 3);
   assert.equal(harness.sampled[2].sourceTimeSeconds, frozenTime);
   assert.equal(harness.attackRuntime.interrupted, false);
-  assert.equal(harness.attackRuntime.snapshot.phase, LONGSWORD_ATTACK_PHASES.IDLE);
+  assert.equal(harness.attackRuntime.snapshot.phase, ATTACK_PHASES.IDLE);
   assert.equal(harness.integration.active, false);
   assert.equal(harness.integration.snapshot.lastExchange.sequence, resolved.resolution.attackSequence);
   assert.equal(harness.integration.snapshot.lastExchange.attackerHandoffReleased, true);
@@ -438,7 +436,7 @@ test('G4.3B.4 ignores non-authoritative contact without mutating either actor', 
   assert.equal(result.accepted, false);
   assert.equal(result.reason, 'no-authoritative-contact');
   assert.equal(harness.attackRuntime.interrupted, false);
-  assert.equal(harness.attackRuntime.snapshot.phase, LONGSWORD_ATTACK_PHASES.ACTIVE);
+  assert.equal(harness.attackRuntime.snapshot.phase, ATTACK_PHASES.ACTIVE);
   assert.equal(harness.guardMachine.snapshot.sequence, guardSequence);
   assert.equal(harness.attackerRecoil.starts, 0);
 });

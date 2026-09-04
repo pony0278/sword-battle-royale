@@ -44,7 +44,23 @@ async function compileModule(filename) {
     exportNames.push(name);
     return `${kind} ${name}`;
   });
-  if (/\b(?:import|export)\s/.test(source)) throw new Error(`Unsupported ESM syntax remains in ${normalizedRelativePath(absoluteFilename)}`);
+  // `export { A, B };` over names this module already declared - the form a module uses when it
+  // re-publishes what it imported, so that its own callers do not have to follow the move. The
+  // names are already bound in this scope by the import rewrite above, so the statement itself just
+  // goes away and the names join the export record. The `export { A } from './x.js'` form is
+  // deliberately not handled: it binds nothing locally, and the check below will say so.
+  source = source.replace(/^[ \t]*export\s*\{([^}]*)\}\s*;[ \t]*$/gm, (_match, names) => {
+    for (const name of names.split(',').map((entry) => entry.trim()).filter(Boolean)) {
+      if (name.includes(' as ')) throw new Error(`${normalizedRelativePath(absoluteFilename)} renames an export, which this bundler does not support: ${name}`);
+      if (!exportNames.includes(name)) exportNames.push(name);
+    }
+    return '';
+  });
+  // Anchored to the start of a line, because that is where module syntax lives once the two
+  // rewrites above have run. The unanchored form this replaces matched the words "import" and
+  // "export" wherever they appeared - including inside a `//` comment explaining an import - so a
+  // module could fail to bundle over its own prose while its code was already fully rewritten.
+  if (/^[ \t]*(?:import|export)\s/m.test(source)) throw new Error(`Unsupported ESM syntax remains in ${normalizedRelativePath(absoluteFilename)}`);
   const block = [
     `// ${normalizedRelativePath(absoluteFilename)}`,
     `const ${moduleId} = (() => {`,

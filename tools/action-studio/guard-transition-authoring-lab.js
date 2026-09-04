@@ -9,7 +9,7 @@ import {
 } from '../../src/animation/skyrim-converted-animation-library.js';
 import { composeSkyrimWeaponMountCalibration } from '../../src/animation/skyrim-weapon-bind-calibration.js';
 import { LONGSWORD_GUARD_AUTHORING_STATE } from '../../src/combat/longsword-guard-metadata.js';
-import { applyGuardQuaternionOffsetsWeighted } from '../../src/combat/longsword-guard-correction.js';
+import { applyGuardQuaternionOffsetsWeighted } from '../../src/combat/guard-quaternion-correction.js';
 import {
   getGuardTransitionProfile,
   sampleGuardPresentationWeights,

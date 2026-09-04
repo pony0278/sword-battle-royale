@@ -7,7 +7,7 @@ import {
   GUARD_REACTION_VARIANTS,
   getGuardReactionProfile,
 } from './guard-reaction-presentation.js';
-import { applyGuardQuaternionOffsetsWeighted } from './longsword-guard-correction.js';
+import { applyGuardQuaternionOffsetsWeighted } from './guard-quaternion-correction.js';
 import { LONGSWORD_GUARD_AUTHORING_STATE } from './longsword-guard-metadata.js';
 import { getProductionParryDeflectProfile } from '../animation/parry-contact-deflect-runtime-clip.js';
 import {

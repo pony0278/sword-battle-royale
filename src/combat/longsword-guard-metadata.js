@@ -25,50 +25,6 @@ export const LONGSWORD_TRIANGLE_GUARD_TARGETS = Object.freeze({
   torsoYawDegrees: freezeRange({ min: 20, max: 38 }),
 });
 
-export const LONGSWORD_GUARD_CORRECTION_SCOPE = Object.freeze({
-  requiredBones: Object.freeze([
-    'upperarm.r',
-    'lowerarm.r',
-    'wrist.r',
-  ]),
-  optionalBones: Object.freeze([
-    'chest',
-    'upperarm.l',
-    'lowerarm.l',
-    'wrist.l',
-    'handslot.r',
-  ]),
-  forbiddenBones: Object.freeze([
-    'root',
-    'hips',
-    'upperleg.l',
-    'upperleg.r',
-    'lowerleg.l',
-    'lowerleg.r',
-    'foot.l',
-    'foot.r',
-    'toes.l',
-    'toes.r',
-  ]),
-  maxLocalCorrectionDegrees: Object.freeze({
-    chest: 8,
-    'upperarm.r': 40,
-    'lowerarm.r': 50,
-    'wrist.r': 65,
-    'upperarm.l': 20,
-    'lowerarm.l': 25,
-    'wrist.l': 30,
-    'handslot.r': 15,
-  }),
-  policy: Object.freeze({
-    preserveRootAndLowerBody: true,
-    preserveSourceTorsoWeight: true,
-    preserveOffHandUnlessNeeded: true,
-    equipmentTrimOnly: true,
-    equipmentTrimMaxDegrees: 15,
-  }),
-});
-
 export const LONGSWORD_GUARD_CORRECTION_ORDER = Object.freeze([
   'sample-retargeted-skyrim-guard',
   'apply-local-upper-body-corrections',
@@ -143,11 +99,4 @@ export function evaluateLongswordTriangleGuardTargets(input = {}, targets = LONG
     gates,
     failures,
   });
-}
-
-export function getLongswordGuardCorrectionBones() {
-  return Object.freeze([
-    ...LONGSWORD_GUARD_CORRECTION_SCOPE.requiredBones,
-    ...LONGSWORD_GUARD_CORRECTION_SCOPE.optionalBones,
-  ]);
 }

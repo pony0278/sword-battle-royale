@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createEngagementGround, ENGAGEMENT_GROUND_TRANSFERS } from '../src/combat/engagement-ground.js';
 import { createShieldParryLaneController } from '../src/game/lane-controller.js';
-import { LONGSWORD_ATTACK_PHASES } from '../src/combat/longsword-directional-attack-runtime.js';
+import { ATTACK_PHASES } from '../src/combat/attack-phases.js';
 
 // R23C.1 - the swing gets a subject, and the only test that can prove it.
 //
@@ -144,7 +144,7 @@ test('R23C.1 the swing holds its own feet, whichever fighter committed it', () =
   assert.equal(lane.swingingSlot, 'attacker', 'nobody having swung, the attacker is the default');
 
   lane.startAttack('top', 0.43);
-  lane.update(1 / 60, true, LONGSWORD_ATTACK_PHASES.WINDUP);
+  lane.update(1 / 60, true, ATTACK_PHASES.WINDUP);
   const attackerSwinging = lane.walk(1 / 60, null);
   assert.equal(lane.attackerFeetLocked, true, 'the attacker committed, so the attacker is held');
   assert.equal(lane.defenderFeetLocked, false, 'the defender committed nothing and keeps walking');
@@ -153,7 +153,7 @@ test('R23C.1 the swing holds its own feet, whichever fighter committed it', () =
 
   lane.startAttack('top', 0.43, { swinger: 'defender' });
   assert.equal(lane.swingingSlot, 'defender');
-  lane.update(1 / 60, true, LONGSWORD_ATTACK_PHASES.WINDUP);
+  lane.update(1 / 60, true, ATTACK_PHASES.WINDUP);
   const defenderSwinging = lane.walk(1 / 60, null);
   assert.equal(lane.defenderFeetLocked, true, 'the defender committed, so the defender is held');
   assert.equal(lane.attackerFeetLocked, false, 'and the attacker is free to walk');
@@ -166,7 +166,7 @@ test('R23C.1 a defender-thrown swing moves the defender on the ledger, not the a
   const start = lane.report;
   lane.startAttack('top', 0.43, { swinger: 'defender' });
   for (let i = 1; i <= 26; i += 1) {
-    lane.update(i / 60, true, LONGSWORD_ATTACK_PHASES.ACTIVE);
+    lane.update(i / 60, true, ATTACK_PHASES.ACTIVE);
     lane.walk(1 / 60, null);
   }
   const mid = lane.report;

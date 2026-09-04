@@ -50,6 +50,19 @@
 //                                         shared definition apart from one fighter's Object3D.
 //   move-categories.js                    W3 - light and heavy, and what each word means. No
 //                                         imports and no numbers: the milliseconds are per weapon.
+//   attack-directions.js                  B - the directional triangle, taken out of the longsword's
+//                                         metadata. Three words with no imports; typed so that a
+//                                         weapon's directions have to be these words.
+//   attack-phases.js                      B - the phase vocabulary and the phase test, taken out of
+//                                         longsword-directional-attack-runtime.js. getAttackPhase
+//                                         reads three landmarks off a profile, and the type says
+//                                         which three.
+//   guard-correction-scope.js             B - which bones a guard correction may touch and how far,
+//                                         taken out of longsword-guard-metadata.js. The rig's
+//                                         anatomy, not the weapon's.
+//   guard-quaternion-correction.js        B - the rig maths that reads that scope, renamed from
+//                                         longsword-guard-correction.js. Its offsets arrive as a
+//                                         parameter, and the annotations say they arrive frozen.
 {
   "compilerOptions": {
     "allowJs": true,

@@ -13,7 +13,7 @@ import {
 import {
   quaternionAngleDegrees,
   scaleQuaternionOffset,
-} from '../src/combat/longsword-guard-correction.js';
+} from '../src/combat/guard-quaternion-correction.js';
 
 function approx(actual, expected, epsilon = 1e-9) {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${actual} ~= ${expected}`);

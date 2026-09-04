@@ -77,6 +77,9 @@ and it is what makes A legible as data.
 | `applyGuardQuaternionOffsetsWeighted`, `applyGuardQuaternionOffsets`, and the quaternion helpers in `longsword-guard-correction.js` | generic rig maths. The offsets arrive as a parameter; nothing in the function knows what is held. |
 | `LONGSWORD_GUARD_CORRECTION_SCOPE` | a bone list — the right arm chain. It belongs to the rig, and any right-hand weapon shares it. |
 
+**Done:** all four moved in handoff/41. The old names are gone rather than aliased, and a test
+fails if any returns.
+
 ## C — the single-weapon assumptions, which are the actual blockers
 
 Four sites, and one of them is good news.

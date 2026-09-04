@@ -9,14 +9,12 @@ import {
   TWO_ACTOR_RECOIL_PRESENTATION_AUTHORITY_STAGE,
   createTwoActorCombatIntegration,
 } from '../src/combat/two-actor-combat-integration.js';
-import {
-  createLongswordDirectionalAttackRuntime,
-  LONGSWORD_ATTACK_PHASES,
-} from '../src/combat/longsword-directional-attack-runtime.js';
+import { createLongswordDirectionalAttackRuntime } from '../src/combat/longsword-directional-attack-runtime.js';
 import {
   createGuardStateMachine,
   GUARD_EVENTS,
 } from '../src/combat/guard-state-machine.js';
+import { ATTACK_PHASES } from '../src/combat/attack-phases.js';
 
 function authoritativeContact() {
   return Object.freeze({
@@ -98,7 +96,7 @@ test('G4.3B.5R.2.3 refreshes attacker presentation after additive recoil mutates
   assert.equal(started.accepted, true);
   const profile = attackRuntime.snapshot.action.runtime;
   attackRuntime.update(profile.activeStartSeconds * 1000 + 1);
-  assert.equal(attackRuntime.snapshot.phase, LONGSWORD_ATTACK_PHASES.ACTIVE);
+  assert.equal(attackRuntime.snapshot.phase, ATTACK_PHASES.ACTIVE);
   const resolved = integration.resolveContact({ contact: authoritativeContact(), guardIntentAgeMs: 120 });
   assert.equal(resolved.accepted, true);
   assert.equal(resolved.resolution.outcome, 'parry');

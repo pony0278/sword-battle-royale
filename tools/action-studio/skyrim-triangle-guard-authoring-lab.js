@@ -8,7 +8,6 @@ import {
 import { composeSkyrimWeaponMountCalibration } from '../../src/animation/skyrim-weapon-bind-calibration.js';
 import {
   LONGSWORD_GUARD_AUTHORING_STATE,
-  LONGSWORD_GUARD_CORRECTION_SCOPE,
   LONGSWORD_TRIANGLE_GUARD_TARGETS,
   evaluateLongswordTriangleGuardTargets,
 } from '../../src/combat/longsword-guard-metadata.js';
@@ -17,7 +16,8 @@ import {
   buildGuardQuaternionOffsets,
   createGuardAuthoringExport,
   validateGuardQuaternionOffsets,
-} from '../../src/combat/longsword-guard-correction.js';
+} from '../../src/combat/guard-quaternion-correction.js';
+import { GUARD_CORRECTION_SCOPE } from '../../src/combat/guard-correction-scope.js';
 
 const THREE = window.THREE;
 if (!THREE?.WebGLRenderer || !THREE?.GLTFLoader) throw new Error('G2.5.1 requires Three.js + GLTFLoader');
@@ -333,7 +333,7 @@ async function optimizeSeed(seed) {
       changed = false;
       rounds += 1;
       for (const { bone, axis } of variables) {
-        const budget = LONGSWORD_GUARD_CORRECTION_SCOPE.maxLocalCorrectionDegrees[bone];
+        const budget = GUARD_CORRECTION_SCOPE.maxLocalCorrectionDegrees[bone];
         for (const direction of [-1, 1]) {
           const candidate = cloneEuler(bestEuler);
           candidate[bone][axis] = Math.max(-budget, Math.min(budget, candidate[bone][axis] + direction * Math.min(step, budget)));
@@ -405,7 +405,7 @@ function validateFiveSamples(updateUi = true) {
 function renderBoneControls() {
   controlsNode.innerHTML = '';
   for (const bone of AUTHORING_BONES) {
-    const budget = LONGSWORD_GUARD_CORRECTION_SCOPE.maxLocalCorrectionDegrees[bone];
+    const budget = GUARD_CORRECTION_SCOPE.maxLocalCorrectionDegrees[bone];
     const wrapper = document.createElement('div');
     wrapper.className = 'bone';
     wrapper.innerHTML = `<div class="bone-head"><b>${bone}</b><span class="budget">≤ ${budget}° quaternion${bone === 'handslot.r' ? ' · fine trim' : bone === 'chest' ? ' · optional silhouette trim' : ''}</span></div>`;

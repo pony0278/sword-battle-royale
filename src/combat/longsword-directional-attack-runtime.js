@@ -3,29 +3,22 @@ import {
   SWEPT_CONTACT_TEMPORAL_ELIGIBILITY_AUTHORITY,
 } from './swept-contact-temporal-eligibility.js';
 import { warpRuntimeToSource } from './attack-time-warp.js';
+import { ATTACK_PHASES, getAttackPhase } from './attack-phases.js';
 import { LONGSWORD_ATTACK_TIMINGS, LONGSWORD_ATTACK_FPS, LONGSWORD_ATTACK_STAGE, PRESENTATION_END_SOURCE_SECONDS } from './longsword-attack-timings.js';
 
 // G1 — this module used to hold six tables of the longsword's measurements and derive every attack
 // landmark from them at import. handoff/39 listed those as category A: the data a second weapon
 // re-measures rather than retypes. They are now longsword-attack-timings.js, built through the
-// weapon-agnostic createDirectionalAttackTimings, and what remains here is the machine - the phase
-// vocabulary, the phase test, and the stateful runtime that drives one swing at a time.
+// weapon-agnostic createDirectionalAttackTimings.
 //
-// Every export below is kept at this path. Seventeen lab pages, five tests and
-// two-actor-combat-integration.js import from here, and none of them should have to move because
-// the longsword's numbers did.
+// B — the phase vocabulary and the phase test left too, to attack-phases.js. They were category B:
+// weapon-agnostic mechanics wearing this module's name. What remains is the stateful runtime that
+// drives one swing at a time, plus thin longsword-named wrappers over the timings record, so the
+// lab pages that ask this module to start a swing keep working.
 export { LONGSWORD_ATTACK_FPS, PRESENTATION_END_SOURCE_SECONDS };
 
 export const LONGSWORD_ATTACK_RUNTIME_STAGE = LONGSWORD_ATTACK_STAGE;
 export const LONGSWORD_ATTACK_INTERRUPTION_STAGE = 'G4.3B.1';
-
-export const LONGSWORD_ATTACK_PHASES = Object.freeze({
-  IDLE: 'idle',
-  WINDUP: 'attack_windup',
-  ACTIVE: 'attack_active',
-  RECOVERY: 'attack_recovery',
-  INTERRUPTED: 'attack_interrupted',
-});
 
 // The longsword's answers, as thin wrappers so that every existing caller keeps working. A second
 // weapon calls its own timings record instead of these.
@@ -68,15 +61,6 @@ function normalizeDirectionVector(input = {}) {
   });
 }
 
-export function getLongswordAttackPhase(profile, elapsedSeconds) {
-  if (!profile) return LONGSWORD_ATTACK_PHASES.IDLE;
-  const elapsed = Math.max(0, Number(elapsedSeconds) || 0);
-  if (elapsed < profile.activeStartSeconds) return LONGSWORD_ATTACK_PHASES.WINDUP;
-  if (elapsed <= profile.activeEndSeconds) return LONGSWORD_ATTACK_PHASES.ACTIVE;
-  if (elapsed < profile.durationSeconds) return LONGSWORD_ATTACK_PHASES.RECOVERY;
-  return LONGSWORD_ATTACK_PHASES.IDLE;
-}
-
 function freezeInterruptionRequest(input = {}) {
   const resolution = input.resolution || null;
   const contact = resolution?.contact || input.contact || {};
@@ -112,8 +96,8 @@ export function createLongswordDirectionalAttackRuntime(options = {}) {
       interruptionStage: LONGSWORD_ATTACK_INTERRUPTION_STAGE,
       sequence,
       phase: interruption
-        ? LONGSWORD_ATTACK_PHASES.INTERRUPTED
-        : getLongswordAttackPhase(profile, elapsedSeconds),
+        ? ATTACK_PHASES.INTERRUPTED
+        : getAttackPhase(profile, elapsedSeconds),
       phaseBeforeInterruption: interruption?.phaseAtInterrupt || null,
       elapsedMs,
       elapsedSeconds,
@@ -182,8 +166,8 @@ export function createLongswordDirectionalAttackRuntime(options = {}) {
     );
     // ...and the same instant as a place in the clip, which is what the pose sampler needs.
     const sourceTimeSeconds = warpRuntimeToSource(runtimeSeconds, profile.timeWarp, profile.tempoScale);
-    const phaseAtInterrupt = getLongswordAttackPhase(profile, runtimeSeconds);
-    if (phaseAtInterrupt !== LONGSWORD_ATTACK_PHASES.ACTIVE && input.allowOutsideActive !== true) {
+    const phaseAtInterrupt = getAttackPhase(profile, runtimeSeconds);
+    if (phaseAtInterrupt !== ATTACK_PHASES.ACTIVE && input.allowOutsideActive !== true) {
       return Object.freeze({ accepted: false, reason: 'attack-not-active', snapshot: snapshot() });
     }
 

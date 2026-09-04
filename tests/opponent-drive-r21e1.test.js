@@ -19,7 +19,7 @@ import {
   MEASURED_UNDEFENDED_BODY_REACH_METERS,
   effectiveSeparationAtContact,
 } from '../src/combat/engagement-spacing.js';
-import { LONGSWORD_ATTACK_DIRECTIONS } from '../src/combat/longsword-directional-metadata.js';
+import { ATTACK_DIRECTIONS } from '../src/combat/attack-directions.js';
 import { LANE_LOCOMOTION_PROFILE } from '../src/combat/lane-locomotion.js';
 
 const DIRECTIONS = ['top', 'right', 'left'];
@@ -94,7 +94,7 @@ test('R21E.1 the bag serves each direction exactly once per three, order seeded'
   const sequence = createOpponentDirectionSequence(7);
   for (let round = 0; round < 40; round += 1) {
     const three = [sequence.next(), sequence.next(), sequence.next()].sort();
-    assert.deepEqual(three, [...LONGSWORD_ATTACK_DIRECTIONS].sort(), `round ${round}`);
+    assert.deepEqual(three, [...ATTACK_DIRECTIONS].sort(), `round ${round}`);
   }
   assert.equal(sequence.served, 120);
 });
@@ -142,7 +142,7 @@ test('R21E.1 the runtime eventually attacks, and only commits what the lab accep
   for (let i = 0; i < 200 && !attack; i += 1) {
     attack = runtime.frame({ deltaMs: 16, separationMeters: preferred, attackAvailable: true }).attack;
   }
-  assert.ok(LONGSWORD_ATTACK_DIRECTIONS.includes(attack));
+  assert.ok(ATTACK_DIRECTIONS.includes(attack));
   assert.equal(runtime.report.attacksServed, 0, 'planning is not spending');
   runtime.commit(attack);
   assert.equal(runtime.report.attacksServed, 1);

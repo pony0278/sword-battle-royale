@@ -1,5 +1,5 @@
 import { GUARD_SECTORS } from './guard-sector.js';
-import { LONGSWORD_ATTACK_DIRECTIONS } from './longsword-directional-metadata.js';
+import { ATTACK_DIRECTIONS } from './attack-directions.js';
 
 export const ATTACK_DIRECTION_AS_DEFENDED_STAGE = 'R21Q.1';
 
@@ -52,8 +52,8 @@ export const MEASURED_BLADE_SCREEN_SIDE = Object.freeze({
 
 // Both vocabularies are the same three words, which is precisely why the bug was invisible: every
 // comparison type-checked and read correctly out loud.
-export const NAMING_FRAMES_SHARE_A_VOCABULARY = GUARD_SECTORS.length === LONGSWORD_ATTACK_DIRECTIONS.length
-  && GUARD_SECTORS.every((sector) => LONGSWORD_ATTACK_DIRECTIONS.includes(sector));
+export const NAMING_FRAMES_SHARE_A_VOCABULARY = GUARD_SECTORS.length === ATTACK_DIRECTIONS.length
+  && GUARD_SECTORS.every((sector) => ATTACK_DIRECTIONS.includes(sector));
 
 export function defendedSectorFor(attackDirection) {
   const key = String(attackDirection || '').toLowerCase();

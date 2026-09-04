@@ -1,4 +1,4 @@
-import { LONGSWORD_ATTACK_DIRECTIONS } from './longsword-directional-metadata.js';
+import { ATTACK_DIRECTIONS } from './attack-directions.js';
 
 export const OPPONENT_DRIVE_STAGE = 'R21E.1';
 
@@ -129,7 +129,7 @@ export function createSeededRandom(seed = 1) {
 // A bag, not a die. The point of the drive is to make the per-direction tally readable, and an
 // independent 1-in-3 roll can hand out six TOPs in a row - which is a fine fight and a useless
 // sample. Every three attacks contain each direction exactly once; only the order is seeded.
-export function createOpponentDirectionSequence(seed = 1, directions = LONGSWORD_ATTACK_DIRECTIONS) {
+export function createOpponentDirectionSequence(seed = 1, directions = ATTACK_DIRECTIONS) {
   const pool = Object.freeze([...directions]);
   const random = createSeededRandom(seed);
   let bag = [];
@@ -205,7 +205,7 @@ export function planOpponentDrive(input = {}) {
   const restedMs = finite(input.restedMs);
   const restTargetMs = finite(input.restTargetMs, profile.restIntervalMs.minimum);
   const rested = restedMs >= restTargetMs;
-  const direction = LONGSWORD_ATTACK_DIRECTIONS.includes(input.nextDirection) ? input.nextDirection : null;
+  const direction = ATTACK_DIRECTIONS.includes(input.nextDirection) ? input.nextDirection : null;
   // Spacing is a precondition of the swing, not a race against it: a drive that swung on the clock
   // alone would throw RIGHT from wherever the last attack left it, because RIGHT's gate reopens
   // (600ms) sooner than the 0.663m it just spent takes to walk back out at 0.75 m/s (884ms).

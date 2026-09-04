@@ -1,9 +1,7 @@
 // @ts-check
 import { createDirectionalAttackTimings } from './directional-attack-timings.js';
-import {
-  LONGSWORD_ATTACK_DIRECTIONS,
-  LONGSWORD_DIRECTIONAL_ATTACKS,
-} from './longsword-directional-metadata.js';
+import { ATTACK_DIRECTIONS } from './attack-directions.js';
+import { LONGSWORD_DIRECTIONAL_ATTACKS } from './longsword-directional-metadata.js';
 import { getAttackTimeWarp } from './attack-time-warp.js';
 
 // G1, step 3 of four — the longsword's attack measurements, where the longsword lives.
@@ -49,7 +47,7 @@ export const LONGSWORD_ATTACK_TIMINGS = createDirectionalAttackTimings({
   weapon: 'longsword',
   stage: LONGSWORD_ATTACK_STAGE,
   fps: LONGSWORD_ATTACK_FPS,
-  directions: LONGSWORD_ATTACK_DIRECTIONS,
+  directions: ATTACK_DIRECTIONS,
   attacks: LONGSWORD_DIRECTIONAL_ATTACKS,
   naturalDurations: NATURAL_DURATIONS,
   presentationEndSourceSeconds: PRESENTATION_END_SOURCE_SECONDS,

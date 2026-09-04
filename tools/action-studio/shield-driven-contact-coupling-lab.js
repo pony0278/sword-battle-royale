@@ -12,7 +12,8 @@ import { loadSkyrimConvertedAnimationLibrary } from '../../src/animation/skyrim-
 import { composeSkyrimWeaponMountCalibration } from '../../src/animation/skyrim-weapon-bind-calibration.js';
 import { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } from '../../src/combat/guard-state-machine.js';
 import { createGuardPresentationRuntime } from '../../src/combat/guard-presentation-runtime.js';
-import { createLongswordDirectionalAttackRuntime, LONGSWORD_ATTACK_PHASES } from '../../src/combat/longsword-directional-attack-runtime.js';
+import { createLongswordDirectionalAttackRuntime } from '../../src/combat/longsword-directional-attack-runtime.js';
+import { ATTACK_PHASES } from '../../src/combat/attack-phases.js';
 import { captureRigPose, applyRigPose } from '../../src/combat/guard-recovery-bridge.js';
 import { probeSweptSwordBucklerContact } from '../../src/combat/swept-sword-buckler-contact.js';
 import { createGuardThreatTrackingRuntime, planGuardThreatCorrection } from '../../src/combat/guard-threat-tracking.js';
@@ -37,9 +38,7 @@ import {
   PARRY_BACKWARD_BALANCE_BREAK_STAGE,
   createParryBackwardBalanceBreakRuntime,
 } from '../../src/combat/parry-backward-balance-break.js?v=g43b5r27';
-import {
-  TWO_ACTOR_WHOLE_BODY_RECOIL_BURST_STAGE,
-} from '../../src/combat/two-actor-whole-body-recoil-burst.js?v=g43b5r27';
+import { TWO_ACTOR_WHOLE_BODY_RECOIL_BURST_STAGE } from '../../src/combat/two-actor-whole-body-recoil-burst.js?v=g43b5r27';
 
 const LAB_STAGE = TWO_ACTOR_WHOLE_BODY_RECOIL_BURST_STAGE;
 const THREE = window.THREE;
@@ -299,7 +298,7 @@ function updatePreContact(snapshot, currentBlade, deltaSeconds) {
 
 function resolveContact(snapshot, currentBlade, deltaSeconds) {
   if (!previousBlade || !snapshot.action || firstContact) return;
-  latestContact = probeSweptSwordBucklerContact({ previousBlade, currentBlade, bucklerSurface: buckler.getWorldParrySurface(), deltaSeconds, active: snapshot.phase === LONGSWORD_ATTACK_PHASES.ACTIVE });
+  latestContact = probeSweptSwordBucklerContact({ previousBlade, currentBlade, bucklerSurface: buckler.getWorldParrySurface(), deltaSeconds, active: snapshot.phase === ATTACK_PHASES.ACTIVE });
   if (!latestContact.contact) return;
   firstContact = latestContact;
   const surfaceAtContact = buckler.getWorldParrySurface();

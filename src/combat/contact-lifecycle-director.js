@@ -4,7 +4,7 @@ import { applyShieldContactSkin } from './shield-contact-skin.js';
 import { evaluateSweptContactTemporalEligibility } from './swept-contact-temporal-eligibility.js';
 import { probeHiltClangContact, buildHiltPolyline } from './hilt-clang-contact.js';
 import { decideContactDepthOrder } from './contact-depth-order.js';
-import { LONGSWORD_ATTACK_PHASES } from './longsword-directional-attack-runtime.js';
+import { ATTACK_PHASES } from './attack-phases.js';
 import { GUARD_STATES } from './guard-state-machine.js';
 import {
   TWO_ACTOR_PARRY_REACTION_CHANNELS,
@@ -375,7 +375,7 @@ export function createContactLifecycleDirector({
       }),
       attackSnapshot,
       deltaSeconds,
-      fallbackEligible: attackSnapshot.phase === LONGSWORD_ATTACK_PHASES.ACTIVE,
+      fallbackEligible: attackSnapshot.phase === ATTACK_PHASES.ACTIVE,
     });
     // R19P.1: when the blade misses a shield that is deliberately holding in front (the close
     // posture), the hilt gets its turn before the body does. Same swept solver, same temporal
@@ -401,7 +401,7 @@ export function createContactLifecycleDirector({
           contactReport: clangReport,
           attackSnapshot,
           deltaSeconds,
-          fallbackEligible: attackSnapshot.phase === LONGSWORD_ATTACK_PHASES.ACTIVE,
+          fallbackEligible: attackSnapshot.phase === ATTACK_PHASES.ACTIVE,
         });
         if (clangEvaluation.contact) contactEvaluation = clangEvaluation;
       }

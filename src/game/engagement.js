@@ -43,7 +43,7 @@ export function createEngagement(THREE, {
   camera,
   attackRuntime,
   createOwnershipTaps,
-  longswordAttackPhases,
+  attackPhases,
   promptHoldMs,
   debugMode = false,
   parrySync = { presentationOffsetSeconds: 0.205, parryAttackerRecoilDelayMs: 0 },
@@ -116,7 +116,7 @@ export function createEngagement(THREE, {
     predictivePresentation: receiverFighter.predictivePresentation,
     activeInterceptIntent: receiverFighter.activeParryInterceptIntent,
     parryGate: receiverFighter.parryGate,
-    longswordAttackPhases,
+    attackPhases,
     promptHoldMs,
     debugMode,
     // The caller's context, with this engagement's own blade memory folded in. previousBlade used

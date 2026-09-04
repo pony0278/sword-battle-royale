@@ -7,7 +7,7 @@ import {
   SWING_WINDUP_TRACKING_RATE_RADIANS_PER_SECOND,
   planSwingFacingPolicy,
 } from '../src/combat/swing-windup-tracking.js';
-import { LONGSWORD_ATTACK_PHASES } from '../src/combat/longsword-directional-attack-runtime.js';
+import { ATTACK_PHASES } from '../src/combat/attack-phases.js';
 import { BASE_FACING_TURN_RATE_RADIANS_PER_SECOND, createBaseFacingRuntime } from '../src/combat/base-facing.js';
 import { GUARD_FACING_TURN_RATE_RADIANS_PER_SECOND } from '../src/combat/guard-facing-turn.js';
 
@@ -27,13 +27,13 @@ test('R20B.1 the rate is 45 deg/s: inside the rate-insensitive band, under every
 });
 
 test('R20B.1 track through the windup, freeze from the active window, free otherwise', () => {
-  const free = planSwingFacingPolicy({ swingLive: false, phase: LONGSWORD_ATTACK_PHASES.WINDUP });
+  const free = planSwingFacingPolicy({ swingLive: false, phase: ATTACK_PHASES.WINDUP });
   assert.equal(free.mode, 'free');
   assert.equal(free.rateRadiansPerSecond, null);
-  const track = planSwingFacingPolicy({ swingLive: true, phase: LONGSWORD_ATTACK_PHASES.WINDUP });
+  const track = planSwingFacingPolicy({ swingLive: true, phase: ATTACK_PHASES.WINDUP });
   assert.equal(track.mode, 'track');
   assert.equal(track.rateRadiansPerSecond, SWING_WINDUP_TRACKING_RATE_RADIANS_PER_SECOND);
-  assert.equal(planSwingFacingPolicy({ swingLive: true, phase: LONGSWORD_ATTACK_PHASES.ACTIVE }).mode, 'frozen');
+  assert.equal(planSwingFacingPolicy({ swingLive: true, phase: ATTACK_PHASES.ACTIVE }).mode, 'frozen');
   // Doubt resolves to the freeze - a live swing in a nameless phase keeps the measured
   // legacy behaviour, so a caller that never learned to pass the phase changes nothing.
   assert.equal(planSwingFacingPolicy({ swingLive: true, phase: null }).mode, 'frozen');

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getLongswordDirectionalAttackProfile } from '../src/combat/longsword-directional-attack-runtime.js';
-import { LONGSWORD_ATTACK_DIRECTIONS } from '../src/combat/longsword-directional-metadata.js';
+import { ATTACK_DIRECTIONS } from '../src/combat/attack-directions.js';
 
 // G1, step 1 of four - the attack timings, pinned before the seam moves them.
 //
@@ -99,15 +99,15 @@ function pinnable(profile) {
 }
 
 test('G1 every attack landmark is exactly what it was before the seam moved', () => {
-  for (const direction of LONGSWORD_ATTACK_DIRECTIONS) {
+  for (const direction of ATTACK_DIRECTIONS) {
     assert.deepEqual(pinnable(getLongswordDirectionalAttackProfile(direction)), PINNED[direction],
       `${direction} moved`);
   }
 });
 
 test('G1 the pin covers every direction and every field a profile carries', () => {
-  assert.deepEqual([...LONGSWORD_ATTACK_DIRECTIONS].sort(), Object.keys(PINNED).sort());
-  for (const direction of LONGSWORD_ATTACK_DIRECTIONS) {
+  assert.deepEqual([...ATTACK_DIRECTIONS].sort(), Object.keys(PINNED).sort());
+  for (const direction of ATTACK_DIRECTIONS) {
     const live = Object.keys(pinnable(getLongswordDirectionalAttackProfile(direction))).sort();
     assert.deepEqual(live, Object.keys(PINNED[direction]).sort(),
       `${direction} has a field the pin does not name`);
@@ -119,7 +119,7 @@ test('G1 the pin covers every direction and every field a profile carries', () =
 // and because these are the invariants a GREATSWORD has to satisfy too - its numbers will all
 // differ, and every line below still has to hold.
 test('G1 the landmarks keep their order, which is what a second weapon must also satisfy', () => {
-  for (const direction of LONGSWORD_ATTACK_DIRECTIONS) {
+  for (const direction of ATTACK_DIRECTIONS) {
     const p = getLongswordDirectionalAttackProfile(direction);
     assert.ok(p.trailStartSeconds <= p.activeStartSeconds,
       `${direction}: the trail opens before the blade goes active`);

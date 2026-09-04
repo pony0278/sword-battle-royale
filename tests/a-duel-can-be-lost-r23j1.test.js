@@ -12,7 +12,7 @@ import {
   latestFollowupStartSeconds,
   measuredContactSecondsFor,
 } from '../src/combat/fighter-condition.js';
-import { LONGSWORD_ATTACK_DIRECTIONS } from '../src/combat/longsword-directional-metadata.js';
+import { ATTACK_DIRECTIONS } from '../src/combat/attack-directions.js';
 
 // R23J.1 - the fight gets a result.
 //
@@ -70,7 +70,7 @@ test('R23J.1 the stagger is long enough for the follow-up the game already autho
 // float noise that LEFT carries. A tolerance is the honest assertion; equality would be a lie that
 // happened to pass on two directions out of three.
 test('S1.C1 every direction is warped onto the same contact, so the direction asked does not matter', () => {
-  const contacts = LONGSWORD_ATTACK_DIRECTIONS.map((direction) => ({
+  const contacts = ATTACK_DIRECTIONS.map((direction) => ({
     direction,
     seconds: measuredContactSecondsFor({ direction }),
   }));

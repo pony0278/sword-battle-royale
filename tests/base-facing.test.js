@@ -10,7 +10,7 @@ import {
 } from '../src/combat/base-facing.js';
 
 import { createShieldParryLaneController } from '../src/game/lane-controller.js';
-import { LONGSWORD_ATTACK_PHASES } from '../src/combat/longsword-directional-attack-runtime.js';
+import { ATTACK_PHASES } from '../src/combat/attack-phases.js';
 
 function laneHarness(separationMeters = 2.4) {
   const stamped = [];
@@ -80,7 +80,7 @@ test('R19T.1 the lane controller integrates both facings and stamps them, the sw
   const beforeAttacker = laneController.attackerBaseFacingRadians;
   const beforeDefender = laneController.defenderBaseFacingRadians;
   for (let i = 0; i < 30; i += 1) {
-    laneController.update((i + 1) / 60, true, LONGSWORD_ATTACK_PHASES.ACTIVE);
+    laneController.update((i + 1) / 60, true, ATTACK_PHASES.ACTIVE);
     laneController.walk(1 / 60, null);
   }
   assert.equal(laneController.attackerBaseFacingRadians, beforeAttacker,
