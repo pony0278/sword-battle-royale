@@ -127,9 +127,17 @@ alone: it is a measurement of *this* weapon reaching *that* body.
 
 ## What this scan deliberately did not do
 
-**Nothing was renamed.** The B renames touch `guard-state-machine.js`, which is measured by the
-golden grid and the parry gate; they are a change to make against those gates deliberately, not a
-side effect of a scan.
+**Nothing was renamed.** A rename against the golden grid and the parry gate is a change to make
+deliberately, not a side effect of a scan.
+
+Corrected after the fact: this section first claimed the B renames touch `guard-state-machine.js`
+and so collide with C-2. They do not. Measured, all four category-B symbols appear in that file
+zero times — its longsword imports are `LONGSWORD_GUARD_BASE`, `LONGSWORD_GUARD_AUTHORING_STATE`,
+`LONGSWORD_GUARD_REACTION_PROFILES` and `LONGSWORD_GUARD_COUNTER_PROFILE`, every one of them
+category A. B touches `opponent-drive`, `guard-sector`, `attack-direction-as-defended`,
+`contact-lifecycle-director`, `swing-windup-tracking`, `pre-contact-controller`,
+`guard-presentation-runtime` and `predictive-intercept-parry`; C-2 touches `guard-state-machine`.
+The two sets are disjoint, so their order is free.
 
 **The `tools/` and `tests/` fan-out was not classified.** 39 files, and most of them are the record
 of which probe belonged to which stage. Deleting or renaming evidence is a decision for the person
