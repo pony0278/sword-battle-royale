@@ -69,5 +69,5 @@ test('R24C.1 once measured, the line is held until the sequence ends - no fall b
 test('R24C.1 the coverage stands down in the recovery: a blade on its way home is nobody\'s threat', () => {
   const controller = readFileSync(new URL('../src/game/pre-contact-controller.js', import.meta.url), 'utf8');
   // Composition of the engaged gate, read rather than run: the recovery phase joins the interrupted one.
-  assert.match(controller, /const engaged = snapshot\.phase !== LONGSWORD_ATTACK_PHASES\.INTERRUPTED\n\s*&& snapshot\.phase !== LONGSWORD_ATTACK_PHASES\.RECOVERY\n\s*&& relevance\.relevant/);
+  assert.match(controller, /const engaged = snapshot\.phase !== ATTACK_PHASES\.INTERRUPTED\n\s*&& snapshot\.phase !== ATTACK_PHASES\.RECOVERY\n\s*&& relevance\.relevant/);
 });

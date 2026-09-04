@@ -31,7 +31,7 @@ import {
   blendRecoveryPose,
 } from '../../src/combat/guard-recovery-bridge.js';
 import { LONGSWORD_GUARD_AUTHORING_STATE } from '../../src/combat/longsword-guard-metadata.js';
-import { applyGuardQuaternionOffsetsWeighted } from '../../src/combat/longsword-guard-correction.js';
+import { applyGuardQuaternionOffsetsWeighted } from '../../src/combat/guard-quaternion-correction.js';
 
 const THREE = window.THREE;
 if (!THREE?.WebGLRenderer || !THREE?.GLTFLoader) throw new Error('G4.2.1 requires Three.js + GLTFLoader');

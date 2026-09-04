@@ -1,4 +1,4 @@
-import { LONGSWORD_ATTACK_DIRECTIONS } from './longsword-directional-metadata.js';
+import { ATTACK_DIRECTIONS } from './attack-directions.js';
 
 export const GUARD_SECTOR_STAGE = 'R21A.2';
 
@@ -147,5 +147,5 @@ export function planGuardSector(input = {}) {
 
 // The contract this module exists to keep: a sector is named after the attack it answers. Exported
 // so the check lives with the claim rather than only in a test file.
-export const GUARD_SECTORS_MATCH_ATTACK_DIRECTIONS = GUARD_SECTORS.length === LONGSWORD_ATTACK_DIRECTIONS.length
-  && GUARD_SECTORS.every((sector) => LONGSWORD_ATTACK_DIRECTIONS.includes(sector));
+export const GUARD_SECTORS_MATCH_ATTACK_DIRECTIONS = GUARD_SECTORS.length === ATTACK_DIRECTIONS.length
+  && GUARD_SECTORS.every((sector) => ATTACK_DIRECTIONS.includes(sector));

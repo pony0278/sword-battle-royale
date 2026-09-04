@@ -1,13 +1,13 @@
+import { THREE } from './three-namespace.js'; // Vite: the renderer, bundled. See that file for why the namespace is composed.
 import { GUARD_INTENT_AGE_MS } from '../../src/combat/contact-lifecycle-director.js';
 import { GUARD_COVERAGE } from '../../src/combat/guard-sector-gate.js'; // R23Z.1: the player's block is a wall, the opponent's guards one sector
 import { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } from '../../src/combat/guard-state-machine.js';
 import { createGuardPresentationRuntime } from '../../src/combat/guard-presentation-runtime.js';
-import { createLongswordDirectionalAttackRuntime, LONGSWORD_ATTACK_PHASES } from '../../src/combat/longsword-directional-attack-runtime.js';
+import { createLongswordDirectionalAttackRuntime } from '../../src/combat/longsword-directional-attack-runtime.js';
+import { ATTACK_PHASES } from '../../src/combat/attack-phases.js';
 import { captureRigPose, applyRigPose, blendRecoveryPose } from '../../src/combat/guard-recovery-bridge.js';
 import { sampleLongswordAttackRecovery } from '../../src/combat/longsword-contact-recovery-presentation.js';
-import {
-  measureSweptSwordBucklerClosestApproach,
-} from '../../src/combat/swept-sword-buckler-contact.js';
+import { measureSweptSwordBucklerClosestApproach } from '../../src/combat/swept-sword-buckler-contact.js';
 import { createGuardThreatTrackingRuntime, planGuardThreatCorrection } from '../../src/combat/guard-threat-tracking.js';
 import { createGuardResidualBodyReachRuntime } from '../../src/combat/guard-residual-body-reach.js';
 import {
@@ -35,15 +35,9 @@ import {
   createCommittedParryContactGate,
   evaluateCommittedParryInput,
 } from '../../src/combat/committed-parry-contact-gate.js';
-import {
-  LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE,
-} from '../../src/combat/live-shield-sword-grip-contact-constraint.js';
-import {
-  sampleLiveParryOldB3ReleaseBlend,
-} from '../../src/combat/live-parry-old-b3-handoff.js';
-import {
-  measureAttackerRecoilWorldSilhouette,
-} from '../../src/combat/attacker-recoil-world-silhouette.js';
+import { LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE } from '../../src/combat/live-shield-sword-grip-contact-constraint.js';
+import { sampleLiveParryOldB3ReleaseBlend } from '../../src/combat/live-parry-old-b3-handoff.js';
+import { measureAttackerRecoilWorldSilhouette } from '../../src/combat/attacker-recoil-world-silhouette.js';
 import { maybeStartDefenceMatrixProbe } from './shield-parry-r281/defence-matrix-probe.js'; // R21P.1
 import { maybeStartParryGateProbe } from './shield-parry-r281/parry-gate-probe.js';
 import {
@@ -94,7 +88,6 @@ import { createDuel } from '../../src/game/duel.js';
 
 const LAB_STAGE = LIVE_SHIELD_SWORD_GRIP_CONTACT_STAGE;
 const RECOIL_STAGE = LEGACY_TWO_ACTOR_RECOIL_PASSTHROUGH_STAGE;
-const THREE = window.THREE;
 if (!THREE?.WebGLRenderer || !THREE?.GLTFLoader) throw new Error(`${LAB_STAGE} requires Three.js r128 + GLTFLoader`);
 
 const HUD_INTERVAL_MS = 50; const REPORT_INTERVAL_MS = 240;
@@ -241,7 +234,7 @@ const engagement = createEngagement(THREE, {
   swinger: attacker, swingerSword: attackerSword, receiver: defender, receiverBuckler: buckler,
   receiverFighter: defenderFighter, camera, attackRuntime,
   createOwnershipTaps: createVisualOwnershipRuntimeTaps, // R20Z.3: the lab supplies its own watcher
-  longswordAttackPhases: LONGSWORD_ATTACK_PHASES, promptHoldMs: PARRY_PROMPT_HOLD_MS, debugMode: DEBUG_MODE,
+  attackPhases: ATTACK_PHASES, promptHoldMs: PARRY_PROMPT_HOLD_MS, debugMode: DEBUG_MODE,
   presentationServices: {
     captureRigPose, applyRigPose, blendRecoveryPose,
     sampleLongswordAttackRecovery, sampleLiveParryOldB3ReleaseBlend, captureResumePose: () => resumePoseOf(attackerFighter.guardMachine, attackerFighter.guardRuntime, attacker), // R24E.1
@@ -627,7 +620,7 @@ async function main() {
     receiverFighter: attackerFighter, camera,
     attackRuntime: createLongswordDirectionalAttackRuntime({ tempoScale: EXPERIMENT.tempoScale }),
     createOwnershipTaps: createVisualOwnershipRuntimeTaps,
-    longswordAttackPhases: LONGSWORD_ATTACK_PHASES, promptHoldMs: PARRY_PROMPT_HOLD_MS, debugMode: DEBUG_MODE,
+    attackPhases: ATTACK_PHASES, promptHoldMs: PARRY_PROMPT_HOLD_MS, debugMode: DEBUG_MODE,
     presentationServices: {
       captureRigPose, applyRigPose, blendRecoveryPose,
       sampleLongswordAttackRecovery, sampleLiveParryOldB3ReleaseBlend, captureResumePose: () => resumePoseOf(guardMachine, guardRuntime, defender), // R24E.1: the player's held block

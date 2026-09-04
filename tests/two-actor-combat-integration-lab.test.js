@@ -11,7 +11,7 @@ test('G4.3B.4 lab wires the production exchange chain instead of a presentation-
   assert.match(script, /combat\.resolveContact\(/);
   assert.match(script, /combat\.update\(/);
   assert.match(script, /probeSweptSwordBucklerContact/);
-  assert.match(script, /LONGSWORD_ATTACK_PHASES\.ACTIVE/);
+  assert.match(script, /ATTACK_PHASES\.ACTIVE/);
   assert.doesNotMatch(script, /active:\s*snapshot\.phase\s*===\s*['"]active['"]/);
 });
 

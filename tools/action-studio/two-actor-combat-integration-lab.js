@@ -12,10 +12,7 @@ import { loadSkyrimConvertedAnimationLibrary } from '../../src/animation/skyrim-
 import { composeSkyrimWeaponMountCalibration } from '../../src/animation/skyrim-weapon-bind-calibration.js';
 import { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } from '../../src/combat/guard-state-machine.js';
 import { createGuardPresentationRuntime } from '../../src/combat/guard-presentation-runtime.js';
-import {
-  createLongswordDirectionalAttackRuntime,
-  LONGSWORD_ATTACK_PHASES,
-} from '../../src/combat/longsword-directional-attack-runtime.js';
+import { createLongswordDirectionalAttackRuntime } from '../../src/combat/longsword-directional-attack-runtime.js';
 import { captureRigPose, applyRigPose, blendRecoveryPose } from '../../src/combat/guard-recovery-bridge.js';
 import { sampleLongswordAttackRecovery } from '../../src/combat/longsword-contact-recovery-presentation.js';
 import { probeSweptSwordBucklerContact } from '../../src/combat/swept-sword-buckler-contact.js';
@@ -30,6 +27,7 @@ import {
   TWO_ACTOR_COMBAT_INTEGRATION_STAGE,
   TWO_ACTOR_PARRY_SYNC_STAGE,
 } from '../../src/combat/two-actor-combat-integration.js';
+import { ATTACK_PHASES } from '../../src/combat/attack-phases.js';
 
 const THREE = window.THREE;
 if (!THREE?.WebGLRenderer || !THREE?.GLTFLoader) {
@@ -295,7 +293,7 @@ function updateContact(snapshot, currentBlade, deltaSeconds) {
     currentBlade,
     bucklerSurface: buckler.getWorldParrySurface(),
     deltaSeconds,
-    active: snapshot.phase === LONGSWORD_ATTACK_PHASES.ACTIVE,
+    active: snapshot.phase === ATTACK_PHASES.ACTIVE,
   });
 
   if (!latestContact.contact) return;
@@ -487,8 +485,8 @@ function frame(timestamp) {
     const currentBlade = captureBladePolyline();
     const baselineSurface = buckler.getWorldParrySurface();
     const attackCanBrace = snapshot.action
-      && snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
-      && snapshot.phase !== LONGSWORD_ATTACK_PHASES.IDLE;
+      && snapshot.phase !== ATTACK_PHASES.INTERRUPTED
+      && snapshot.phase !== ATTACK_PHASES.IDLE;
     const bracePlan = previousBlade && attackCanBrace
       ? planArticulatedImpactBracing({
           mode: 'brace-fine',

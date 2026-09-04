@@ -12,6 +12,8 @@ import { createGuardSectorRuntime } from './guard-sector-runtime.js';
 import { createNeutralStanceController } from './neutral-stance.js';
 import { createBodyStrikeReactionController } from './body-strike-reaction-controller.js';
 import { createFighterCondition } from '../combat/fighter-condition.js';
+import { createWeaponMountController } from './weapon-mount-controller.js';
+import { LONGSWORD, equipWeapon } from './weapon.js';
 
 export const FIGHTER_STAGE = 'R23A.1';
 
@@ -48,13 +50,25 @@ export function createFighter(THREE, {
   character,
   buckler,
   camera = null,
+  // W1 - what this fighter is carrying. The longsword unless told otherwise, which is every caller
+  // that existed before this parameter: two lab pages and five tests, none of which changed.
+  weapon = LONGSWORD,
+  // The mount follows whichever animation family is posing the hand, and a swing is a UAL window
+  // the guard machine cannot see - R23K.1 measured that and it is why this is asked for separately
+  // rather than read off the guard state. A fighter who never swings answers false forever.
+  readSwinging = () => false,
 } = {}) {
   if (!character?.sampleAnimation) throw new Error(`${FIGHTER_STAGE} requires an animation-capable character`);
   if (!buckler?.getWorldParrySurface) throw new Error(`${FIGHTER_STAGE} requires a buckler with a parry surface`);
+  if (!weapon?.id) throw new Error(`${FIGHTER_STAGE} requires a weapon`);
+  const carried = weapon.object3d || weapon.mounts ? weapon : equipWeapon(weapon);
 
   // Order matters exactly once: the presentation runtime and the neutral stance both read the guard
   // machine, so it is built first. Everything else is independent.
-  const guardMachine = createGuardStateMachine();
+  // W1: this fighter's guard presents THIS fighter's weapon. Until now the machine read one fixed
+  // table, which was correct while the scene had one sword and wrong the moment two fighters could
+  // carry different ones.
+  const guardMachine = createGuardStateMachine({ presentation: carried.guardPresentation });
   const guardRuntime = createGuardPresentationRuntime(THREE, { machine: guardMachine, character });
   const bracingRuntime = createArticulatedImpactBracingRuntime(THREE, { rig: character.rig, buckler });
   const fineTrackingRuntime = createGuardThreatTrackingRuntime(THREE, { rig: character.rig, buckler });
@@ -73,6 +87,16 @@ export function createFighter(THREE, {
   // a body, not of an exchange - a fighter carries their wounds between exchanges, which is the
   // whole difference between a lab and a duel.
   const condition = createFighterCondition();
+  // W1: built here only when the weapon is a real one in a scene. A headless fighter carries the
+  // longsword's definition and no Object3D, and has nothing to mount.
+  const weaponMount = carried.object3d && carried.mounts
+    ? createWeaponMountController({
+      weapon: carried,
+      mounts: carried.mounts,
+      readGuardState: () => guardMachine.state,
+      readSwinging,
+    })
+    : null;
 
   return Object.freeze({
     stage: FIGHTER_STAGE,
@@ -92,6 +116,8 @@ export function createFighter(THREE, {
     neutralStance,
     bodyStrikeReaction,
     condition,
+    weapon: carried,
+    weaponMount,
     authority: 'composition-only-no-contact-authority',
   });
 }

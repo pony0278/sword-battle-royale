@@ -4,11 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Action Studio · Procedural Rig Action Authoring</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./action-studio.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script type="module" crossorigin src="../../bundle/studio-9-s8SO9j.js"></script>
+  <link rel="modulepreload" crossorigin href="../../bundle/three-BPmRDOES.js">
+  <link rel="modulepreload" crossorigin href="../../bundle/three-namespace-B-l7R2Y0.js">
+  <link rel="stylesheet" crossorigin href="../../bundle/studio-BZRGAQ58.css">
 </head>
 <body>
   <header class="topbar">
@@ -255,59 +254,5 @@
     </aside>
   </main>
 
-  <script>
-    window.__ACTION_STUDIO_RUNTIME_STAGE = 'G2.5.2';
-    window.__ACTION_STUDIO_BUNDLE_VERSION = 'fdabadab01b0';
-    const actionStudioParams = new URLSearchParams(location.search);
-    if (location.protocol === 'file:') {
-      window.__ACTION_STUDIO_ENTRY_MODE = 'bundle-file';
-      document.documentElement.dataset.actionStudioEntry = 'bundle-file';
-      document.getElementById('feelAbControls')?.setAttribute('hidden', '');
-      const script = document.createElement('script');
-      script.src = './action-studio.bundle.js';
-      script.dataset.actionStudioVersion = window.__ACTION_STUDIO_BUNDLE_VERSION;
-      document.body.appendChild(script);
-    } else if (actionStudioParams.get('g252') === '1') {
-      window.__ACTION_STUDIO_ENTRY_MODE = 'module';
-      document.documentElement.dataset.actionStudioEntry = 'module';
-      import('./action-studio.js').then(() => import('./action-studio-runtime-parity.js'));
-    } else {
-      window.__ACTION_STUDIO_ENTRY_MODE = 'bundle-http';
-      document.documentElement.dataset.actionStudioEntry = 'bundle-http';
-      const script = document.createElement('script');
-      script.src = './action-studio.bundle.js?v=fdabadab01b0';
-      script.dataset.actionStudioVersion = window.__ACTION_STUDIO_BUNDLE_VERSION;
-      script.onload = async () => {
-        document.documentElement.dataset.actionStudioBoot = 'pass';
-        if (actionStudioParams.get('pagesGuardGate') !== '1') return;
-        const root = document.documentElement;
-        try {
-          const runtime = window.__ACTION_STUDIO_GUARD_RUNTIME__;
-          if (!runtime?.sampleAt) throw new Error('Guard Runtime deterministic sampler unavailable after bundle boot');
-          const result = await runtime.sampleAt('parry', 820);
-          const report = result?.report || runtime.report || {};
-          const state = String(result?.snapshot?.state || runtime.snapshot?.state || '');
-          const clipId = String(report.clipId || '');
-          const sourceMs = Math.round((Number(report.sourceTimeSeconds) || 0) * 1000);
-          const pass = state === 'guard_parry'
-            && runtime.mode === 'parry'
-            && clipId === 'SKYRIM_GUARD/power_parry_g363'
-            && sourceMs >= 810
-            && sourceMs <= 830;
-          root.dataset.pagesGuardGate = pass ? 'pass' : 'fail';
-          root.dataset.pagesGuardState = state;
-          root.dataset.pagesGuardClip = clipId;
-          root.dataset.pagesGuardSourceMs = String(sourceMs);
-        } catch (error) {
-          root.dataset.pagesGuardGate = 'fail';
-          root.dataset.pagesGuardError = String(error?.message || error);
-        }
-      };
-      script.onerror = () => {
-        document.documentElement.dataset.actionStudioBoot = 'fail';
-      };
-      document.body.appendChild(script);
-    }
-  </script>
 </body>
 </html>

@@ -9,7 +9,7 @@ import {
 import { sampleGuardReactionProfile } from './guard-reaction-presentation.js';
 import { sampleGuardCounterProfile } from './guard-counter-presentation.js';
 import { LONGSWORD_GUARD_AUTHORING_STATE } from './longsword-guard-metadata.js';
-import { applyGuardQuaternionOffsetsWeighted } from './longsword-guard-correction.js';
+import { applyGuardQuaternionOffsetsWeighted } from './guard-quaternion-correction.js';
 import {
   applyObjectTransform,
   applyRigPose,

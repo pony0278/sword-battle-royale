@@ -1,4 +1,4 @@
-import { LONGSWORD_ATTACK_PHASES } from './longsword-directional-attack-runtime.js';
+import { ATTACK_PHASES } from './attack-phases.js';
 
 export const SWING_WINDUP_TRACKING_STAGE = 'R20B.1';
 
@@ -54,7 +54,7 @@ export function planSwingFacingPolicy(input = {}) {
       authority: 'attacker-facing-policy-no-contact-authority',
     });
   }
-  const windup = input.phase === LONGSWORD_ATTACK_PHASES.WINDUP;
+  const windup = input.phase === ATTACK_PHASES.WINDUP;
   return Object.freeze({
     stage: SWING_WINDUP_TRACKING_STAGE,
     mode: windup ? 'track' : 'frozen',

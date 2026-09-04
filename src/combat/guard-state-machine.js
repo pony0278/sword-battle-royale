@@ -1,186 +1,35 @@
+// @ts-check
 import {
-  LONGSWORD_GUARD_BASE,
-  LONGSWORD_GUARD_AUTHORING_STATE,
-} from './longsword-guard-metadata.js';
-import { GUARD_TRANSITION_PROFILE_IDS } from './guard-transition-presentation.js';
-import {
-  GUARD_REACTION_VARIANTS,
-  LONGSWORD_GUARD_REACTION_PROFILES,
-  getGuardReactionProfile,
-} from './guard-reaction-presentation.js';
-import {
-  GUARD_WEAPON_MOUNT_PROFILE_IDS,
-  LONGSWORD_GUARD_COUNTER_PROFILE,
-} from './guard-counter-presentation.js';
+  GUARD_STATES,
+  GUARD_EVENTS,
+  GUARD_EVENT_AUTHORITY,
+  GUARD_TRANSITION_GRAPH,
+} from './guard-states.js';
+import { getGuardReactionProfile } from './guard-reaction-presentation.js';
+import { LONGSWORD_GUARD_PRESENTATION } from './longsword-guard-presentation.js';
+
+// S1.C2 — what this module used to be, and what it is now.
+//
+// It held eight states, the graph over them, AND a table of how one weapon presents each of those
+// states, built from four longsword imports when the module loaded. handoff/39 recorded the table
+// as category C: a mechanic with a weapon frozen into it. Both halves left, in that order, and what
+// remains is the machine.
+//
+// Step 3 sent the vocabulary and the graph DOWN to guard-states.js, which imports nothing, so that
+// step 4's builder could key a table by GUARD_STATES without importing this module back.
+// Step 4 sent the table UP to the weapon that owns it: longsword-guard-presentation.js assembles it
+// with createGuardPresentationTable, and this module receives one already built.
+//
+// Both are re-exported. Thirty-one modules import GUARD_STATES from this path and two tests import
+// LONGSWORD_GUARD_PRESENTATION from it; none of them should have to care where either now lives.
+// The second re-export carries an assumption with it - that there is one table, and it is the
+// longsword's. The day there are two, what this module holds is whichever one the fighter carries,
+// and that re-export is the line that says so.
+export { GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, GUARD_TRANSITION_GRAPH };
+export { LONGSWORD_GUARD_PRESENTATION };
 
 export const GUARD_STATE_AUTHORITY_NOTE =
   'Presentation state only. Authoritative combat simulation confirms block, parry and counter outcomes.';
-
-export const GUARD_STATES = Object.freeze({
-  NEUTRAL: 'neutral',
-  ENTER: 'guard_enter',
-  HOLD: 'guard_hold',
-  BLOCK_HIT: 'guard_block_hit',
-  PARRY: 'guard_parry',
-  COUNTER: 'guard_counter',
-  RECOVER: 'guard_recover',
-  EXIT: 'guard_exit',
-});
-
-export const GUARD_EVENTS = Object.freeze({
-  GUARD_PRESS: 'guard_press',
-  GUARD_RELEASE: 'guard_release',
-  ENTER_COMPLETE: 'enter_complete',
-  BLOCK_CONFIRMED: 'block_confirmed',
-  PARRY_CONFIRMED: 'parry_confirmed',
-  COUNTER_CONFIRMED: 'counter_confirmed',
-  REACTION_COMPLETE: 'reaction_complete',
-  COUNTER_COMPLETE: 'counter_complete',
-  RECOVER_COMPLETE: 'recover_complete',
-  EXIT_COMPLETE: 'exit_complete',
-  RESET: 'reset',
-});
-
-export const GUARD_EVENT_AUTHORITY = Object.freeze({
-  [GUARD_EVENTS.GUARD_PRESS]: 'local-intent',
-  [GUARD_EVENTS.GUARD_RELEASE]: 'local-intent',
-  [GUARD_EVENTS.ENTER_COMPLETE]: 'presentation',
-  [GUARD_EVENTS.BLOCK_CONFIRMED]: 'authoritative-combat',
-  [GUARD_EVENTS.PARRY_CONFIRMED]: 'authoritative-combat',
-  [GUARD_EVENTS.COUNTER_CONFIRMED]: 'authoritative-combat',
-  [GUARD_EVENTS.REACTION_COMPLETE]: 'presentation',
-  [GUARD_EVENTS.COUNTER_COMPLETE]: 'presentation',
-  [GUARD_EVENTS.RECOVER_COMPLETE]: 'presentation',
-  [GUARD_EVENTS.EXIT_COMPLETE]: 'presentation',
-  [GUARD_EVENTS.RESET]: 'system',
-});
-
-function authoredGuardTransition(role, transitionProfileId) {
-  return Object.freeze({
-    role,
-    clipId: LONGSWORD_GUARD_BASE.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    transitionProfileId,
-    weaponMountProfileId: GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD,
-    authored: true,
-    authoredStage: 'G3.2',
-    inPlace: true,
-    loop: true,
-  });
-}
-
-function authoredGuardReaction(role, profile, extra = {}) {
-  return Object.freeze({
-    role,
-    clipId: profile.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    reactionProfileId: profile.id,
-    reactionVariant: profile.variant,
-    sourceWindow: profile.sourceWindow,
-    counterWindowSeconds: profile.counterWindowSeconds,
-    completionEvent: profile.completionEvent,
-    weaponMountProfileId: GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD,
-    authored: true,
-    authoredStage: 'G3.3.2',
-    inPlace: true,
-    loop: false,
-    ...extra,
-  });
-}
-
-function authoredGuardCounter() {
-  const profile = LONGSWORD_GUARD_COUNTER_PROFILE;
-  return Object.freeze({
-    role: 'guard-counter',
-    clipId: profile.clipId,
-    counterProfileId: profile.id,
-    sourceFamily: profile.sourceFamily,
-    completionEvent: profile.completionEvent,
-    correctionWeight: profile.correctionWeight,
-    weaponMountProfileId: profile.weaponMountProfileId,
-    authored: true,
-    authoredStage: profile.authoredStage,
-    inPlace: profile.inPlace,
-    loop: profile.loop,
-  });
-}
-
-const BLOCK_HIT_PROFILE = LONGSWORD_GUARD_REACTION_PROFILES[GUARD_REACTION_VARIANTS.BLOCK_HIT];
-const PARRY_PROFILE = LONGSWORD_GUARD_REACTION_PROFILES[GUARD_REACTION_VARIANTS.PARRY];
-const PERFECT_PARRY_PROFILE = LONGSWORD_GUARD_REACTION_PROFILES[GUARD_REACTION_VARIANTS.PERFECT_PARRY];
-
-export const LONGSWORD_GUARD_PRESENTATION = Object.freeze({
-  [GUARD_STATES.NEUTRAL]: Object.freeze({
-    role: 'neutral',
-    clipId: null,
-    authored: false,
-    inPlace: true,
-    loop: true,
-  }),
-  [GUARD_STATES.ENTER]: authoredGuardTransition('guard-enter', GUARD_TRANSITION_PROFILE_IDS.ENTER),
-  [GUARD_STATES.HOLD]: Object.freeze({
-    role: 'guard-hold',
-    clipId: LONGSWORD_GUARD_BASE.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    weaponMountProfileId: GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD,
-    authored: LONGSWORD_GUARD_AUTHORING_STATE.authored === true,
-    authoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    inPlace: true,
-    loop: true,
-  }),
-  [GUARD_STATES.BLOCK_HIT]: authoredGuardReaction('block-hit', BLOCK_HIT_PROFILE),
-  [GUARD_STATES.PARRY]: authoredGuardReaction('parry-reaction', PARRY_PROFILE, {
-    variants: Object.freeze({
-      [GUARD_REACTION_VARIANTS.PARRY]: Object.freeze({
-        clipId: PARRY_PROFILE.clipId,
-        reactionProfileId: PARRY_PROFILE.id,
-      }),
-      [GUARD_REACTION_VARIANTS.PERFECT_PARRY]: Object.freeze({
-        clipId: PERFECT_PARRY_PROFILE.clipId,
-        reactionProfileId: PERFECT_PARRY_PROFILE.id,
-      }),
-    }),
-  }),
-  [GUARD_STATES.COUNTER]: authoredGuardCounter(),
-  [GUARD_STATES.RECOVER]: authoredGuardTransition('guard-recover', GUARD_TRANSITION_PROFILE_IDS.RECOVER),
-  [GUARD_STATES.EXIT]: authoredGuardTransition('guard-exit', GUARD_TRANSITION_PROFILE_IDS.EXIT),
-});
-
-export const GUARD_TRANSITION_GRAPH = Object.freeze({
-  [GUARD_STATES.NEUTRAL]: Object.freeze({
-    [GUARD_EVENTS.GUARD_PRESS]: GUARD_STATES.ENTER,
-  }),
-  [GUARD_STATES.ENTER]: Object.freeze({
-    [GUARD_EVENTS.GUARD_RELEASE]: GUARD_STATES.EXIT,
-    [GUARD_EVENTS.ENTER_COMPLETE]: GUARD_STATES.HOLD,
-  }),
-  [GUARD_STATES.HOLD]: Object.freeze({
-    [GUARD_EVENTS.GUARD_RELEASE]: GUARD_STATES.EXIT,
-    [GUARD_EVENTS.BLOCK_CONFIRMED]: GUARD_STATES.BLOCK_HIT,
-    [GUARD_EVENTS.PARRY_CONFIRMED]: GUARD_STATES.PARRY,
-  }),
-  [GUARD_STATES.BLOCK_HIT]: Object.freeze({
-    [GUARD_EVENTS.COUNTER_CONFIRMED]: GUARD_STATES.COUNTER,
-    [GUARD_EVENTS.REACTION_COMPLETE]: GUARD_STATES.RECOVER,
-  }),
-  [GUARD_STATES.PARRY]: Object.freeze({
-    [GUARD_EVENTS.COUNTER_CONFIRMED]: GUARD_STATES.COUNTER,
-    [GUARD_EVENTS.REACTION_COMPLETE]: GUARD_STATES.RECOVER,
-  }),
-  [GUARD_STATES.COUNTER]: Object.freeze({
-    [GUARD_EVENTS.COUNTER_COMPLETE]: GUARD_STATES.RECOVER,
-  }),
-  [GUARD_STATES.RECOVER]: Object.freeze({
-    [GUARD_EVENTS.RECOVER_COMPLETE]: GUARD_STATES.HOLD,
-  }),
-  [GUARD_STATES.EXIT]: Object.freeze({
-    [GUARD_EVENTS.GUARD_PRESS]: GUARD_STATES.ENTER,
-    [GUARD_EVENTS.EXIT_COMPLETE]: GUARD_STATES.NEUTRAL,
-  }),
-});
 
 function frozenPayload(payload) {
   if (!payload || typeof payload !== 'object') return Object.freeze({});
@@ -214,9 +63,12 @@ function outcomeForEvent(event) {
   return null;
 }
 
-export function getGuardPresentation(state, payload = {}) {
-  const baseline = LONGSWORD_GUARD_PRESENTATION[state]
-    || LONGSWORD_GUARD_PRESENTATION[GUARD_STATES.NEUTRAL];
+// W1: the table is a parameter now, defaulting to the longsword's. S1.C2 step 4 moved the table out
+// of this module but left the machine reading one fixed import, which was enough while no fighter
+// carried a weapon. A fighter carries one now, so the machine is asked which table to read.
+export function getGuardPresentation(state, payload = {}, presentation = LONGSWORD_GUARD_PRESENTATION) {
+  const baseline = presentation[state]
+    || presentation[GUARD_STATES.NEUTRAL];
   const reaction = getGuardReactionProfile(state, payload);
   if (!reaction) return baseline;
   if (baseline.reactionProfileId === reaction.id && baseline.clipId === reaction.clipId) return baseline;
@@ -236,6 +88,10 @@ export function createGuardStateMachine(options = {}) {
     ? options.initialState
     : GUARD_STATES.NEUTRAL;
   let guardHeld = Boolean(options.guardHeld);
+  // W1: which weapon's guard this machine presents. The longsword while nothing says otherwise,
+  // which is every existing caller - two in src/, seventeen lab pages and five tests, none of
+  // which had to change to gain the option.
+  const presentation = options.presentation || LONGSWORD_GUARD_PRESENTATION;
   let elapsedMs = 0;
   let sequence = 0;
   let lastOutcome = null;
@@ -250,7 +106,7 @@ export function createGuardStateMachine(options = {}) {
       sequence,
       lastOutcome,
       lastTransition,
-      presentation: getGuardPresentation(state, lastTransition?.payload || {}),
+      presentation: getGuardPresentation(state, lastTransition?.payload || {}, presentation),
       authority: GUARD_STATE_AUTHORITY_NOTE,
     });
   }

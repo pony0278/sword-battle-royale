@@ -103,15 +103,27 @@ Power / Prediction
 ## Heavy
 - Charged Overhead
 
-## Unique Skill — Unstoppable Cleave
-短暫獲得高 Poise：
+## Unique Skill — Execution Slash
+蓄力 → 前踏 → 巨大斬擊。
 
-> 攻擊不容易被普通 Light Hit 打斷。
-
-並造成大範圍 Slash。
+> 蓄力期間可被打斷；一旦放出，前踏會把距離補上，命中則造成大量 Guard Damage。
 
 ## 弱點
-Miss 之後容易被 Punish。
+Miss 之後容易被 Punish。蓄力本身就是最大的破綻。
+
+---
+
+### 記錄：這一招換過一次
+
+原本記的是 **Unstoppable Cleave**（短暫高 Poise，攻擊不易被 Light Hit 打斷，並造成大範圍
+Slash）。G1 規劃時改為 Execution Slash，理由記在這裡而不是留下兩個版本互相矛盾。
+
+值得知道的是這個交換的成本方向：**Unstoppable 比較便宜**。攻擊 runtime 已經有 INTERRUPTED 相位
+與 interruption 物件，Poise 要做的是去 gate 那個既有機制；而蓄力在 `src/` 裡是零——五個攻擊相位
+沒有一個會等待放開輸入。
+
+若之後想把 Unstoppable Cleave 收回來當被動，它與 Execution Slash 不互斥。
+詳見 `handoff/40_greatsword_asset_requirements.md` 第 4 節。
 
 ---
 

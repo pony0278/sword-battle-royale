@@ -32,7 +32,7 @@ export function createShieldParryPreContactController({
   predictivePresentation,
   activeInterceptIntent,
   parryGate,
-  longswordAttackPhases,
+  attackPhases,
   promptHoldMs,
   debugMode,
   readContext,
@@ -44,7 +44,7 @@ export function createShieldParryPreContactController({
   // nobody watching, which is what a diagnostic is supposed to mean.
   createOwnershipTaps = () => NO_OP_OWNERSHIP_TAPS,
 }) {
-  const LONGSWORD_ATTACK_PHASES = longswordAttackPhases;
+  const ATTACK_PHASES = attackPhases;
   const PARRY_PROMPT_HOLD_MS = promptHoldMs;
   const visualOwnership = createOwnershipTaps({ rig: defender.rig, exchangeState }) || NO_OP_OWNERSHIP_TAPS;
   const shieldArmAdditiveRuntime = createBoundedShieldArmAdditiveRuntime();
@@ -152,8 +152,8 @@ export function createShieldParryPreContactController({
     const baselineSurface = buckler.getWorldParrySurface();
     // R24C.1: and not once the blade is on its way home. Measured: a swing that missed kept the
     // shield chasing the recovering blade for 0.28m at 30mm/frame, a defence of nothing.
-    const engaged = snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
-      && snapshot.phase !== LONGSWORD_ATTACK_PHASES.RECOVERY
+    const engaged = snapshot.phase !== ATTACK_PHASES.INTERRUPTED
+      && snapshot.phase !== ATTACK_PHASES.RECOVERY
       && relevance.relevant
       && coneGate.plan.engaged
       && sectorGate.covers
@@ -165,7 +165,7 @@ export function createShieldParryPreContactController({
     // a turn without its coverage is a configuration nobody measured.
     exchangeState.latestGuardFacingPlan = planGuardFacingTurn({
       direction: snapshot.direction,
-      engaged: snapshot.phase !== LONGSWORD_ATTACK_PHASES.INTERRUPTED
+      engaged: snapshot.phase !== ATTACK_PHASES.INTERRUPTED
         && relevance.relevant && coneGate.plan.engaged && !dodgeGuardDown,
       posture: closeRangePosture.plan.posture,
     });

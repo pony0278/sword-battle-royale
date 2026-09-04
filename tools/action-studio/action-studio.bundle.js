@@ -3899,12 +3899,23 @@ const V3_SWORD_GEOMETRY_DEFINITION = deepFreeze({
 return Object.freeze({ V3_SWORD_GEOMETRY_DEFINITION });
 })();
 
-// src/character/procedural-v3-longsword.js
+// src/character/procedural-v3-weapon.js
 const __actionStudioModule13 = (() => {
+// The line weapon, for any weapon.
+//
+// This was procedural-v3-longsword.js, and the name was only half a lie: the rig hierarchy, the
+// edge outline and the skeleton overlay were always generic, but two things reached past the
+// definition it was handed and read the longsword's geometry module directly - the outline, and the
+// validator that rejected any definition not built from it. So `createProceduralV3Longsword({
+// definition })` accepted a second weapon's definition and then drew the first weapon's blade.
+//
+// Both now come from the definition. A weapon rig carries its own source geometry, and the outline
+// is built from that - which is what makes a greatsword look like a greatsword and, more to the
+// point, what makes the contact sampler read a blade twice as long instead of the same one.
 const { WEAPON_SOCKET_ID } = __actionStudioModule3;
 const { V3_SWORD_GEOMETRY_DEFINITION } = __actionStudioModule14;
 
-const V3_LONGSWORD_REQUIRED_NODE_IDS = Object.freeze([
+const V3_WEAPON_REQUIRED_NODE_IDS = Object.freeze([
   'weapon.root',
   'pommel',
   'grip',
@@ -3918,16 +3929,33 @@ const V3_LONGSWORD_REQUIRED_NODE_IDS = Object.freeze([
   'blade.tip',
 ]);
 
-const V3_LONGSWORD_DEFINITION = Object.freeze({
-  format: 'procedural-weapon-rig',
-  version: 2,
+function defineV3Weapon({ id, weaponType, sourceGeometry }) {
+  return Object.freeze({
+    format: 'procedural-weapon-rig',
+    version: 2,
+    id,
+    weaponType,
+    sourceGeometryId: sourceGeometry.id,
+    // Carried, not looked up. This is the field the outline and the validator used to reach around
+    // the definition to find.
+    sourceGeometry,
+    nodes: sourceGeometry.rigNodes,
+  });
+}
+
+const V3_LONGSWORD_DEFINITION = defineV3Weapon({
   id: 'v3_procedural_longsword',
   weaponType: 'longsword',
-  sourceGeometryId: V3_SWORD_GEOMETRY_DEFINITION.id,
-  nodes: V3_SWORD_GEOMETRY_DEFINITION.rigNodes,
+  sourceGeometry: V3_SWORD_GEOMETRY_DEFINITION,
 });
 
-const DEFAULT_V3_LONGSWORD_STYLE = Object.freeze({
+// The greatsword is NOT imported here, and that is deliberate. Its geometry is 82 KB of source -
+// 10.8 KB gzipped - and this module is reached by every page that draws a sword. Eagerly importing
+// a weapon nobody has equipped yet would undo, in one line, the work that took the published page
+// from ~180 requests to 14: see v3-greatsword-weapon.js, which a page opts into.
+
+
+const DEFAULT_V3_WEAPON_STYLE = Object.freeze({
   outlineColor: 0xf7fbff,
   skeletonColor: 0x96e8ff,
   glowColor: 0x39c7ff,
@@ -3967,22 +3995,26 @@ function finiteOpacity(value, fallback) {
   return Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : fallback;
 }
 
-function createV3LongswordStyle(input = {}) {
+function createV3WeaponStyle(input = {}) {
   return {
-    ...DEFAULT_V3_LONGSWORD_STYLE,
+    ...DEFAULT_V3_WEAPON_STYLE,
     ...input,
-    outlineOpacity: finiteOpacity(input.outlineOpacity, DEFAULT_V3_LONGSWORD_STYLE.outlineOpacity),
-    skeletonOpacity: finiteOpacity(input.skeletonOpacity, DEFAULT_V3_LONGSWORD_STYLE.skeletonOpacity),
-    glowOpacity: finiteOpacity(input.glowOpacity, DEFAULT_V3_LONGSWORD_STYLE.glowOpacity),
-    jointOpacity: finiteOpacity(input.jointOpacity, DEFAULT_V3_LONGSWORD_STYLE.jointOpacity),
-    jointRadius: finitePositive(input.jointRadius, DEFAULT_V3_LONGSWORD_STYLE.jointRadius),
+    outlineOpacity: finiteOpacity(input.outlineOpacity, DEFAULT_V3_WEAPON_STYLE.outlineOpacity),
+    skeletonOpacity: finiteOpacity(input.skeletonOpacity, DEFAULT_V3_WEAPON_STYLE.skeletonOpacity),
+    glowOpacity: finiteOpacity(input.glowOpacity, DEFAULT_V3_WEAPON_STYLE.glowOpacity),
+    jointOpacity: finiteOpacity(input.jointOpacity, DEFAULT_V3_WEAPON_STYLE.jointOpacity),
+    jointRadius: finitePositive(input.jointRadius, DEFAULT_V3_WEAPON_STYLE.jointRadius),
   };
 }
 
-function validateV3LongswordDefinition(definition = V3_LONGSWORD_DEFINITION) {
+function validateV3WeaponDefinition(definition = V3_LONGSWORD_DEFINITION) {
   if (definition?.format !== 'procedural-weapon-rig') throw new Error('Invalid procedural weapon rig format');
-  if (definition.sourceGeometryId !== V3_SWORD_GEOMETRY_DEFINITION.id) {
-    throw new Error('V3 longsword source geometry does not match the extracted v3 weapon');
+  const sourceGeometry = definition.sourceGeometry;
+  if (!sourceGeometry?.positions?.length || !sourceGeometry?.indices?.length) {
+    throw new Error('V3 weapon rig ' + definition.id + ' carries no source geometry to draw');
+  }
+  if (definition.sourceGeometryId !== sourceGeometry.id) {
+    throw new Error('V3 weapon rig ' + definition.id + ' names ' + definition.sourceGeometryId + ' but carries ' + sourceGeometry.id);
   }
   const ids = new Set();
   for (const node of definition.nodes || []) {
@@ -3990,14 +4022,16 @@ function validateV3LongswordDefinition(definition = V3_LONGSWORD_DEFINITION) {
     if (node.parent && !ids.has(node.parent)) throw new Error('Weapon node ' + node.id + ' appears before ' + node.parent);
     ids.add(node.id);
   }
-  const missing = V3_LONGSWORD_REQUIRED_NODE_IDS.filter((id) => !ids.has(id));
-  if (missing.length) throw new Error('V3 longsword rig is missing nodes: ' + missing.join(', '));
+  const missing = V3_WEAPON_REQUIRED_NODE_IDS.filter((id) => !ids.has(id));
+  if (missing.length) throw new Error('V3 weapon rig ' + definition.id + ' is missing nodes: ' + missing.join(', '));
   return definition;
 }
 
 function createWeaponHierarchy(THREE, definition) {
   const object3d = new THREE.Group();
-  object3d.name = 'V3_PROCEDURAL_LONGSWORD';
+  // weapon-mount-policy.js documents the scene chain as handr -> handslotr -> HAND_R ->
+  // V3_PROCEDURAL_LONGSWORD, which stays true: the longsword's weaponType is 'longsword'.
+  object3d.name = 'V3_PROCEDURAL_' + String(definition.weaponType || 'weapon').toUpperCase();
   object3d.userData.weaponType = definition.weaponType;
   object3d.userData.weaponRigId = definition.id;
   object3d.userData.sourceGeometryId = definition.sourceGeometryId;
@@ -4031,14 +4065,18 @@ function makeSegments(THREE, segmentCount, color, opacity, name, glow = false) {
   return line;
 }
 
-function createExactV3Outline(THREE, style) {
+function createExactV3Outline(THREE, style, source) {
   const sourceGeometry = new THREE.BufferGeometry();
   sourceGeometry.setAttribute(
     'position',
-    new THREE.BufferAttribute(new Float32Array(V3_SWORD_GEOMETRY_DEFINITION.positions), 3),
+    new THREE.BufferAttribute(new Float32Array(source.positions), 3),
   );
+  // Uint16 tops out at 65535 vertices and the longsword has 358, so the narrower array was never
+  // wrong - but it is a ceiling a second mesh can reach, and a silently truncated index draws a
+  // blade with holes in it rather than throwing.
+  const IndexArray = source.vertexCount > 65535 ? Uint32Array : Uint16Array;
   sourceGeometry.setIndex(
-    new THREE.BufferAttribute(new Uint16Array(V3_SWORD_GEOMETRY_DEFINITION.indices), 1),
+    new THREE.BufferAttribute(new IndexArray(source.indices), 1),
   );
   const edgeGeometry = new THREE.EdgesGeometry(sourceGeometry, 1);
   sourceGeometry.dispose();
@@ -4050,9 +4088,9 @@ function createExactV3Outline(THREE, style) {
   line.frustumCulled = false;
   line.userData.appearanceRole = 'weapon-line';
   line.userData.exactV3Source = true;
-  line.userData.sourceGeometryId = V3_SWORD_GEOMETRY_DEFINITION.id;
-  line.userData.sourceVertexCount = V3_SWORD_GEOMETRY_DEFINITION.vertexCount;
-  line.userData.sourceTriangleCount = V3_SWORD_GEOMETRY_DEFINITION.triangleCount;
+  line.userData.sourceGeometryId = source.id;
+  line.userData.sourceVertexCount = source.vertexCount;
+  line.userData.sourceTriangleCount = source.triangleCount;
   return line;
 }
 
@@ -4089,7 +4127,7 @@ function createJointNode(THREE, bone, style) {
   return node;
 }
 
-function canCreateProceduralV3Longsword(THREE) {
+function canCreateProceduralV3Weapon(THREE) {
   return Boolean(
     THREE?.Group
     && THREE?.Bone
@@ -4105,19 +4143,20 @@ function canCreateProceduralV3Longsword(THREE) {
   );
 }
 
-function createProceduralV3Longsword(THREE, options = {}) {
-  if (!canCreateProceduralV3Longsword(THREE)) {
-    throw new Error('Procedural v3 longsword requires a Three.js-compatible namespace');
+function createProceduralV3Weapon(THREE, options = {}) {
+  if (!canCreateProceduralV3Weapon(THREE)) {
+    throw new Error('Procedural v3 weapon requires a Three.js-compatible namespace');
   }
-  const definition = validateV3LongswordDefinition(options.definition || V3_LONGSWORD_DEFINITION);
-  const style = createV3LongswordStyle(options.style);
+  const definition = validateV3WeaponDefinition(options.definition || V3_LONGSWORD_DEFINITION);
+  const sourceGeometry = definition.sourceGeometry;
+  const style = createV3WeaponStyle(options.style);
   const { object3d, bones } = createWeaponHierarchy(THREE, definition);
   const skeletonLine = makeSegments(THREE, SKELETON_LINKS.length, style.skeletonColor, style.skeletonOpacity, 'V3_WEAPON_SKELETON');
   const glowLine = makeSegments(THREE, SKELETON_LINKS.length, style.glowColor, style.glowOpacity, 'V3_WEAPON_GLOW', true);
-  const outlineLine = createExactV3Outline(THREE, style);
+  const outlineLine = createExactV3Outline(THREE, style, sourceGeometry);
   object3d.add(outlineLine, skeletonLine, glowLine);
   const jointNodes = JOINT_NODE_IDS.map((nodeId) => createJointNode(THREE, bones[nodeId], style));
-  const localPoints = Object.fromEntries(V3_LONGSWORD_REQUIRED_NODE_IDS.map((nodeId) => [nodeId, new THREE.Vector3()]));
+  const localPoints = Object.fromEntries(V3_WEAPON_REQUIRED_NODE_IDS.map((nodeId) => [nodeId, new THREE.Vector3()]));
   const skeletonSegments = SKELETON_LINKS.map(([startId, endId]) => [localPoints[startId], localPoints[endId]]);
   let nodesVisible = true;
   let glowVisible = true;
@@ -4151,7 +4190,7 @@ function createProceduralV3Longsword(THREE, options = {}) {
   return {
     id: definition.id,
     definition,
-    sourceGeometry: V3_SWORD_GEOMETRY_DEFINITION,
+    sourceGeometry,
     style,
     object3d,
     bones,
@@ -4185,13 +4224,13 @@ function createProceduralV3Longsword(THREE, options = {}) {
     update,
   };
 }
-return Object.freeze({ V3_LONGSWORD_REQUIRED_NODE_IDS, V3_LONGSWORD_DEFINITION, DEFAULT_V3_LONGSWORD_STYLE, createV3LongswordStyle, validateV3LongswordDefinition, canCreateProceduralV3Longsword, createProceduralV3Longsword });
+return Object.freeze({ V3_WEAPON_REQUIRED_NODE_IDS, V3_LONGSWORD_DEFINITION, DEFAULT_V3_WEAPON_STYLE, createV3WeaponStyle, validateV3WeaponDefinition, canCreateProceduralV3Weapon, createProceduralV3Weapon, defineV3Weapon });
 })();
 
 // src/character/debug-sword.js
 const __actionStudioModule12 = (() => {
 const { WEAPON_SOCKET_ID } = __actionStudioModule3;
-const { createProceduralV3Longsword } = __actionStudioModule13;
+const { createProceduralV3Weapon, V3_LONGSWORD_DEFINITION } = __actionStudioModule13;
 
 const DEFAULT_SWORD_MOUNT = Object.freeze({
   position: Object.freeze({ x: 0, y: 0, z: 0 }),
@@ -4200,8 +4239,9 @@ const DEFAULT_SWORD_MOUNT = Object.freeze({
 });
 
 function createDebugSword(THREE, options = {}) {
-  return createProceduralV3Longsword(THREE, {
-    definition: options.definition,
+  return createProceduralV3Weapon(THREE, {
+    // The longsword stays the default, so every existing caller keeps the weapon it had.
+    definition: options.definition || V3_LONGSWORD_DEFINITION,
     style: options.style,
   });
 }
@@ -4665,11 +4705,203 @@ function isWholeBodyMotionGuide(value) {
 return Object.freeze({ MOTION_GUIDE_PRESETS, MOTION_GUIDE_LEAD_FEET, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE, normalizeMotionGuide, createAdvancingVerticalChopGuide, isWholeBodyMotionGuide });
 })();
 
+// src/animation/two-hand-grip.js
+const __actionStudioModule23 = (() => {
+// @ts-check
+// The off hand on the hilt, as seven authored arm poses.
+//
+// WHAT THIS IS, because the name does not say it: a two-handed grip in this repository is not a
+// clip and not a constraint. It is seven hand-authored left-arm poses - shoulder, elbow, wrist and
+// a small upper-arm stretch - blended over whatever the right arm is already doing. The numbers
+// live in the pose vocabulary of pose-schema.js, where aL_sx is the left shoulder's X rotation in
+// degrees and aL_ex the elbow's bend, and two adapters turn them into bone rotations:
+// pose-applier.js for the line rig, kaykit-pose-adapter.js for the KayKit one (upperarm.l,
+// lowerarm.l, wrist.l).
+//
+// WHERE IT CAME FROM: whole-body-motion-solver.js, where it was private to one clip baker - the
+// advancing vertical chop that Action Studio's templates use. It is here because the greatsword
+// needs it and a second caller should not have to import a clip baker to get an arm.
+//
+// WHAT IT IS NOT: solved. Nothing in here knows where a hilt is. These angles were tuned by eye
+// against ONE weapon in ONE move until the hand looked like it was holding something, and the
+// aL_stretch of 1.03-1.05 is the tell - the upper arm is lengthened by three to five percent to
+// make the hand reach. An open-loop pose is fine when the target barely moves, and measured, the
+// target barely moves: the longsword's secondary_grip sits at +0.1350 above the mount origin and
+// the greatsword's at +0.0881, 0.047 apart. It is NOT fine as a general answer, which is why
+// two-hand-grip-reach.test.js measures the gap rather than trusting this paragraph.
+
+/**
+ * The authored left arm, one entry per phase of a swing.
+ * @type {Readonly<Record<string, Readonly<Record<string, number>>>>}
+ */
+const TWO_HAND_LEFT_ARM = Object.freeze({
+  ready: Object.freeze({ aL_sx: -84, aL_sy: -2, aL_sz: 16, aL_ex: 86, aL_wx: -6, aL_wy: -18, aL_wz: 4, aL_stretch: 1.03 }),
+  windup: Object.freeze({ aL_sx: -142, aL_sy: 6, aL_sz: 10, aL_ex: 62, aL_wx: -18, aL_wy: -10, aL_wz: 0, aL_stretch: 1.05 }),
+  commit: Object.freeze({ aL_sx: -118, aL_sy: 4, aL_sz: 8, aL_ex: 46, aL_wx: -8, aL_wy: -12, aL_wz: 0, aL_stretch: 1.04 }),
+  plant: Object.freeze({ aL_sx: -94, aL_sy: 3, aL_sz: 6, aL_ex: 33, aL_wx: 0, aL_wy: -10, aL_wz: 0, aL_stretch: 1.03 }),
+  impact: Object.freeze({ aL_sx: -64, aL_sy: 4, aL_sz: 4, aL_ex: 16, aL_wx: 12, aL_wy: -8, aL_wz: 0, aL_stretch: 1.02 }),
+  follow: Object.freeze({ aL_sx: -36, aL_sy: 6, aL_sz: 4, aL_ex: 28, aL_wx: 18, aL_wy: -8, aL_wz: 0, aL_stretch: 1.02 }),
+  recover: Object.freeze({ aL_sx: -84, aL_sy: -2, aL_sz: 16, aL_ex: 86, aL_wx: -6, aL_wy: -18, aL_wz: 4, aL_stretch: 1.03 }),
+});
+
+const TWO_HAND_GRIP_PHASES = Object.freeze(['ready', 'windup', 'commit', 'plant', 'impact', 'follow', 'recover']);
+
+// The frames the clip baker places those seven at, under the default motion guide. Data here rather
+// than a call, because importing the baker to ask would make this module depend on the thing it was
+// taken out of - and two-hand-grip.test.js asserts these against advancingVerticalChopFrames() so
+// the copy cannot drift.
+const AUTHORED_PHASE_FRAMES = Object.freeze({
+  ready: 0, windup: 8, commit: 13, plant: 16, impact: 19, follow: 25, recover: 36,
+});
+
+const LEFT_ARM_KEYS = Object.freeze(Object.keys(TWO_HAND_LEFT_ARM.ready));
+
+function finite(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, finite(value)));
+}
+
+/**
+ * Where the seven phases fall on ONE WEAPON'S measured swing.
+ *
+ * Four of them are anchored to landmarks the timings record already produces, so they are that
+ * weapon's own numbers rather than the chop's: plant is where the blade goes live, impact is the
+ * measured contact, follow is where it stops being live, recover is the end. The two that have no
+ * landmark - windup and commit - keep their authored share of the run-up, 8/16 and 13/16 of the
+ * way from ready to plant, read off AUTHORED_PHASE_FRAMES rather than chosen here.
+ *
+ * A greatsword swinging slower therefore stretches the whole arm motion rather than desynchronising
+ * from its own blade, which is the property that makes this reusable at all.
+ *
+ * @param {{activeStartSeconds?: number, activeEndSeconds?: number, durationSeconds?: number, contactSeconds?: number}} profile
+ */
+function twoHandGripLandmarkSeconds(profile = {}) {
+  const plant = Math.max(0, finite(profile.activeStartSeconds));
+  const runUp = (frame) => plant * (frame / AUTHORED_PHASE_FRAMES.plant);
+  const raw = {
+    ready: 0,
+    windup: runUp(AUTHORED_PHASE_FRAMES.windup),
+    commit: runUp(AUTHORED_PHASE_FRAMES.commit),
+    plant,
+    impact: finite(profile.contactSeconds, plant),
+    follow: finite(profile.activeEndSeconds, plant),
+    recover: finite(profile.durationSeconds, plant),
+  };
+  // Monotonic by construction rather than by assumption. A weapon whose contact was measured
+  // outside its own active window would otherwise run the arm backwards, and silently.
+  let previous = -Infinity;
+  const seconds = {};
+  for (const phase of TWO_HAND_GRIP_PHASES) {
+    previous = Math.max(previous, raw[phase]);
+    seconds[phase] = previous;
+  }
+  return Object.freeze(seconds);
+}
+
+/**
+ * The authored left arm at one moment of a swing, interpolated between the two phases it falls
+ * between. Before ready and after recover it holds the end pose rather than extrapolating.
+ * @param {number} elapsedSeconds
+ * @param {Readonly<Record<string, number>>} landmarks from twoHandGripLandmarkSeconds
+ */
+function twoHandLeftArmAtSeconds(elapsedSeconds, landmarks) {
+  const elapsed = Math.max(0, finite(elapsedSeconds));
+  let lower = TWO_HAND_GRIP_PHASES[0];
+  let upper = TWO_HAND_GRIP_PHASES[0];
+  for (const phase of TWO_HAND_GRIP_PHASES) {
+    if (landmarks[phase] <= elapsed) { lower = phase; upper = phase; } else { upper = phase; break; }
+  }
+  if (lower === upper) return TWO_HAND_LEFT_ARM[lower];
+  const span = landmarks[upper] - landmarks[lower];
+  const alpha = span > 0 ? clamp01((elapsed - landmarks[lower]) / span) : 0;
+  const from = TWO_HAND_LEFT_ARM[lower];
+  const to = TWO_HAND_LEFT_ARM[upper];
+  return Object.freeze(Object.fromEntries(LEFT_ARM_KEYS.map((key) => [key, from[key] + (to[key] - from[key]) * alpha])));
+}
+
+/**
+ * Blend an authored left arm into a pose. Weight 0 leaves the pose one-handed, 1 takes the authored
+ * arm outright, and anything between is a partial commitment to the hilt.
+ * @param {Record<string, number>} pose
+ * @param {Readonly<Record<string, number>>} leftArm
+ * @param {number} weight
+ */
+function applyTwoHandGrip(pose, leftArm, weight = 1) {
+  const blend = clamp01(weight);
+  if (blend === 0 || !leftArm) return pose;
+  return Object.fromEntries(Object.entries(pose).map(([key, value]) => [
+    key,
+    key in leftArm ? value + (leftArm[key] - value) * blend : value,
+  ]));
+}
+
+const DEG_TO_RAD = Math.PI / 180;
+// The left arm's three bones, and the side sign kaykit-pose-adapter.js applies to the Z rotations.
+// Mirrored here rather than shared, because that adapter resets the rig to its rest pose first and
+// this one must not: it composes onto whatever a clip has just written.
+const LEFT_ARM_BONES = Object.freeze({ upper: 'upperarm.l', lower: 'lowerarm.l', wrist: 'wrist.l' });
+const LEFT_SIDE_SIGN = -1;
+
+/**
+ * Write an authored left arm onto a KayKit rig, on top of whatever pose it is already in.
+ *
+ * PRECONDITION, and it is not optional: the rig must have been posed this frame - by a clip sample
+ * or by the pose adapter - because these are RELATIVE rotations. Called twice against the same
+ * sampled frame it applies twice. That is the same contract guard-quaternion-correction.js works
+ * under, and the same reason it exists: an overlay is how this rig adds an arm to a clip that does
+ * not animate one.
+ *
+ * Returns what it actually wrote, so a caller can report it rather than assume it.
+ *
+ * @param {{bones: Record<string, {rotateX: Function, rotateY: Function, rotateZ: Function, scale: {y: number}}>}} rig
+ * @param {Readonly<Record<string, number>>} leftArm
+ * @param {number} weight
+ */
+function applyTwoHandGripToKayKitRig(rig, leftArm, weight = 1) {
+  const blend = clamp01(weight);
+  if (blend === 0 || !leftArm) return Object.freeze({ applied: false, weight: 0, degrees: null });
+  const bones = rig?.bones || {};
+  for (const name of Object.values(LEFT_ARM_BONES)) {
+    if (!bones[name]) throw new Error(`two-hand grip needs ${name}; this rig does not have it`);
+  }
+  const shoulder = {
+    x: finite(leftArm.aL_sx) * blend,
+    y: finite(leftArm.aL_sy) * blend,
+    z: finite(leftArm.aL_sz) * blend * LEFT_SIDE_SIGN,
+  };
+  const elbowX = -finite(leftArm.aL_ex) * blend;
+  const wrist = {
+    x: finite(leftArm.aL_wx) * blend,
+    y: finite(leftArm.aL_wy) * blend,
+    z: finite(leftArm.aL_wz) * blend * LEFT_SIDE_SIGN,
+  };
+  const upper = bones[LEFT_ARM_BONES.upper];
+  upper.rotateX(shoulder.x * DEG_TO_RAD);
+  upper.rotateY(shoulder.y * DEG_TO_RAD);
+  upper.rotateZ(shoulder.z * DEG_TO_RAD);
+  bones[LEFT_ARM_BONES.lower].rotateX(elbowX * DEG_TO_RAD);
+  const wristBone = bones[LEFT_ARM_BONES.wrist];
+  wristBone.rotateX(wrist.x * DEG_TO_RAD);
+  wristBone.rotateY(wrist.y * DEG_TO_RAD);
+  wristBone.rotateZ(wrist.z * DEG_TO_RAD);
+  // The stretch is a scale, so it interpolates from 1 rather than from 0.
+  const stretch = 1 + (finite(leftArm.aL_stretch, 1) - 1) * blend;
+  upper.scale.y *= Math.max(0.2, stretch);
+  return Object.freeze({ applied: true, weight: blend, degrees: Object.freeze({ shoulder, elbowX, wrist, stretch }) });
+}
+return Object.freeze({ TWO_HAND_LEFT_ARM, TWO_HAND_GRIP_PHASES, AUTHORED_PHASE_FRAMES, twoHandGripLandmarkSeconds, twoHandLeftArmAtSeconds, applyTwoHandGrip, applyTwoHandGripToKayKitRig });
+})();
+
 // src/animation/whole-body-motion-solver.js
 const __actionStudioModule22 = (() => {
 const { createAnimationClip } = __actionStudioModule16;
 const { normalizeMotionGuide } = __actionStudioModule21;
 const { normalizePose } = __actionStudioModule9;
+const { TWO_HAND_LEFT_ARM, applyTwoHandGrip } = __actionStudioModule23;
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
@@ -4693,24 +4925,13 @@ function withLegs(pose, leadFoot, values) {
   };
 }
 
-const TWO_HAND_LEFT_ARM = Object.freeze({
-  ready: Object.freeze({ aL_sx: -84, aL_sy: -2, aL_sz: 16, aL_ex: 86, aL_wx: -6, aL_wy: -18, aL_wz: 4, aL_stretch: 1.03 }),
-  windup: Object.freeze({ aL_sx: -142, aL_sy: 6, aL_sz: 10, aL_ex: 62, aL_wx: -18, aL_wy: -10, aL_wz: 0, aL_stretch: 1.05 }),
-  commit: Object.freeze({ aL_sx: -118, aL_sy: 4, aL_sz: 8, aL_ex: 46, aL_wx: -8, aL_wy: -12, aL_wz: 0, aL_stretch: 1.04 }),
-  plant: Object.freeze({ aL_sx: -94, aL_sy: 3, aL_sz: 6, aL_ex: 33, aL_wx: 0, aL_wy: -10, aL_wz: 0, aL_stretch: 1.03 }),
-  impact: Object.freeze({ aL_sx: -64, aL_sy: 4, aL_sz: 4, aL_ex: 16, aL_wx: 12, aL_wy: -8, aL_wz: 0, aL_stretch: 1.02 }),
-  follow: Object.freeze({ aL_sx: -36, aL_sy: 6, aL_sz: 4, aL_ex: 28, aL_wx: 18, aL_wy: -8, aL_wz: 0, aL_stretch: 1.02 }),
-  recover: Object.freeze({ aL_sx: -84, aL_sy: -2, aL_sz: 16, aL_ex: 86, aL_wx: -6, aL_wy: -18, aL_wz: 4, aL_stretch: 1.03 }),
-});
-
+// The seven-phase left arm moved to two-hand-grip.js when the greatsword needed it: a second caller
+// should not have to import a clip baker to get an arm. Same numbers, same blend - the baked clip
+// is byte-identical across the move, which is the only thing that makes it a move rather than a
+// change.
 function withTwoHandGrip(pose, guide, phase) {
   if (!guide.twoHandGrip) return pose;
-  const profile = TWO_HAND_LEFT_ARM[phase];
-  const weight = guide.secondaryGripWeight;
-  return Object.fromEntries(Object.entries(pose).map(([key, value]) => [
-    key,
-    key in profile ? value + (profile[key] - value) * weight : value,
-  ]));
+  return applyTwoHandGrip(pose, TWO_HAND_LEFT_ARM[phase], guide.secondaryGripWeight);
 }
 
 function withPlantedLeadFoot(plant, pose, guide) {
@@ -4937,7 +5158,7 @@ return Object.freeze({ advancingVerticalChopFrames, bakeAdvancingVerticalChopCli
 })();
 
 // src/combat/action-definition.js
-const __actionStudioModule23 = (() => {
+const __actionStudioModule24 = (() => {
 const { normalizeAnimationBinding } = __actionStudioModule19;
 
 const ACTION_WINDOW_TYPES = Object.freeze([
@@ -4997,7 +5218,7 @@ const { createAnimationClip } = __actionStudioModule16;
 const { createAdvancingVerticalChopGuide } = __actionStudioModule21;
 const { normalizePose } = __actionStudioModule9;
 const { advancingVerticalChopFrames, bakeAdvancingVerticalChopClip } = __actionStudioModule22;
-const { createActionDefinition } = __actionStudioModule23;
+const { createActionDefinition } = __actionStudioModule24;
 
 const T_POSE = Object.freeze(normalizePose({ aL_sz: 90, aR_sz: 90 }));
 
@@ -5167,7 +5388,7 @@ return Object.freeze({ T_POSE, IDLE_POSE, createTPoseTemplate, createIdleTemplat
 })();
 
 // tools/action-studio/studio-preview-runtime.js
-const __actionStudioModule24 = (() => {
+const __actionStudioModule25 = (() => {
 function createPreviewDummy(THREE) {
   const group = new THREE.Group();
   group.name = 'PREVIEW_DUMMY';
@@ -5590,7 +5811,7 @@ return Object.freeze({ createStudioPreviewRuntime });
 })();
 
 // tools/action-studio/studio-combat-feel-controller.js
-const __actionStudioModule25 = (() => {
+const __actionStudioModule26 = (() => {
 function updateSlider(id, value, digits = 2, suffix = '') {
   const input = document.getElementById(id);
   const output = document.getElementById(`${id}Value`);
@@ -5655,7 +5876,7 @@ return Object.freeze({ createStudioCombatFeelController });
 })();
 
 // tools/action-studio/studio-motion-guide-overlay.js
-const __actionStudioModule26 = (() => {
+const __actionStudioModule27 = (() => {
 const { normalizeMotionGuide } = __actionStudioModule21;
 
 const GUIDE_COLORS = Object.freeze({
@@ -5947,7 +6168,7 @@ return Object.freeze({ createWholeBodyMotionGuideOverlay });
 })();
 
 // tools/action-studio/studio-motion-guide-editor.js
-const __actionStudioModule27 = (() => {
+const __actionStudioModule28 = (() => {
 const { createAdvancingVerticalChopTemplate } = __actionStudioModule20;
 const { createAdvancingVerticalChopGuide, isWholeBodyMotionGuide, normalizeMotionGuide } = __actionStudioModule21;
 
@@ -6131,7 +6352,7 @@ return Object.freeze({ createStudioMotionGuideEditor });
 })();
 
 // tools/action-studio/studio-motion-constraint-baker.js
-const __actionStudioModule28 = (() => {
+const __actionStudioModule29 = (() => {
 const { createAnimationClip } = __actionStudioModule16;
 const { normalizeMotionGuide } = __actionStudioModule21;
 const { normalizePose } = __actionStudioModule9;
@@ -6335,7 +6556,7 @@ return Object.freeze({ WINDUP_HAND_POSE_KEYS, SECONDARY_GRIP_POSE_KEYS, bakeStud
 })();
 
 // src/animation/whole-body-drag-solver.js
-const __actionStudioModule30 = (() => {
+const __actionStudioModule31 = (() => {
 const { normalizePose } = __actionStudioModule9;
 
 const WHOLE_BODY_DRAG_EFFECTORS = Object.freeze([
@@ -6635,7 +6856,7 @@ return Object.freeze({ WHOLE_BODY_DRAG_EFFECTORS, WHOLE_BODY_JOINT_EFFECTORS, so
 })();
 
 // tools/action-studio/studio-axis-gizmo.js
-const __actionStudioModule31 = (() => {
+const __actionStudioModule32 = (() => {
 const DIRECT_POSE_AXES = Object.freeze({
   x: Object.freeze({ color: 0xff4d5e, vector: Object.freeze({ x: 1, y: 0, z: 0 }) }),
   y: Object.freeze({ color: 0x62df76, vector: Object.freeze({ x: 0, y: 1, z: 0 }) }),
@@ -6762,11 +6983,11 @@ return Object.freeze({ DIRECT_POSE_AXES, snapAxisDragDistance, axisConstrainedTa
 })();
 
 // tools/action-studio/studio-pose-drag-controller.js
-const __actionStudioModule29 = (() => {
+const __actionStudioModule30 = (() => {
 const { normalizePose } = __actionStudioModule9;
-const { solveWholeBodyDragPose } = __actionStudioModule30;
+const { solveWholeBodyDragPose } = __actionStudioModule31;
 const { applyPoseToProceduralKayKitRig } = __actionStudioModule8;
-const { axisConstrainedTarget, createStudioAxisGizmo } = __actionStudioModule31;
+const { axisConstrainedTarget, createStudioAxisGizmo } = __actionStudioModule32;
 
 const EFFECTORS = Object.freeze({
   handL: Object.freeze({ bone: 'handslot.l', label: 'LEFT HAND', color: 0xb99aff, radius: 0.065 }),
@@ -7267,7 +7488,7 @@ return Object.freeze({ createStudioPoseDragController });
 })();
 
 // tools/action-studio/studio-blocking-workflow.js
-const __actionStudioModule32 = (() => {
+const __actionStudioModule33 = (() => {
 const { evaluateClip } = __actionStudioModule16;
 const { normalizePose } = __actionStudioModule9;
 const { createDefaultCharacter } = __actionStudioModule1;
@@ -7582,7 +7803,7 @@ return Object.freeze({ captureNextBlockingKey, createStudioBlockingWorkflow });
 })();
 
 // src/animation/legacy-punch-import.js
-const __actionStudioModule34 = (() => {
+const __actionStudioModule35 = (() => {
 const { LEGACY_NON_HUMANOID_POSE_KEYS, POSE_KEYS } = __actionStudioModule10;
 const { createAnimationClip } = __actionStudioModule16;
 
@@ -7615,9 +7836,9 @@ return Object.freeze({ importLegacyPunchSnapshot });
 })();
 
 // tools/action-studio/studio-project.js
-const __actionStudioModule35 = (() => {
+const __actionStudioModule36 = (() => {
 const { createAnimationClip } = __actionStudioModule16;
-const { ACTION_WINDOW_TYPES, createActionDefinition } = __actionStudioModule23;
+const { ACTION_WINDOW_TYPES, createActionDefinition } = __actionStudioModule24;
 
 const ACTION_STUDIO_PROJECT_FORMAT = 'action-studio-project';
 
@@ -7717,9 +7938,9 @@ return Object.freeze({ ACTION_STUDIO_PROJECT_FORMAT, cloneSerializable, createSt
 })();
 
 // tools/action-studio/studio-project-io-controller.js
-const __actionStudioModule33 = (() => {
-const { importLegacyPunchSnapshot } = __actionStudioModule34;
-const { createStudioAutosave, readStoredJson, serializeStudioProject, studioProjectFilename, writeStoredJson } = __actionStudioModule35;
+const __actionStudioModule34 = (() => {
+const { importLegacyPunchSnapshot } = __actionStudioModule35;
+const { createStudioAutosave, readStoredJson, serializeStudioProject, studioProjectFilename, writeStoredJson } = __actionStudioModule36;
 
 const ACTION_STUDIO_AUTOSAVE_KEY = 'ACTION_STUDIO_AUTOSAVE_V1';
 
@@ -7848,7 +8069,7 @@ return Object.freeze({ ACTION_STUDIO_AUTOSAVE_KEY, createStudioProjectIoControll
 })();
 
 // src/animation/quaternius-animation-retarget.js
-const __actionStudioModule38 = (() => {
+const __actionStudioModule39 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
 
 const QUATERNIUS_BONE_RETARGETS = Object.freeze([
@@ -8062,8 +8283,8 @@ return Object.freeze({ QUATERNIUS_BONE_RETARGETS, retargetQuaterniusClip, loadQu
 })();
 
 // src/animation/ual1-animation-library.js
-const __actionStudioModule37 = (() => {
-const { QUATERNIUS_BONE_RETARGETS, loadQuaterniusAnimationLibrary, retargetQuaterniusClip } = __actionStudioModule38;
+const __actionStudioModule38 = (() => {
+const { QUATERNIUS_BONE_RETARGETS, loadQuaterniusAnimationLibrary, retargetQuaterniusClip } = __actionStudioModule39;
 
 const UAL1_ANIMATION_FILES = Object.freeze([
   Object.freeze({ id: 'Sword_Attack', file: 'Sword_Attack.glb' }),
@@ -8093,7 +8314,7 @@ return Object.freeze({ UAL1_ANIMATION_FILES, UAL1_BONE_RETARGETS, retargetUal1Cl
 })();
 
 // src/animation/ual2-animation-library.js
-const __actionStudioModule39 = (() => {
+const __actionStudioModule40 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
 
 const UAL2_ANIMATION_FILES = Object.freeze([
@@ -8290,7 +8511,24 @@ const loadUal2AnimationLibrary = async (loader, options = {}) => {
     throw new Error('loadUal2AnimationLibrary requires THREE and the target procedural rig');
   }
   const baseUrl = String(options.baseUrl || DEFAULT_BASE_URL).replace(/\/?$/, '/');
-  const loaded = await Promise.all(UAL2_ANIMATION_FILES.map(async (entry) => {
+  // Which of the pack's clips this page needs.
+  //
+  // UAL2_ANIMATION_FILES is the CATALOGUE - what the pack contains - and stays complete, because
+  // knowing what is available is what makes a second weapon's sourcing a lookup rather than a
+  // search. What a page LOADS is a different question, and until this option existed the two were
+  // the same answer: all eight clips, 1.5MB, of which the game plays two.
+  //
+  // Ids may arrive bare ('Sword_Regular_A') or prefixed as the retargeted clip is named
+  // ('UAL2/Sword_Regular_A'), because callers hold the prefixed form - it is what a weapon's
+  // timings record names - and should not have to strip it to ask for a file.
+  const wanted = options.clipIds ? new Set(options.clipIds.map(String)) : null;
+  const requested = wanted
+    ? UAL2_ANIMATION_FILES.filter((entry) => wanted.has(entry.id) || wanted.has(`UAL2/${entry.id}`))
+    : UAL2_ANIMATION_FILES;
+  if (wanted && requested.length === 0) {
+    throw new Error(`loadUal2AnimationLibrary was asked for clips it does not have: ${[...wanted].join(', ')}`);
+  }
+  const loaded = await Promise.all(requested.map(async (entry) => {
     const gltf = await loadGlb(loader, `${baseUrl}${entry.file}`);
     try {
       return retargetUal2Clip(THREE, gltf, rig, { id: entry.id, fps: options.fps || 30 });
@@ -8300,7 +8538,8 @@ const loadUal2AnimationLibrary = async (loader, options = {}) => {
   }));
   return {
     clips: new Map(loaded.map((clip) => [clip.name, clip])),
-    files: UAL2_ANIMATION_FILES,
+    files: requested,
+    catalogue: UAL2_ANIMATION_FILES,
     duplicates: [],
     source: 'ual2',
     retargetFps: options.fps || 30,
@@ -8310,7 +8549,7 @@ return Object.freeze({ UAL2_ANIMATION_FILES, UAL2_BONE_RETARGETS, retargetUal2Cl
 })();
 
 // src/animation/skyrim-animation-retarget.js
-const __actionStudioModule41 = (() => {
+const __actionStudioModule42 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
 
 function aliases(...names) {
@@ -8984,8 +9223,8 @@ return Object.freeze({ SKYRIM_BONE_RETARGETS, resolveSkyrimSourceNodes, validate
 })();
 
 // src/animation/skyrim-weapon-bind-calibration.js
-const __actionStudioModule42 = (() => {
-const { resolveSkyrimSourceNodes } = __actionStudioModule41;
+const __actionStudioModule43 = (() => {
+const { resolveSkyrimSourceNodes } = __actionStudioModule42;
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -9135,7 +9374,7 @@ return Object.freeze({ multiplyQuaternionArrays, invertQuaternionArray, quaterni
 })();
 
 // src/animation/parry-contact-deflect-runtime-clip.js
-const __actionStudioModule43 = (() => {
+const __actionStudioModule44 = (() => {
 const PRODUCTION_PARRY_DEFLECT_STAGE = 'G3.6.3';
 
 const PRODUCTION_PARRY_DEFLECT_VARIANTS = Object.freeze({
@@ -9219,6 +9458,11 @@ function deflectRecoveryPlaybackSeconds() {
   return (DEFLECT_END_SECONDS - DEFLECT_POWER_END_SECONDS) / DEFLECT_RECOVERY_RATE;
 }
 
+// S1.C2: the default narrows the parameter to the literal 'parry' unless it is said otherwise, so
+// a checked caller asking for 'perfect-parry' - which resolveVariant below exists to accept - was
+// reported as an error. The union is derived from the frozen constant rather than retyped, so a
+// third variant is covered by adding it there and nowhere else.
+/** @param {typeof PRODUCTION_PARRY_DEFLECT_VARIANTS[keyof typeof PRODUCTION_PARRY_DEFLECT_VARIANTS]} [variant] */
 function getProductionParryDeflectProfile(variant = PRODUCTION_PARRY_DEFLECT_VARIANTS.PARRY) {
   const base = PROFILES[resolveVariant(variant)];
   const holdEndSeconds = CONTACT_END_SECONDS + base.contactHoldSeconds;
@@ -9519,7 +9763,7 @@ return Object.freeze({ PRODUCTION_PARRY_DEFLECT_STAGE, PRODUCTION_PARRY_DEFLECT_
 })();
 
 // src/animation/parry-rotation-continuity.js
-const __actionStudioModule44 = (() => {
+const __actionStudioModule45 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
 
 const PARRY_ROTATION_CONTINUITY_STAGE = 'G3.5.1P-T3.2';
@@ -9641,9 +9885,9 @@ return Object.freeze({ PARRY_ROTATION_CONTINUITY_STAGE, PARRY_ROTATION_CONTINUIT
 })();
 
 // src/animation/parry-upper-body-continuity.js
-const __actionStudioModule45 = (() => {
+const __actionStudioModule46 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
-const { G36_POWER_PARRY_TORSO_SAFETY_LIMITS_DEGREES, PRODUCTION_PARRY_DEFLECT_PHASES, sampleProductionParryDeflectTimeline } = __actionStudioModule43;
+const { G36_POWER_PARRY_TORSO_SAFETY_LIMITS_DEGREES, PRODUCTION_PARRY_DEFLECT_PHASES, sampleProductionParryDeflectTimeline } = __actionStudioModule44;
 
 const PARRY_UPPER_BODY_CONTINUITY_STAGE = 'G3.6';
 
@@ -9830,12 +10074,12 @@ return Object.freeze({ PARRY_UPPER_BODY_CONTINUITY_STAGE, PARRY_UPPER_BODY_CONTI
 })();
 
 // src/animation/skyrim-converted-animation-library.js
-const __actionStudioModule40 = (() => {
-const { retargetSkyrimClip } = __actionStudioModule41;
-const { computeSkyrimWeaponBindCalibration } = __actionStudioModule42;
-const { canCreateProductionParryDeflectClips, createProductionParryDeflectClips } = __actionStudioModule43;
-const { stabilizeProductionParryDeflectClips } = __actionStudioModule44;
-const { stabilizeProductionParryUpperBodyClips } = __actionStudioModule45;
+const __actionStudioModule41 = (() => {
+const { retargetSkyrimClip } = __actionStudioModule42;
+const { computeSkyrimWeaponBindCalibration } = __actionStudioModule43;
+const { canCreateProductionParryDeflectClips, createProductionParryDeflectClips } = __actionStudioModule44;
+const { stabilizeProductionParryDeflectClips } = __actionStudioModule45;
+const { stabilizeProductionParryUpperBodyClips } = __actionStudioModule46;
 
 const SKYRIM_GUARD_HOLD_CONVERTED_FILE = Object.freeze({
   id: 'shd_blockidle',
@@ -10031,9 +10275,8 @@ return Object.freeze({ SKYRIM_GUARD_HOLD_CONVERTED_FILE, SKYRIM_GUARD_REACTION_C
 })();
 
 // src/combat/longsword-directional-metadata.js
-const __actionStudioModule46 = (() => {
-const LONGSWORD_ATTACK_DIRECTIONS = Object.freeze(['top', 'right', 'left']);
-
+const __actionStudioModule47 = (() => {
+// @ts-check
 const LONGSWORD_DIRECTIONAL_ATTACKS = Object.freeze({
   top: Object.freeze({
     weapon: 'longsword',
@@ -10070,15 +10313,15 @@ function getCanonicalMotionContactSeconds(clipId) {
   const metadata = getLongswordMotionMetadata(clipId);
   return metadata ? metadata.contactSeconds : null;
 }
-return Object.freeze({ LONGSWORD_ATTACK_DIRECTIONS, LONGSWORD_DIRECTIONAL_ATTACKS, LONGSWORD_MOTION_METADATA, getLongswordMotionMetadata, getCanonicalMotionContactSeconds });
+return Object.freeze({ LONGSWORD_DIRECTIONAL_ATTACKS, LONGSWORD_MOTION_METADATA, getLongswordMotionMetadata, getCanonicalMotionContactSeconds });
 })();
 
 // tools/action-studio/studio-editor-view.js
-const __actionStudioModule47 = (() => {
+const __actionStudioModule48 = (() => {
 const { POSE_KEYS } = __actionStudioModule10;
 const { normalizeAnimationBinding } = __actionStudioModule19;
 const { clipMarkerSummary } = __actionStudioModule16;
-const { ACTION_WINDOW_TYPES } = __actionStudioModule23;
+const { ACTION_WINDOW_TYPES } = __actionStudioModule24;
 
 const RAD_TO_DEG = 180 / Math.PI;
 
@@ -10300,7 +10543,7 @@ return Object.freeze({ renderTimelineView, updateTimelineReadoutView, renderKeyE
 })();
 
 // tools/action-studio/studio-skyrim-bridge-controls.js
-const __actionStudioModule48 = (() => {
+const __actionStudioModule49 = (() => {
 function installStudioSkyrimBridgeControls() {
   const sourceSelect = document.getElementById('animationPackSource');
   if (sourceSelect && typeof sourceSelect.querySelector === 'function'
@@ -10334,276 +10577,99 @@ function installStudioSkyrimBridgeControls() {
 return Object.freeze({ installStudioSkyrimBridgeControls });
 })();
 
-// src/combat/longsword-guard-metadata.js
-const __actionStudioModule51 = (() => {
-const freezeRange = (range) => Object.freeze({ ...range });
-const freezeEuler = (value) => Object.freeze({ x:value.x, y:value.y, z:value.z });
-const freezeQuaternion = (value) => Object.freeze([...value]);
-
-const LONGSWORD_GUARD_BASE = Object.freeze({
-  weapon: 'longsword',
-  source: 'skyrim',
-  sourceAsset: 'assets/skyrim/guard/converted/shd_blockidle.source.glb',
-  clipId: 'SKYRIM_GUARD/shd_blockidle',
-  adoptionDecision: 'ADOPT WITH CORRECTIONS',
-  adoptionReason: 'retarget-is-usable-but-triangle-guard-needs-local-corrections',
-  lowLevelRetargetFrozen: true,
-  correctionLayerId: 'longsword_triangle_forward_v1',
-});
-
-const LONGSWORD_TRIANGLE_GUARD_TARGETS = Object.freeze({
-  weaponHandHeight: freezeRange({ min: 0.50, max: 0.75 }),
-  offHandHeight: freezeRange({ min: 0.55, max: 0.85 }),
-  weaponHandCenterDistance: freezeRange({ max: 0.58 }),
-  offHandCenterDistance: freezeRange({ max: 0.62 }),
-  swordTipHeight: freezeRange({ min: 0.70, max: 1.10 }),
-  swordForwardDot: freezeRange({ min: 0.65 }),
-  triangleArea: freezeRange({ min: 0.035 }),
-  torsoYawDegrees: freezeRange({ min: 20, max: 38 }),
-});
-
-const LONGSWORD_GUARD_CORRECTION_SCOPE = Object.freeze({
-  requiredBones: Object.freeze([
-    'upperarm.r',
-    'lowerarm.r',
-    'wrist.r',
-  ]),
-  optionalBones: Object.freeze([
-    'chest',
-    'upperarm.l',
-    'lowerarm.l',
-    'wrist.l',
-    'handslot.r',
-  ]),
-  forbiddenBones: Object.freeze([
-    'root',
-    'hips',
-    'upperleg.l',
-    'upperleg.r',
-    'lowerleg.l',
-    'lowerleg.r',
-    'foot.l',
-    'foot.r',
-    'toes.l',
-    'toes.r',
-  ]),
-  maxLocalCorrectionDegrees: Object.freeze({
-    chest: 8,
-    'upperarm.r': 40,
-    'lowerarm.r': 50,
-    'wrist.r': 65,
-    'upperarm.l': 20,
-    'lowerarm.l': 25,
-    'wrist.l': 30,
-    'handslot.r': 15,
-  }),
-  policy: Object.freeze({
-    preserveRootAndLowerBody: true,
-    preserveSourceTorsoWeight: true,
-    preserveOffHandUnlessNeeded: true,
-    equipmentTrimOnly: true,
-    equipmentTrimMaxDegrees: 15,
-  }),
-});
-
-const LONGSWORD_GUARD_CORRECTION_ORDER = Object.freeze([
-  'sample-retargeted-skyrim-guard',
-  'apply-local-upper-body-corrections',
-  'solve-weapon-hand-height-and-compactness',
-  'solve-sword-tip-height-and-forward-threat',
-  'apply-g2.4.5-weapon-bind-calibration',
-  'apply-handslot-fine-trim-if-needed',
-  'validate-triangle-guard-gates',
-]);
-
-const LONGSWORD_GUARD_AUTHORING_STATE = Object.freeze({
-  authored: true,
-  authoredStage: 'G2.5.1',
-  baseSample: 0.50,
-  eulerDegrees: Object.freeze({
-    chest: freezeEuler({ x:0, y:0, z:-8 }),
-    'upperarm.r': freezeEuler({ x:-18, y:18, z:-27 }),
-    'lowerarm.r': freezeEuler({ x:9, y:27, z:-36 }),
-    'wrist.r': freezeEuler({ x:-9, y:0, z:-36 }),
-    'handslot.r': freezeEuler({ x:15, y:0, z:0 }),
-  }),
-  offsets: Object.freeze({
-    chest: freezeQuaternion([0, 0, -0.06975647374412532, 0.9975640502598243]),
-    'upperarm.r': freezeQuaternion([-0.18630870745570743, 0.11417012276618953, -0.251528134852012, 0.9428615200397167]),
-    'lowerarm.r': freezeQuaternion([0.0006410988903337023, 0.2449106190525179, -0.2821330866659231, 0.9275878929114393]),
-    'wrist.r': freezeQuaternion([-0.07461903425459218, -0.02424519394319492, -0.3080643981104976, 0.9481247264544816]),
-    'handslot.r': freezeQuaternion([0.1305261922200516, 0, 0, 0.9914448613738105]),
-  }),
-  validation: Object.freeze({
-    fiveSamplePass: true,
-    visualFourViewPass: true,
-    workflowRunId: 32098216549,
-    sampleFractions: Object.freeze([0, 0.25, 0.5, 0.75, 0.998]),
-  }),
-  note: 'G2.5.1 canonical Triangle Forward Base Guard. Euler values are authoring provenance only; runtime canonical data is the local quaternion offset map.',
-});
-
-function finite(value, fallback = Number.NaN) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function passesRange(value, range) {
-  if (!Number.isFinite(value)) return false;
-  if (Number.isFinite(range.min) && value < range.min) return false;
-  if (Number.isFinite(range.max) && value > range.max) return false;
-  return true;
-}
-
-function evaluateLongswordTriangleGuardTargets(input = {}, targets = LONGSWORD_TRIANGLE_GUARD_TARGETS) {
-  const metrics = Object.freeze({
-    weaponHandHeight: finite(input.weaponHandHeight),
-    offHandHeight: finite(input.offHandHeight),
-    weaponHandCenterDistance: finite(input.weaponHandCenterDistance),
-    offHandCenterDistance: finite(input.offHandCenterDistance),
-    swordTipHeight: finite(input.swordTipHeight),
-    swordForwardDot: finite(input.swordForwardDot),
-    triangleArea: finite(input.triangleArea),
-    torsoYawDegrees: finite(input.torsoYawDegrees),
-  });
-
-  const gates = Object.freeze(Object.fromEntries(
-    Object.entries(targets).map(([name, range]) => [name, passesRange(metrics[name], range)]),
-  ));
-  const failures = Object.freeze(Object.entries(gates)
-    .filter(([, pass]) => !pass)
-    .map(([name]) => name));
-
-  return Object.freeze({
-    status: failures.length === 0 ? 'good' : 'needs-correction',
-    metrics,
-    gates,
-    failures,
-  });
-}
-
-function getLongswordGuardCorrectionBones() {
-  return Object.freeze([
-    ...LONGSWORD_GUARD_CORRECTION_SCOPE.requiredBones,
-    ...LONGSWORD_GUARD_CORRECTION_SCOPE.optionalBones,
-  ]);
-}
-return Object.freeze({ LONGSWORD_GUARD_BASE, LONGSWORD_TRIANGLE_GUARD_TARGETS, LONGSWORD_GUARD_CORRECTION_SCOPE, LONGSWORD_GUARD_CORRECTION_ORDER, LONGSWORD_GUARD_AUTHORING_STATE, evaluateLongswordTriangleGuardTargets, getLongswordGuardCorrectionBones });
-})();
-
-// src/combat/guard-transition-presentation.js
+// src/combat/guard-states.js
 const __actionStudioModule52 = (() => {
-const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule51;
+// @ts-check
 
-const GUARD_TRANSITION_PROFILE_IDS = Object.freeze({
-  ENTER: 'longsword_guard_enter_v1',
-  RECOVER: 'longsword_guard_recover_v1',
-  EXIT: 'longsword_guard_exit_v1',
+// S1.C2, step 3 of four — the guard's vocabulary, and the graph over it.
+//
+// Moved out of guard-state-machine.js unchanged. Nothing here is a weapon's: these are the states a
+// guard can be in, the events that move it between them, who is allowed to raise each event, and
+// which event leads where. A katana guards through the same eight states as a longsword.
+//
+// WHY it had to move before the table could. Step 4 takes LONGSWORD_GUARD_PRESENTATION out of
+// guard-state-machine.js and has a weapon's own module build it. That table is keyed by
+// GUARD_STATES, so whatever builds it must import GUARD_STATES - and while GUARD_STATES lived in
+// guard-state-machine.js, which would then import the built table back, that is a cycle. R20Z
+// measured this repository at zero import cycles and the property is worth keeping, so the
+// vocabulary goes to the bottom of the stack where it has no imports of its own and anything may
+// depend on it.
+//
+// guard-state-machine.js re-exports all four names, so none of the thirty-one modules that import
+// GUARD_STATES from there had to change.
+
+const GUARD_STATES = Object.freeze({
+  NEUTRAL: 'neutral',
+  ENTER: 'guard_enter',
+  HOLD: 'guard_hold',
+  BLOCK_HIT: 'guard_block_hit',
+  PARRY: 'guard_parry',
+  COUNTER: 'guard_counter',
+  RECOVER: 'guard_recover',
+  EXIT: 'guard_exit',
 });
 
-const LONGSWORD_GUARD_TRANSITION_PROFILES = Object.freeze({
-  guard_enter: Object.freeze({
-    id: GUARD_TRANSITION_PROFILE_IDS.ENTER,
-    state: 'guard_enter',
-    durationMs: 180,
-    curve: 'ease-out-cubic',
-    clipId: LONGSWORD_GUARD_BASE.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    inPlace: true,
-    loop: true,
-    from: Object.freeze({ holdWeight: 0, correctionWeight: 0, reactionOverlayWeight: 0 }),
-    to: Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 0 }),
-    completionEvent: 'enter_complete',
-  }),
-  guard_recover: Object.freeze({
-    id: GUARD_TRANSITION_PROFILE_IDS.RECOVER,
-    state: 'guard_recover',
-    durationMs: 140,
-    curve: 'ease-out-cubic',
-    clipId: LONGSWORD_GUARD_BASE.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    inPlace: true,
-    loop: true,
-    from: Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 1 }),
-    to: Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 0 }),
-    completionEvent: 'recover_complete',
-  }),
-  guard_exit: Object.freeze({
-    id: GUARD_TRANSITION_PROFILE_IDS.EXIT,
-    state: 'guard_exit',
-    durationMs: 160,
-    curve: 'ease-in-cubic',
-    clipId: LONGSWORD_GUARD_BASE.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    inPlace: true,
-    loop: true,
-    from: Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 0 }),
-    to: Object.freeze({ holdWeight: 0, correctionWeight: 0, reactionOverlayWeight: 0 }),
-    completionEvent: 'exit_complete',
-  }),
+const GUARD_EVENTS = Object.freeze({
+  GUARD_PRESS: 'guard_press',
+  GUARD_RELEASE: 'guard_release',
+  ENTER_COMPLETE: 'enter_complete',
+  BLOCK_CONFIRMED: 'block_confirmed',
+  PARRY_CONFIRMED: 'parry_confirmed',
+  COUNTER_CONFIRMED: 'counter_confirmed',
+  REACTION_COMPLETE: 'reaction_complete',
+  COUNTER_COMPLETE: 'counter_complete',
+  RECOVER_COMPLETE: 'recover_complete',
+  EXIT_COMPLETE: 'exit_complete',
+  RESET: 'reset',
 });
 
-function clamp01(value) {
-  return Math.max(0, Math.min(1, Number(value) || 0));
-}
+const GUARD_EVENT_AUTHORITY = Object.freeze({
+  [GUARD_EVENTS.GUARD_PRESS]: 'local-intent',
+  [GUARD_EVENTS.GUARD_RELEASE]: 'local-intent',
+  [GUARD_EVENTS.ENTER_COMPLETE]: 'presentation',
+  [GUARD_EVENTS.BLOCK_CONFIRMED]: 'authoritative-combat',
+  [GUARD_EVENTS.PARRY_CONFIRMED]: 'authoritative-combat',
+  [GUARD_EVENTS.COUNTER_CONFIRMED]: 'authoritative-combat',
+  [GUARD_EVENTS.REACTION_COMPLETE]: 'presentation',
+  [GUARD_EVENTS.COUNTER_COMPLETE]: 'presentation',
+  [GUARD_EVENTS.RECOVER_COMPLETE]: 'presentation',
+  [GUARD_EVENTS.EXIT_COMPLETE]: 'presentation',
+  [GUARD_EVENTS.RESET]: 'system',
+});
 
-function sampleGuardTransitionCurve(curve, progress) {
-  const t = clamp01(progress);
-  if (curve === 'ease-out-cubic') return 1 - ((1 - t) ** 3);
-  if (curve === 'ease-in-cubic') return t ** 3;
-  if (curve === 'smoothstep') return t * t * (3 - 2 * t);
-  return t;
-}
-
-function lerp(from, to, weight) {
-  return from + (to - from) * weight;
-}
-
-function getGuardTransitionProfile(state) {
-  return LONGSWORD_GUARD_TRANSITION_PROFILES[String(state || '')] || null;
-}
-
-function sampleGuardTransitionProfile(state, elapsedMs) {
-  const profile = getGuardTransitionProfile(state);
-  if (!profile) return null;
-  const durationMs = Math.max(1, Number(profile.durationMs) || 1);
-  const progress = clamp01((Number(elapsedMs) || 0) / durationMs);
-  const eased = sampleGuardTransitionCurve(profile.curve, progress);
-  const weights = Object.freeze({
-    holdWeight: lerp(profile.from.holdWeight, profile.to.holdWeight, eased),
-    correctionWeight: lerp(profile.from.correctionWeight, profile.to.correctionWeight, eased),
-    reactionOverlayWeight: lerp(profile.from.reactionOverlayWeight, profile.to.reactionOverlayWeight, eased),
-  });
-  return Object.freeze({
-    profile,
-    progress,
-    eased,
-    complete: progress >= 1,
-    weights,
-    completionEvent: profile.completionEvent,
-  });
-}
-
-function getStableGuardPresentationWeights(state) {
-  if (state === 'guard_hold') {
-    return Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 0 });
-  }
-  if (state === 'guard_block_hit' || state === 'guard_parry' || state === 'guard_counter') {
-    return Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 1 });
-  }
-  if (state === 'neutral') {
-    return Object.freeze({ holdWeight: 0, correctionWeight: 0, reactionOverlayWeight: 0 });
-  }
-  return Object.freeze({ holdWeight: 0, correctionWeight: 0, reactionOverlayWeight: 0 });
-}
-
-function sampleGuardPresentationWeights(state, elapsedMs = 0) {
-  return sampleGuardTransitionProfile(state, elapsedMs)?.weights || getStableGuardPresentationWeights(state);
-}
-return Object.freeze({ GUARD_TRANSITION_PROFILE_IDS, LONGSWORD_GUARD_TRANSITION_PROFILES, sampleGuardTransitionCurve, getGuardTransitionProfile, sampleGuardTransitionProfile, getStableGuardPresentationWeights, sampleGuardPresentationWeights });
+const GUARD_TRANSITION_GRAPH = Object.freeze({
+  [GUARD_STATES.NEUTRAL]: Object.freeze({
+    [GUARD_EVENTS.GUARD_PRESS]: GUARD_STATES.ENTER,
+  }),
+  [GUARD_STATES.ENTER]: Object.freeze({
+    [GUARD_EVENTS.GUARD_RELEASE]: GUARD_STATES.EXIT,
+    [GUARD_EVENTS.ENTER_COMPLETE]: GUARD_STATES.HOLD,
+  }),
+  [GUARD_STATES.HOLD]: Object.freeze({
+    [GUARD_EVENTS.GUARD_RELEASE]: GUARD_STATES.EXIT,
+    [GUARD_EVENTS.BLOCK_CONFIRMED]: GUARD_STATES.BLOCK_HIT,
+    [GUARD_EVENTS.PARRY_CONFIRMED]: GUARD_STATES.PARRY,
+  }),
+  [GUARD_STATES.BLOCK_HIT]: Object.freeze({
+    [GUARD_EVENTS.COUNTER_CONFIRMED]: GUARD_STATES.COUNTER,
+    [GUARD_EVENTS.REACTION_COMPLETE]: GUARD_STATES.RECOVER,
+  }),
+  [GUARD_STATES.PARRY]: Object.freeze({
+    [GUARD_EVENTS.COUNTER_CONFIRMED]: GUARD_STATES.COUNTER,
+    [GUARD_EVENTS.REACTION_COMPLETE]: GUARD_STATES.RECOVER,
+  }),
+  [GUARD_STATES.COUNTER]: Object.freeze({
+    [GUARD_EVENTS.COUNTER_COMPLETE]: GUARD_STATES.RECOVER,
+  }),
+  [GUARD_STATES.RECOVER]: Object.freeze({
+    [GUARD_EVENTS.RECOVER_COMPLETE]: GUARD_STATES.HOLD,
+  }),
+  [GUARD_STATES.EXIT]: Object.freeze({
+    [GUARD_EVENTS.GUARD_PRESS]: GUARD_STATES.ENTER,
+    [GUARD_EVENTS.EXIT_COMPLETE]: GUARD_STATES.NEUTRAL,
+  }),
+});
+return Object.freeze({ GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, GUARD_TRANSITION_GRAPH });
 })();
 
 // src/combat/guard-action-semantics.js
@@ -10629,6 +10695,19 @@ const GUARD_ACTION_SEMANTIC_ROLES = Object.freeze({
 
 const GUARD_ACTION_SEMANTIC_STAGE = 'G3.5.1';
 
+// S1.C2: `fit` defaults to MATCH, which narrows the parameter to the literal 'match' unless it is
+// said otherwise - and PROVISIONAL is passed by guard-counter-presentation.js, which is the whole
+// reason the three values exist. Both unions are derived from the frozen constants above rather
+// than retyped, so adding a fit or a role stays a one-place change.
+/**
+ * @param {object} assessment
+ * @param {typeof GUARD_ACTION_SEMANTIC_ROLES[keyof typeof GUARD_ACTION_SEMANTIC_ROLES]} assessment.intendedRole
+ * @param {typeof GUARD_ACTION_SEMANTIC_ROLES[keyof typeof GUARD_ACTION_SEMANTIC_ROLES]} assessment.sourceRole
+ * @param {typeof GUARD_ACTION_SEMANTIC_FIT[keyof typeof GUARD_ACTION_SEMANTIC_FIT]} [assessment.fit]
+ * @param {boolean} [assessment.replacementRequired]
+ * @param {readonly string[]} [assessment.acquisitionCriteria]
+ * @param {string} [assessment.note]
+ */
 function guardActionSemanticAssessment({
   intendedRole,
   sourceRole,
@@ -10697,9 +10776,10 @@ return Object.freeze({ PARRY_ADVANTAGE_STAGE, PARRY_ADVANTAGE_FOLLOWUP_MODE, PAR
 
 // src/combat/guard-reaction-presentation.js
 const __actionStudioModule53 = (() => {
+// @ts-check
 const { GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, guardActionSemanticAssessment } = __actionStudioModule54;
 const { createParryAdvantageContract, isFreeAttackFollowupOpen } = __actionStudioModule55;
-const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE, getProductionParryDeflectProfile } = __actionStudioModule43;
+const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE, getProductionParryDeflectProfile } = __actionStudioModule44;
 
 const GUARD_REACTION_VARIANTS = Object.freeze({
   BLOCK_HIT: 'block-hit',
@@ -10939,8 +11019,378 @@ function sampleGuardReactionProfile(state, elapsedMs = 0, payload = {}) {
 return Object.freeze({ GUARD_REACTION_VARIANTS, GUARD_REACTION_PROFILE_IDS, LONGSWORD_GUARD_REACTION_PROFILES, isPerfectParryPayload, getGuardReactionProfile, sampleGuardReactionProfile });
 })();
 
+// src/combat/guard-presentation-table.js
+const __actionStudioModule57 = (() => {
+// @ts-check
+const { GUARD_STATES } = __actionStudioModule52;
+
+// S1.C2, step 4 of four — how a weapon's guard states are presented, as a function of that weapon.
+//
+// Lifted out of guard-state-machine.js unchanged in behaviour. What used to happen there happened
+// once, when the module loaded, from four longsword imports: the state machine could hold exactly
+// one weapon's presentation and it was decided before anything ran. handoff/39 recorded that as the
+// second of the two category-C blockers.
+//
+// Everything a weapon owns is a parameter here, and this module imports nothing but the vocabulary.
+// That is deliberate rather than tidy: guard-transition-presentation.js imports
+// longsword-guard-metadata.js, so a builder that reached for GUARD_TRANSITION_PROFILE_IDS itself
+// would close a cycle the moment a weapon's module imported the builder. Taking the ids as an
+// argument means the dependency runs one way, from the weapon down to here, for every weapon.
+//
+// The two authored stages are parameters for the same reason the clips are: 'G3.2' and 'G3.3.2' are
+// when THIS weapon's transitions and reactions were authored, and a second weapon authored at a
+// different stage says so rather than inheriting the longsword's provenance.
+
+/**
+ * @param {object} weapon
+ * @param {{ clipId: string, correctionLayerId: string }} weapon.base
+ * @param {{ authored: boolean, authoredStage: string }} weapon.authoringState
+ * @param {{ ENTER: string, RECOVER: string, EXIT: string }} weapon.transitionProfileIds
+ * @param {Record<string, any>} weapon.reactionProfiles keyed by reaction variant
+ * @param {{ BLOCK_HIT: string, PARRY: string, PERFECT_PARRY: string }} weapon.reactionVariants
+ * @param {Record<string, any>} weapon.counterProfile
+ * @param {string} weapon.guardMountProfileId the mount every guard state but the counter is held at
+ * @param {string} weapon.transitionAuthoredStage
+ * @param {string} weapon.reactionAuthoredStage
+ */
+function createGuardPresentationTable({
+  base,
+  authoringState,
+  transitionProfileIds,
+  reactionProfiles,
+  reactionVariants,
+  counterProfile,
+  guardMountProfileId,
+  transitionAuthoredStage,
+  reactionAuthoredStage,
+}) {
+  function authoredGuardTransition(role, transitionProfileId) {
+    return Object.freeze({
+      role,
+      clipId: base.clipId,
+      correctionLayerId: base.correctionLayerId,
+      correctionAuthoredStage: authoringState.authoredStage,
+      transitionProfileId,
+      weaponMountProfileId: guardMountProfileId,
+      authored: true,
+      authoredStage: transitionAuthoredStage,
+      inPlace: true,
+      loop: true,
+    });
+  }
+
+  function authoredGuardReaction(role, profile, extra = {}) {
+    return Object.freeze({
+      role,
+      clipId: profile.clipId,
+      correctionLayerId: base.correctionLayerId,
+      correctionAuthoredStage: authoringState.authoredStage,
+      reactionProfileId: profile.id,
+      reactionVariant: profile.variant,
+      sourceWindow: profile.sourceWindow,
+      counterWindowSeconds: profile.counterWindowSeconds,
+      completionEvent: profile.completionEvent,
+      weaponMountProfileId: guardMountProfileId,
+      authored: true,
+      authoredStage: reactionAuthoredStage,
+      inPlace: true,
+      loop: false,
+      ...extra,
+    });
+  }
+
+  // The one state that does NOT take guardMountProfileId: a counter is a KayKit swing rather than a
+  // Skyrim hold, and weapon-mount-policy.js decides the mount from whichever family is posing the
+  // hand. So the counter carries its profile's own mount, and always has.
+  function authoredGuardCounter() {
+    return Object.freeze({
+      role: 'guard-counter',
+      clipId: counterProfile.clipId,
+      counterProfileId: counterProfile.id,
+      sourceFamily: counterProfile.sourceFamily,
+      completionEvent: counterProfile.completionEvent,
+      correctionWeight: counterProfile.correctionWeight,
+      weaponMountProfileId: counterProfile.weaponMountProfileId,
+      authored: true,
+      authoredStage: counterProfile.authoredStage,
+      inPlace: counterProfile.inPlace,
+      loop: counterProfile.loop,
+    });
+  }
+
+  const blockHitProfile = reactionProfiles[reactionVariants.BLOCK_HIT];
+  const parryProfile = reactionProfiles[reactionVariants.PARRY];
+  const perfectParryProfile = reactionProfiles[reactionVariants.PERFECT_PARRY];
+
+  return Object.freeze({
+    // NEUTRAL is not a weapon's: standing with nothing raised plays no clip and is authored by
+    // nobody. It is the fallback getGuardPresentation returns for an unknown state, so every
+    // weapon's table has it and every weapon's is identical.
+    [GUARD_STATES.NEUTRAL]: Object.freeze({
+      role: 'neutral',
+      clipId: null,
+      authored: false,
+      inPlace: true,
+      loop: true,
+    }),
+    [GUARD_STATES.ENTER]: authoredGuardTransition('guard-enter', transitionProfileIds.ENTER),
+    [GUARD_STATES.HOLD]: Object.freeze({
+      role: 'guard-hold',
+      clipId: base.clipId,
+      correctionLayerId: base.correctionLayerId,
+      correctionAuthoredStage: authoringState.authoredStage,
+      weaponMountProfileId: guardMountProfileId,
+      authored: authoringState.authored === true,
+      authoredStage: authoringState.authoredStage,
+      inPlace: true,
+      loop: true,
+    }),
+    [GUARD_STATES.BLOCK_HIT]: authoredGuardReaction('block-hit', blockHitProfile),
+    [GUARD_STATES.PARRY]: authoredGuardReaction('parry-reaction', parryProfile, {
+      variants: Object.freeze({
+        [reactionVariants.PARRY]: Object.freeze({
+          clipId: parryProfile.clipId,
+          reactionProfileId: parryProfile.id,
+        }),
+        [reactionVariants.PERFECT_PARRY]: Object.freeze({
+          clipId: perfectParryProfile.clipId,
+          reactionProfileId: perfectParryProfile.id,
+        }),
+      }),
+    }),
+    [GUARD_STATES.COUNTER]: authoredGuardCounter(),
+    [GUARD_STATES.RECOVER]: authoredGuardTransition('guard-recover', transitionProfileIds.RECOVER),
+    [GUARD_STATES.EXIT]: authoredGuardTransition('guard-exit', transitionProfileIds.EXIT),
+  });
+}
+return Object.freeze({ createGuardPresentationTable });
+})();
+
+// src/combat/longsword-guard-metadata.js
+const __actionStudioModule58 = (() => {
+// @ts-check
+const freezeRange = (range) => Object.freeze({ ...range });
+const freezeEuler = (value) => Object.freeze({ x:value.x, y:value.y, z:value.z });
+const freezeQuaternion = (value) => Object.freeze([...value]);
+
+const LONGSWORD_GUARD_BASE = Object.freeze({
+  weapon: 'longsword',
+  source: 'skyrim',
+  sourceAsset: 'assets/skyrim/guard/converted/shd_blockidle.source.glb',
+  clipId: 'SKYRIM_GUARD/shd_blockidle',
+  adoptionDecision: 'ADOPT WITH CORRECTIONS',
+  adoptionReason: 'retarget-is-usable-but-triangle-guard-needs-local-corrections',
+  lowLevelRetargetFrozen: true,
+  correctionLayerId: 'longsword_triangle_forward_v1',
+});
+
+const LONGSWORD_TRIANGLE_GUARD_TARGETS = Object.freeze({
+  weaponHandHeight: freezeRange({ min: 0.50, max: 0.75 }),
+  offHandHeight: freezeRange({ min: 0.55, max: 0.85 }),
+  weaponHandCenterDistance: freezeRange({ max: 0.58 }),
+  offHandCenterDistance: freezeRange({ max: 0.62 }),
+  swordTipHeight: freezeRange({ min: 0.70, max: 1.10 }),
+  swordForwardDot: freezeRange({ min: 0.65 }),
+  triangleArea: freezeRange({ min: 0.035 }),
+  torsoYawDegrees: freezeRange({ min: 20, max: 38 }),
+});
+
+const LONGSWORD_GUARD_CORRECTION_ORDER = Object.freeze([
+  'sample-retargeted-skyrim-guard',
+  'apply-local-upper-body-corrections',
+  'solve-weapon-hand-height-and-compactness',
+  'solve-sword-tip-height-and-forward-threat',
+  'apply-g2.4.5-weapon-bind-calibration',
+  'apply-handslot-fine-trim-if-needed',
+  'validate-triangle-guard-gates',
+]);
+
+const LONGSWORD_GUARD_AUTHORING_STATE = Object.freeze({
+  authored: true,
+  authoredStage: 'G2.5.1',
+  baseSample: 0.50,
+  eulerDegrees: Object.freeze({
+    chest: freezeEuler({ x:0, y:0, z:-8 }),
+    'upperarm.r': freezeEuler({ x:-18, y:18, z:-27 }),
+    'lowerarm.r': freezeEuler({ x:9, y:27, z:-36 }),
+    'wrist.r': freezeEuler({ x:-9, y:0, z:-36 }),
+    'handslot.r': freezeEuler({ x:15, y:0, z:0 }),
+  }),
+  offsets: Object.freeze({
+    chest: freezeQuaternion([0, 0, -0.06975647374412532, 0.9975640502598243]),
+    'upperarm.r': freezeQuaternion([-0.18630870745570743, 0.11417012276618953, -0.251528134852012, 0.9428615200397167]),
+    'lowerarm.r': freezeQuaternion([0.0006410988903337023, 0.2449106190525179, -0.2821330866659231, 0.9275878929114393]),
+    'wrist.r': freezeQuaternion([-0.07461903425459218, -0.02424519394319492, -0.3080643981104976, 0.9481247264544816]),
+    'handslot.r': freezeQuaternion([0.1305261922200516, 0, 0, 0.9914448613738105]),
+  }),
+  validation: Object.freeze({
+    fiveSamplePass: true,
+    visualFourViewPass: true,
+    workflowRunId: 32098216549,
+    sampleFractions: Object.freeze([0, 0.25, 0.5, 0.75, 0.998]),
+  }),
+  note: 'G2.5.1 canonical Triangle Forward Base Guard. Euler values are authoring provenance only; runtime canonical data is the local quaternion offset map.',
+});
+
+function finite(value, fallback = Number.NaN) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function passesRange(value, range) {
+  if (!Number.isFinite(value)) return false;
+  if (Number.isFinite(range.min) && value < range.min) return false;
+  if (Number.isFinite(range.max) && value > range.max) return false;
+  return true;
+}
+
+function evaluateLongswordTriangleGuardTargets(input = {}, targets = LONGSWORD_TRIANGLE_GUARD_TARGETS) {
+  const metrics = Object.freeze({
+    weaponHandHeight: finite(input.weaponHandHeight),
+    offHandHeight: finite(input.offHandHeight),
+    weaponHandCenterDistance: finite(input.weaponHandCenterDistance),
+    offHandCenterDistance: finite(input.offHandCenterDistance),
+    swordTipHeight: finite(input.swordTipHeight),
+    swordForwardDot: finite(input.swordForwardDot),
+    triangleArea: finite(input.triangleArea),
+    torsoYawDegrees: finite(input.torsoYawDegrees),
+  });
+
+  const gates = Object.freeze(Object.fromEntries(
+    Object.entries(targets).map(([name, range]) => [name, passesRange(metrics[name], range)]),
+  ));
+  const failures = Object.freeze(Object.entries(gates)
+    .filter(([, pass]) => !pass)
+    .map(([name]) => name));
+
+  return Object.freeze({
+    status: failures.length === 0 ? 'good' : 'needs-correction',
+    metrics,
+    gates,
+    failures,
+  });
+}
+return Object.freeze({ LONGSWORD_GUARD_BASE, LONGSWORD_TRIANGLE_GUARD_TARGETS, LONGSWORD_GUARD_CORRECTION_ORDER, LONGSWORD_GUARD_AUTHORING_STATE, evaluateLongswordTriangleGuardTargets });
+})();
+
+// src/combat/guard-transition-presentation.js
+const __actionStudioModule59 = (() => {
+const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule58;
+
+const GUARD_TRANSITION_PROFILE_IDS = Object.freeze({
+  ENTER: 'longsword_guard_enter_v1',
+  RECOVER: 'longsword_guard_recover_v1',
+  EXIT: 'longsword_guard_exit_v1',
+});
+
+const LONGSWORD_GUARD_TRANSITION_PROFILES = Object.freeze({
+  guard_enter: Object.freeze({
+    id: GUARD_TRANSITION_PROFILE_IDS.ENTER,
+    state: 'guard_enter',
+    durationMs: 180,
+    curve: 'ease-out-cubic',
+    clipId: LONGSWORD_GUARD_BASE.clipId,
+    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
+    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
+    inPlace: true,
+    loop: true,
+    from: Object.freeze({ holdWeight: 0, correctionWeight: 0, reactionOverlayWeight: 0 }),
+    to: Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 0 }),
+    completionEvent: 'enter_complete',
+  }),
+  guard_recover: Object.freeze({
+    id: GUARD_TRANSITION_PROFILE_IDS.RECOVER,
+    state: 'guard_recover',
+    durationMs: 140,
+    curve: 'ease-out-cubic',
+    clipId: LONGSWORD_GUARD_BASE.clipId,
+    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
+    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
+    inPlace: true,
+    loop: true,
+    from: Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 1 }),
+    to: Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 0 }),
+    completionEvent: 'recover_complete',
+  }),
+  guard_exit: Object.freeze({
+    id: GUARD_TRANSITION_PROFILE_IDS.EXIT,
+    state: 'guard_exit',
+    durationMs: 160,
+    curve: 'ease-in-cubic',
+    clipId: LONGSWORD_GUARD_BASE.clipId,
+    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
+    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
+    inPlace: true,
+    loop: true,
+    from: Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 0 }),
+    to: Object.freeze({ holdWeight: 0, correctionWeight: 0, reactionOverlayWeight: 0 }),
+    completionEvent: 'exit_complete',
+  }),
+});
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, Number(value) || 0));
+}
+
+function sampleGuardTransitionCurve(curve, progress) {
+  const t = clamp01(progress);
+  if (curve === 'ease-out-cubic') return 1 - ((1 - t) ** 3);
+  if (curve === 'ease-in-cubic') return t ** 3;
+  if (curve === 'smoothstep') return t * t * (3 - 2 * t);
+  return t;
+}
+
+function lerp(from, to, weight) {
+  return from + (to - from) * weight;
+}
+
+function getGuardTransitionProfile(state) {
+  return LONGSWORD_GUARD_TRANSITION_PROFILES[String(state || '')] || null;
+}
+
+function sampleGuardTransitionProfile(state, elapsedMs) {
+  const profile = getGuardTransitionProfile(state);
+  if (!profile) return null;
+  const durationMs = Math.max(1, Number(profile.durationMs) || 1);
+  const progress = clamp01((Number(elapsedMs) || 0) / durationMs);
+  const eased = sampleGuardTransitionCurve(profile.curve, progress);
+  const weights = Object.freeze({
+    holdWeight: lerp(profile.from.holdWeight, profile.to.holdWeight, eased),
+    correctionWeight: lerp(profile.from.correctionWeight, profile.to.correctionWeight, eased),
+    reactionOverlayWeight: lerp(profile.from.reactionOverlayWeight, profile.to.reactionOverlayWeight, eased),
+  });
+  return Object.freeze({
+    profile,
+    progress,
+    eased,
+    complete: progress >= 1,
+    weights,
+    completionEvent: profile.completionEvent,
+  });
+}
+
+function getStableGuardPresentationWeights(state) {
+  if (state === 'guard_hold') {
+    return Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 0 });
+  }
+  if (state === 'guard_block_hit' || state === 'guard_parry' || state === 'guard_counter') {
+    return Object.freeze({ holdWeight: 1, correctionWeight: 1, reactionOverlayWeight: 1 });
+  }
+  if (state === 'neutral') {
+    return Object.freeze({ holdWeight: 0, correctionWeight: 0, reactionOverlayWeight: 0 });
+  }
+  return Object.freeze({ holdWeight: 0, correctionWeight: 0, reactionOverlayWeight: 0 });
+}
+
+function sampleGuardPresentationWeights(state, elapsedMs = 0) {
+  return sampleGuardTransitionProfile(state, elapsedMs)?.weights || getStableGuardPresentationWeights(state);
+}
+return Object.freeze({ GUARD_TRANSITION_PROFILE_IDS, LONGSWORD_GUARD_TRANSITION_PROFILES, sampleGuardTransitionCurve, getGuardTransitionProfile, sampleGuardTransitionProfile, getStableGuardPresentationWeights, sampleGuardPresentationWeights });
+})();
+
 // src/combat/guard-counter-presentation.js
-const __actionStudioModule56 = (() => {
+const __actionStudioModule60 = (() => {
+// @ts-check
 const { GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, guardActionSemanticAssessment } = __actionStudioModule54;
 
 const GUARD_COUNTER_PROFILE_IDS = Object.freeze({
@@ -11042,181 +11492,74 @@ function sampleGuardCounterProfile(elapsedMs = 0, clipDurationSeconds = 0) {
 return Object.freeze({ GUARD_COUNTER_PROFILE_IDS, GUARD_WEAPON_MOUNT_PROFILE_IDS, LONGSWORD_COUNTER_TIMING_ANCHORS, LONGSWORD_GUARD_COUNTER_PROFILE, sampleGuardCounterProfile });
 })();
 
+// src/combat/longsword-guard-presentation.js
+const __actionStudioModule56 = (() => {
+// @ts-check
+const { createGuardPresentationTable } = __actionStudioModule57;
+const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule58;
+const { GUARD_TRANSITION_PROFILE_IDS } = __actionStudioModule59;
+const { GUARD_REACTION_VARIANTS, LONGSWORD_GUARD_REACTION_PROFILES } = __actionStudioModule53;
+const { GUARD_WEAPON_MOUNT_PROFILE_IDS, LONGSWORD_GUARD_COUNTER_PROFILE } = __actionStudioModule60;
+
+// S1.C2, step 4 of four — the longsword's guard presentation, assembled where the longsword lives.
+//
+// This is the whole of what guard-state-machine.js used to do at module load, moved to the weapon
+// that owns it. The state machine now imports one already-built table instead of four sources it
+// had to combine, and a second weapon is a second file shaped exactly like this one - the machine
+// does not change to gain it.
+//
+// A NEW module rather than a section of longsword-guard-metadata.js, and the reason is a cycle:
+// guard-transition-presentation.js imports longsword-guard-metadata.js, so putting the assembly
+// there would make the metadata module depend on something that depends on it.
+// longsword-guard-metadata.js keeps its zero imports and stays what it is - measured data - while
+// the assembly that reads it lives one level up.
+const LONGSWORD_GUARD_PRESENTATION = createGuardPresentationTable({
+  base: LONGSWORD_GUARD_BASE,
+  authoringState: LONGSWORD_GUARD_AUTHORING_STATE,
+  transitionProfileIds: GUARD_TRANSITION_PROFILE_IDS,
+  reactionProfiles: LONGSWORD_GUARD_REACTION_PROFILES,
+  reactionVariants: GUARD_REACTION_VARIANTS,
+  counterProfile: LONGSWORD_GUARD_COUNTER_PROFILE,
+  // Every guard state but the counter is held at the Skyrim-calibrated mount; the counter carries
+  // its own, which is KayKit's. weapon-mount-policy.js is where that difference is measured.
+  guardMountProfileId: GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD,
+  // When this weapon's transitions and reactions were authored. Provenance, not behaviour - and
+  // the longsword's, which is why it is written here rather than in the builder.
+  transitionAuthoredStage: 'G3.2',
+  reactionAuthoredStage: 'G3.3.2',
+});
+return Object.freeze({ LONGSWORD_GUARD_PRESENTATION });
+})();
+
 // src/combat/guard-state-machine.js
-const __actionStudioModule50 = (() => {
-const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule51;
-const { GUARD_TRANSITION_PROFILE_IDS } = __actionStudioModule52;
-const { GUARD_REACTION_VARIANTS, LONGSWORD_GUARD_REACTION_PROFILES, getGuardReactionProfile } = __actionStudioModule53;
-const { GUARD_WEAPON_MOUNT_PROFILE_IDS, LONGSWORD_GUARD_COUNTER_PROFILE } = __actionStudioModule56;
+const __actionStudioModule51 = (() => {
+// @ts-check
+const { GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, GUARD_TRANSITION_GRAPH } = __actionStudioModule52;
+const { getGuardReactionProfile } = __actionStudioModule53;
+const { LONGSWORD_GUARD_PRESENTATION } = __actionStudioModule56;
+
+// S1.C2 — what this module used to be, and what it is now.
+//
+// It held eight states, the graph over them, AND a table of how one weapon presents each of those
+// states, built from four longsword imports when the module loaded. handoff/39 recorded the table
+// as category C: a mechanic with a weapon frozen into it. Both halves left, in that order, and what
+// remains is the machine.
+//
+// Step 3 sent the vocabulary and the graph DOWN to guard-states.js, which imports nothing, so that
+// step 4's builder could key a table by GUARD_STATES without importing this module back.
+// Step 4 sent the table UP to the weapon that owns it: longsword-guard-presentation.js assembles it
+// with createGuardPresentationTable, and this module receives one already built.
+//
+// Both are re-exported. Thirty-one modules import GUARD_STATES from this path and two tests import
+// LONGSWORD_GUARD_PRESENTATION from it; none of them should have to care where either now lives.
+// The second re-export carries an assumption with it - that there is one table, and it is the
+// longsword's. The day there are two, what this module holds is whichever one the fighter carries,
+// and that re-export is the line that says so.
+
+
 
 const GUARD_STATE_AUTHORITY_NOTE =
   'Presentation state only. Authoritative combat simulation confirms block, parry and counter outcomes.';
-
-const GUARD_STATES = Object.freeze({
-  NEUTRAL: 'neutral',
-  ENTER: 'guard_enter',
-  HOLD: 'guard_hold',
-  BLOCK_HIT: 'guard_block_hit',
-  PARRY: 'guard_parry',
-  COUNTER: 'guard_counter',
-  RECOVER: 'guard_recover',
-  EXIT: 'guard_exit',
-});
-
-const GUARD_EVENTS = Object.freeze({
-  GUARD_PRESS: 'guard_press',
-  GUARD_RELEASE: 'guard_release',
-  ENTER_COMPLETE: 'enter_complete',
-  BLOCK_CONFIRMED: 'block_confirmed',
-  PARRY_CONFIRMED: 'parry_confirmed',
-  COUNTER_CONFIRMED: 'counter_confirmed',
-  REACTION_COMPLETE: 'reaction_complete',
-  COUNTER_COMPLETE: 'counter_complete',
-  RECOVER_COMPLETE: 'recover_complete',
-  EXIT_COMPLETE: 'exit_complete',
-  RESET: 'reset',
-});
-
-const GUARD_EVENT_AUTHORITY = Object.freeze({
-  [GUARD_EVENTS.GUARD_PRESS]: 'local-intent',
-  [GUARD_EVENTS.GUARD_RELEASE]: 'local-intent',
-  [GUARD_EVENTS.ENTER_COMPLETE]: 'presentation',
-  [GUARD_EVENTS.BLOCK_CONFIRMED]: 'authoritative-combat',
-  [GUARD_EVENTS.PARRY_CONFIRMED]: 'authoritative-combat',
-  [GUARD_EVENTS.COUNTER_CONFIRMED]: 'authoritative-combat',
-  [GUARD_EVENTS.REACTION_COMPLETE]: 'presentation',
-  [GUARD_EVENTS.COUNTER_COMPLETE]: 'presentation',
-  [GUARD_EVENTS.RECOVER_COMPLETE]: 'presentation',
-  [GUARD_EVENTS.EXIT_COMPLETE]: 'presentation',
-  [GUARD_EVENTS.RESET]: 'system',
-});
-
-function authoredGuardTransition(role, transitionProfileId) {
-  return Object.freeze({
-    role,
-    clipId: LONGSWORD_GUARD_BASE.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    transitionProfileId,
-    weaponMountProfileId: GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD,
-    authored: true,
-    authoredStage: 'G3.2',
-    inPlace: true,
-    loop: true,
-  });
-}
-
-function authoredGuardReaction(role, profile, extra = {}) {
-  return Object.freeze({
-    role,
-    clipId: profile.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    reactionProfileId: profile.id,
-    reactionVariant: profile.variant,
-    sourceWindow: profile.sourceWindow,
-    counterWindowSeconds: profile.counterWindowSeconds,
-    completionEvent: profile.completionEvent,
-    weaponMountProfileId: GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD,
-    authored: true,
-    authoredStage: 'G3.3.2',
-    inPlace: true,
-    loop: false,
-    ...extra,
-  });
-}
-
-function authoredGuardCounter() {
-  const profile = LONGSWORD_GUARD_COUNTER_PROFILE;
-  return Object.freeze({
-    role: 'guard-counter',
-    clipId: profile.clipId,
-    counterProfileId: profile.id,
-    sourceFamily: profile.sourceFamily,
-    completionEvent: profile.completionEvent,
-    correctionWeight: profile.correctionWeight,
-    weaponMountProfileId: profile.weaponMountProfileId,
-    authored: true,
-    authoredStage: profile.authoredStage,
-    inPlace: profile.inPlace,
-    loop: profile.loop,
-  });
-}
-
-const BLOCK_HIT_PROFILE = LONGSWORD_GUARD_REACTION_PROFILES[GUARD_REACTION_VARIANTS.BLOCK_HIT];
-const PARRY_PROFILE = LONGSWORD_GUARD_REACTION_PROFILES[GUARD_REACTION_VARIANTS.PARRY];
-const PERFECT_PARRY_PROFILE = LONGSWORD_GUARD_REACTION_PROFILES[GUARD_REACTION_VARIANTS.PERFECT_PARRY];
-
-const LONGSWORD_GUARD_PRESENTATION = Object.freeze({
-  [GUARD_STATES.NEUTRAL]: Object.freeze({
-    role: 'neutral',
-    clipId: null,
-    authored: false,
-    inPlace: true,
-    loop: true,
-  }),
-  [GUARD_STATES.ENTER]: authoredGuardTransition('guard-enter', GUARD_TRANSITION_PROFILE_IDS.ENTER),
-  [GUARD_STATES.HOLD]: Object.freeze({
-    role: 'guard-hold',
-    clipId: LONGSWORD_GUARD_BASE.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    weaponMountProfileId: GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD,
-    authored: LONGSWORD_GUARD_AUTHORING_STATE.authored === true,
-    authoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    inPlace: true,
-    loop: true,
-  }),
-  [GUARD_STATES.BLOCK_HIT]: authoredGuardReaction('block-hit', BLOCK_HIT_PROFILE),
-  [GUARD_STATES.PARRY]: authoredGuardReaction('parry-reaction', PARRY_PROFILE, {
-    variants: Object.freeze({
-      [GUARD_REACTION_VARIANTS.PARRY]: Object.freeze({
-        clipId: PARRY_PROFILE.clipId,
-        reactionProfileId: PARRY_PROFILE.id,
-      }),
-      [GUARD_REACTION_VARIANTS.PERFECT_PARRY]: Object.freeze({
-        clipId: PERFECT_PARRY_PROFILE.clipId,
-        reactionProfileId: PERFECT_PARRY_PROFILE.id,
-      }),
-    }),
-  }),
-  [GUARD_STATES.COUNTER]: authoredGuardCounter(),
-  [GUARD_STATES.RECOVER]: authoredGuardTransition('guard-recover', GUARD_TRANSITION_PROFILE_IDS.RECOVER),
-  [GUARD_STATES.EXIT]: authoredGuardTransition('guard-exit', GUARD_TRANSITION_PROFILE_IDS.EXIT),
-});
-
-const GUARD_TRANSITION_GRAPH = Object.freeze({
-  [GUARD_STATES.NEUTRAL]: Object.freeze({
-    [GUARD_EVENTS.GUARD_PRESS]: GUARD_STATES.ENTER,
-  }),
-  [GUARD_STATES.ENTER]: Object.freeze({
-    [GUARD_EVENTS.GUARD_RELEASE]: GUARD_STATES.EXIT,
-    [GUARD_EVENTS.ENTER_COMPLETE]: GUARD_STATES.HOLD,
-  }),
-  [GUARD_STATES.HOLD]: Object.freeze({
-    [GUARD_EVENTS.GUARD_RELEASE]: GUARD_STATES.EXIT,
-    [GUARD_EVENTS.BLOCK_CONFIRMED]: GUARD_STATES.BLOCK_HIT,
-    [GUARD_EVENTS.PARRY_CONFIRMED]: GUARD_STATES.PARRY,
-  }),
-  [GUARD_STATES.BLOCK_HIT]: Object.freeze({
-    [GUARD_EVENTS.COUNTER_CONFIRMED]: GUARD_STATES.COUNTER,
-    [GUARD_EVENTS.REACTION_COMPLETE]: GUARD_STATES.RECOVER,
-  }),
-  [GUARD_STATES.PARRY]: Object.freeze({
-    [GUARD_EVENTS.COUNTER_CONFIRMED]: GUARD_STATES.COUNTER,
-    [GUARD_EVENTS.REACTION_COMPLETE]: GUARD_STATES.RECOVER,
-  }),
-  [GUARD_STATES.COUNTER]: Object.freeze({
-    [GUARD_EVENTS.COUNTER_COMPLETE]: GUARD_STATES.RECOVER,
-  }),
-  [GUARD_STATES.RECOVER]: Object.freeze({
-    [GUARD_EVENTS.RECOVER_COMPLETE]: GUARD_STATES.HOLD,
-  }),
-  [GUARD_STATES.EXIT]: Object.freeze({
-    [GUARD_EVENTS.GUARD_PRESS]: GUARD_STATES.ENTER,
-    [GUARD_EVENTS.EXIT_COMPLETE]: GUARD_STATES.NEUTRAL,
-  }),
-});
 
 function frozenPayload(payload) {
   if (!payload || typeof payload !== 'object') return Object.freeze({});
@@ -11250,9 +11593,12 @@ function outcomeForEvent(event) {
   return null;
 }
 
-function getGuardPresentation(state, payload = {}) {
-  const baseline = LONGSWORD_GUARD_PRESENTATION[state]
-    || LONGSWORD_GUARD_PRESENTATION[GUARD_STATES.NEUTRAL];
+// W1: the table is a parameter now, defaulting to the longsword's. S1.C2 step 4 moved the table out
+// of this module but left the machine reading one fixed import, which was enough while no fighter
+// carried a weapon. A fighter carries one now, so the machine is asked which table to read.
+function getGuardPresentation(state, payload = {}, presentation = LONGSWORD_GUARD_PRESENTATION) {
+  const baseline = presentation[state]
+    || presentation[GUARD_STATES.NEUTRAL];
   const reaction = getGuardReactionProfile(state, payload);
   if (!reaction) return baseline;
   if (baseline.reactionProfileId === reaction.id && baseline.clipId === reaction.clipId) return baseline;
@@ -11272,6 +11618,10 @@ function createGuardStateMachine(options = {}) {
     ? options.initialState
     : GUARD_STATES.NEUTRAL;
   let guardHeld = Boolean(options.guardHeld);
+  // W1: which weapon's guard this machine presents. The longsword while nothing says otherwise,
+  // which is every existing caller - two in src/, seventeen lab pages and five tests, none of
+  // which had to change to gain the option.
+  const presentation = options.presentation || LONGSWORD_GUARD_PRESENTATION;
   let elapsedMs = 0;
   let sequence = 0;
   let lastOutcome = null;
@@ -11286,7 +11636,7 @@ function createGuardStateMachine(options = {}) {
       sequence,
       lastOutcome,
       lastTransition,
-      presentation: getGuardPresentation(state, lastTransition?.payload || {}),
+      presentation: getGuardPresentation(state, lastTransition?.payload || {}, presentation),
       authority: GUARD_STATE_AUTHORITY_NOTE,
     });
   }
@@ -11374,12 +11724,89 @@ function createGuardStateMachine(options = {}) {
     },
   });
 }
-return Object.freeze({ GUARD_STATE_AUTHORITY_NOTE, GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, LONGSWORD_GUARD_PRESENTATION, GUARD_TRANSITION_GRAPH, getGuardPresentation, createGuardStateMachine });
+return Object.freeze({ GUARD_STATE_AUTHORITY_NOTE, getGuardPresentation, createGuardStateMachine, GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, GUARD_TRANSITION_GRAPH, LONGSWORD_GUARD_PRESENTATION });
 })();
 
-// src/combat/longsword-guard-correction.js
-const __actionStudioModule58 = (() => {
-const { LONGSWORD_GUARD_CORRECTION_SCOPE, getLongswordGuardCorrectionBones } = __actionStudioModule51;
+// src/combat/guard-correction-scope.js
+const __actionStudioModule63 = (() => {
+// @ts-check
+// Which bones a guard correction is allowed to touch, and how far it may move each one.
+//
+// handoff/39 classified this as category B. Nothing in it names a weapon: it is the right arm
+// chain, the torso, the off hand, and the mount socket the hand carries - the rig's own anatomy,
+// with a degree budget per bone measured against that rig. The forbidden list is the same
+// statement from the other side: a guard pose is an upper-body correction, so the root, the hips
+// and both legs stay where the source animation put them, whatever is being held.
+//
+// The one bone here that touches equipment is handslot.r, and the policy caps it at 15 degrees of
+// trim. That cap is about the socket, not about what is socketed - a greatsword hangs off the same
+// bone as a longsword, and moving it further would move the arm's silhouette rather than the grip.
+
+const GUARD_CORRECTION_SCOPE = Object.freeze({
+  requiredBones: Object.freeze([
+    'upperarm.r',
+    'lowerarm.r',
+    'wrist.r',
+  ]),
+  optionalBones: Object.freeze([
+    'chest',
+    'upperarm.l',
+    'lowerarm.l',
+    'wrist.l',
+    'handslot.r',
+  ]),
+  forbiddenBones: Object.freeze([
+    'root',
+    'hips',
+    'upperleg.l',
+    'upperleg.r',
+    'lowerleg.l',
+    'lowerleg.r',
+    'foot.l',
+    'foot.r',
+    'toes.l',
+    'toes.r',
+  ]),
+  maxLocalCorrectionDegrees: Object.freeze({
+    chest: 8,
+    'upperarm.r': 40,
+    'lowerarm.r': 50,
+    'wrist.r': 65,
+    'upperarm.l': 20,
+    'lowerarm.l': 25,
+    'wrist.l': 30,
+    'handslot.r': 15,
+  }),
+  policy: Object.freeze({
+    preserveRootAndLowerBody: true,
+    preserveSourceTorsoWeight: true,
+    preserveOffHandUnlessNeeded: true,
+    equipmentTrimOnly: true,
+    equipmentTrimMaxDegrees: 15,
+  }),
+});
+
+function getGuardCorrectionBones() {
+  return Object.freeze([
+    ...GUARD_CORRECTION_SCOPE.requiredBones,
+    ...GUARD_CORRECTION_SCOPE.optionalBones,
+  ]);
+}
+return Object.freeze({ GUARD_CORRECTION_SCOPE, getGuardCorrectionBones });
+})();
+
+// src/combat/guard-quaternion-correction.js
+const __actionStudioModule62 = (() => {
+// @ts-check
+// Generic rig maths for a guard correction: normalise a quaternion, build one from Euler degrees,
+// scale it toward identity by a weight, and write the result onto named bones.
+//
+// handoff/39 classified this whole module as category B, and the function signatures are the
+// argument. Every one of them takes the offsets as a parameter. Nothing here reads a clip, a
+// contact time, or a blade; nothing here can tell a longsword from a greatsword, because nothing
+// here is ever told. It was called longsword-guard-correction.js only because the longsword was
+// the first thing to need it.
+const { GUARD_CORRECTION_SCOPE, getGuardCorrectionBones } = __actionStudioModule63;
 
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
@@ -11396,6 +11823,7 @@ function clamp01(value) {
   return Math.max(0, Math.min(1, finite(value)));
 }
 
+/** @param {readonly number[]} input */
 function normalizeQuaternionArray(input = [0, 0, 0, 1]) {
   const values = Array.from(input || [0, 0, 0, 1], (value) => finite(value));
   while (values.length < 4) values.push(values.length === 3 ? 1 : 0);
@@ -11404,6 +11832,7 @@ function normalizeQuaternionArray(input = [0, 0, 0, 1]) {
   return Object.freeze(values.slice(0, 4).map((value) => value / length));
 }
 
+/** @param {readonly number[]} input */
 function quaternionAngleDegrees(input = [0, 0, 0, 1]) {
   const quaternion = normalizeQuaternionArray(input);
   const w = Math.min(1, Math.max(-1, Math.abs(quaternion[3])));
@@ -11424,6 +11853,10 @@ function quaternionFromEulerDegrees(input = {}) {
   ]);
 }
 
+/**
+ * @param {readonly number[]} input
+ * @param {number} weight
+ */
 function scaleQuaternionOffset(input = [0, 0, 0, 1], weight = 1) {
   const t = clamp01(weight);
   let [x, y, z, w] = normalizeQuaternionArray(input);
@@ -11450,7 +11883,7 @@ function scaleQuaternionOffset(input = [0, 0, 0, 1], weight = 1) {
 }
 
 function buildGuardQuaternionOffsets(eulerByBone = {}) {
-  const allowed = new Set(getLongswordGuardCorrectionBones());
+  const allowed = new Set(getGuardCorrectionBones());
   return Object.freeze(Object.fromEntries(
     Object.entries(eulerByBone)
       .filter(([bone]) => allowed.has(bone))
@@ -11459,8 +11892,8 @@ function buildGuardQuaternionOffsets(eulerByBone = {}) {
 }
 
 function validateGuardQuaternionOffsets(offsets = {}) {
-  const allowed = new Set(getLongswordGuardCorrectionBones());
-  const limits = LONGSWORD_GUARD_CORRECTION_SCOPE.maxLocalCorrectionDegrees;
+  const allowed = new Set(getGuardCorrectionBones());
+  const limits = GUARD_CORRECTION_SCOPE.maxLocalCorrectionDegrees;
   const entries = [];
   const invalidBones = [];
   const overBudget = [];
@@ -11530,7 +11963,7 @@ function resetGuardQuaternionOffsetRuntime(rig, offsets = null) {
   if (!rig?.bones) return 0;
   const boneIds = offsets
     ? Object.keys(offsets)
-    : getLongswordGuardCorrectionBones();
+    : getGuardCorrectionBones();
   let cleared = 0;
   for (const boneId of boneIds) {
     const bone = rig.bones[boneId];
@@ -11587,7 +12020,7 @@ return Object.freeze({ normalizeQuaternionArray, quaternionAngleDegrees, quatern
 })();
 
 // src/combat/guard-recovery-bridge.js
-const __actionStudioModule59 = (() => {
+const __actionStudioModule64 = (() => {
 const EPSILON = 1e-8;
 const COUNTER_CONTINUITY_HOLD_MS = 1000 / 60;
 
@@ -11877,7 +12310,7 @@ return Object.freeze({ GUARD_RECOVERY_PROFILE_IDS, GUARD_RECOVERY_PROFILES, capt
 })();
 
 // src/combat/guard-world-sword-orientation.js
-const __actionStudioModule60 = (() => {
+const __actionStudioModule65 = (() => {
 const EPSILON = 1e-8;
 
 function clamp01(value) {
@@ -11977,7 +12410,7 @@ return Object.freeze({ quaternionAngleDegrees, slerpShortestQuaternion, sampleWo
 })();
 
 // src/combat/living-guard-idle-runtime.js
-const __actionStudioModule61 = (() => {
+const __actionStudioModule66 = (() => {
 const LIVING_GUARD_PRODUCTION_STAGE = 'G3.6.5';
 const LIVING_GUARD_PRODUCTION_CLIP_ID = 'SKYRIM_GUARD/shd_blockidle';
 const LIVING_GUARD_PRODUCTION_SOURCE_RATE = 1.0;
@@ -12037,16 +12470,16 @@ return Object.freeze({ LIVING_GUARD_PRODUCTION_STAGE, LIVING_GUARD_PRODUCTION_CL
 })();
 
 // src/combat/guard-presentation-runtime.js
-const __actionStudioModule57 = (() => {
-const { GUARD_EVENTS, GUARD_STATES } = __actionStudioModule50;
-const { sampleGuardPresentationWeights, sampleGuardTransitionProfile } = __actionStudioModule52;
+const __actionStudioModule61 = (() => {
+const { GUARD_EVENTS, GUARD_STATES } = __actionStudioModule51;
+const { sampleGuardPresentationWeights, sampleGuardTransitionProfile } = __actionStudioModule59;
 const { sampleGuardReactionProfile } = __actionStudioModule53;
-const { sampleGuardCounterProfile } = __actionStudioModule56;
-const { LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule51;
-const { applyGuardQuaternionOffsetsWeighted } = __actionStudioModule58;
-const { applyObjectTransform, applyRigPose, blendRecoveryTransform, captureObjectTransform, captureRigPose, resolveGuardRecoveryProfile, samplePoseMatchedRecovery } = __actionStudioModule59;
-const { sampleWorldSwordRecoveryOrientation } = __actionStudioModule60;
-const { LIVING_GUARD_PRODUCTION_STAGE, sampleLivingGuardProductionHold } = __actionStudioModule61;
+const { sampleGuardCounterProfile } = __actionStudioModule60;
+const { LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule58;
+const { applyGuardQuaternionOffsetsWeighted } = __actionStudioModule62;
+const { applyObjectTransform, applyRigPose, blendRecoveryTransform, captureObjectTransform, captureRigPose, resolveGuardRecoveryProfile, samplePoseMatchedRecovery } = __actionStudioModule64;
+const { sampleWorldSwordRecoveryOrientation } = __actionStudioModule65;
+const { LIVING_GUARD_PRODUCTION_STAGE, sampleLivingGuardProductionHold } = __actionStudioModule66;
 
 const GUARD_ROOT_ROTATION_POLICY = 'lock';
 const STABLE_GUARD_HOLD_STAGE = 'G3.5.2';
@@ -12578,7 +13011,7 @@ return Object.freeze({ STABLE_GUARD_HOLD_STAGE, PRODUCTION_GUARD_HOLD_STAGE, can
 })();
 
 // src/combat/guard-weapon-mount-runtime.js
-const __actionStudioModule62 = (() => {
+const __actionStudioModule67 = (() => {
 const { applyMountCalibration } = __actionStudioModule3;
 
 function createGuardWeaponMountRuntime(options = {}) {
@@ -12618,17 +13051,17 @@ return Object.freeze({ createGuardWeaponMountRuntime });
 })();
 
 // tools/action-studio/studio-guard-runtime-controller.js
-const __actionStudioModule49 = (() => {
+const __actionStudioModule50 = (() => {
 const { DEFAULT_KAYKIT_SWORD_MOUNT } = __actionStudioModule15;
 const { applyMountCalibration } = __actionStudioModule3;
-const { loadSkyrimConvertedAnimationLibrary } = __actionStudioModule40;
-const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE } = __actionStudioModule43;
-const { composeSkyrimWeaponMountCalibration } = __actionStudioModule42;
-const { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } = __actionStudioModule50;
-const { createGuardPresentationRuntime } = __actionStudioModule57;
-const { LIVING_GUARD_PRODUCTION_STAGE } = __actionStudioModule61;
-const { GUARD_WEAPON_MOUNT_PROFILE_IDS } = __actionStudioModule56;
-const { createGuardWeaponMountRuntime } = __actionStudioModule62;
+const { loadSkyrimConvertedAnimationLibrary } = __actionStudioModule41;
+const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE } = __actionStudioModule44;
+const { composeSkyrimWeaponMountCalibration } = __actionStudioModule43;
+const { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } = __actionStudioModule51;
+const { createGuardPresentationRuntime } = __actionStudioModule61;
+const { LIVING_GUARD_PRODUCTION_STAGE } = __actionStudioModule66;
+const { GUARD_WEAPON_MOUNT_PROFILE_IDS } = __actionStudioModule60;
+const { createGuardWeaponMountRuntime } = __actionStudioModule67;
 
 const GUARD_RUNTIME_STAGE = LIVING_GUARD_PRODUCTION_STAGE;
 const MODE_LABELS = Object.freeze({
@@ -13022,16 +13455,16 @@ return Object.freeze({ createStudioGuardRuntimeController });
 })();
 
 // tools/action-studio/studio-external-animation-controller.js
-const __actionStudioModule36 = (() => {
+const __actionStudioModule37 = (() => {
 const { createFittedAnimationBinding } = __actionStudioModule19;
 const { KAYKIT_ANIMATION_PACKS, loadKayKitAnimationLibrary } = __actionStudioModule11;
-const { UAL1_ANIMATION_FILES, loadUal1AnimationLibrary } = __actionStudioModule37;
-const { UAL2_ANIMATION_FILES, loadUal2AnimationLibrary } = __actionStudioModule39;
-const { SKYRIM_GUARD_CONVERTED_FILES, importSkyrimConvertedAnimationFile, loadSkyrimConvertedAnimationLibrary } = __actionStudioModule40;
-const { getCanonicalMotionContactSeconds, getLongswordMotionMetadata } = __actionStudioModule46;
-const { readAnimationBindingView } = __actionStudioModule47;
-const { installStudioSkyrimBridgeControls } = __actionStudioModule48;
-const { createStudioGuardRuntimeController } = __actionStudioModule49;
+const { UAL1_ANIMATION_FILES, loadUal1AnimationLibrary } = __actionStudioModule38;
+const { UAL2_ANIMATION_FILES, loadUal2AnimationLibrary } = __actionStudioModule40;
+const { SKYRIM_GUARD_CONVERTED_FILES, importSkyrimConvertedAnimationFile, loadSkyrimConvertedAnimationLibrary } = __actionStudioModule41;
+const { getCanonicalMotionContactSeconds, getLongswordMotionMetadata } = __actionStudioModule47;
+const { readAnimationBindingView } = __actionStudioModule48;
+const { installStudioSkyrimBridgeControls } = __actionStudioModule49;
+const { createStudioGuardRuntimeController } = __actionStudioModule50;
 
 const SOURCE_INFO = Object.freeze({
   ual2: Object.freeze({ label: 'UAL2 Sword Combat', count: UAL2_ANIMATION_FILES.length, defaultClip: 'UAL2/Sword_Regular_A' }),
@@ -13481,18 +13914,18 @@ const { normalizePose } = __actionStudioModule9;
 const { createAnimationClip } = __actionStudioModule16;
 const { ActionMotionPlayer } = __actionStudioModule17;
 const { ACTION_TEMPLATE_FACTORIES } = __actionStudioModule20;
-const { createActionDefinition, isFrameInWindow } = __actionStudioModule23;
-const { createStudioPreviewRuntime } = __actionStudioModule24;
-const { createStudioCombatFeelController } = __actionStudioModule25;
-const { createWholeBodyMotionGuideOverlay } = __actionStudioModule26;
-const { createStudioMotionGuideEditor } = __actionStudioModule27;
-const { bakeStudioMotionConstraints } = __actionStudioModule28;
-const { createStudioPoseDragController } = __actionStudioModule29;
-const { captureNextBlockingKey, createStudioBlockingWorkflow } = __actionStudioModule32;
-const { createStudioProjectIoController } = __actionStudioModule33;
-const { createStudioExternalAnimationController } = __actionStudioModule36;
-const { renderComboQueueView, renderAnimationBindingView, renderKeyEditorView, renderLibraryView, renderMountEditorView, renderPoseControlsView, renderTimelineView, renderWindowEditorView, updateTimelineReadoutView } = __actionStudioModule47;
-const { buildComboProjectData, cloneSerializable, createStudioProject, readStoredJson, writeStoredJson } = __actionStudioModule35;
+const { createActionDefinition, isFrameInWindow } = __actionStudioModule24;
+const { createStudioPreviewRuntime } = __actionStudioModule25;
+const { createStudioCombatFeelController } = __actionStudioModule26;
+const { createWholeBodyMotionGuideOverlay } = __actionStudioModule27;
+const { createStudioMotionGuideEditor } = __actionStudioModule28;
+const { bakeStudioMotionConstraints } = __actionStudioModule29;
+const { createStudioPoseDragController } = __actionStudioModule30;
+const { captureNextBlockingKey, createStudioBlockingWorkflow } = __actionStudioModule33;
+const { createStudioProjectIoController } = __actionStudioModule34;
+const { createStudioExternalAnimationController } = __actionStudioModule37;
+const { renderComboQueueView, renderAnimationBindingView, renderKeyEditorView, renderLibraryView, renderMountEditorView, renderPoseControlsView, renderTimelineView, renderWindowEditorView, updateTimelineReadoutView } = __actionStudioModule48;
+const { buildComboProjectData, cloneSerializable, createStudioProject, readStoredJson, writeStoredJson } = __actionStudioModule36;
 
 const THREE = window.THREE;
 if (!THREE) throw new Error('Action Studio requires Three.js r128');

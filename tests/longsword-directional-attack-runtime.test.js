@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   LONGSWORD_ATTACK_INTERRUPTION_STAGE,
-  LONGSWORD_ATTACK_PHASES,
   LONGSWORD_DIRECTIONAL_ATTACK_DEFINITIONS,
   createLongswordDirectionalAttackDefinition,
   createLongswordDirectionalAttackRuntime,
   getLongswordDirectionalAttackProfile,
 } from '../src/combat/longsword-directional-attack-runtime.js';
 import { warpRuntimeToSource } from '../src/combat/attack-time-warp.js';
+import { ATTACK_PHASES } from '../src/combat/attack-phases.js';
 
 // R20M.1 (B6h) split two clocks that used to be one number. SOURCE is where the clip is sampled;
 // RUNTIME is what the exchange counts and the player experiences. TOP and RIGHT are unwarped, so
@@ -91,25 +91,25 @@ test('G4.1 attack definition carries direction into ActionDefinition and frame w
 
 test('G4.1 runtime exposes windup, active, recovery and returns to idle', () => {
   const runtime = createLongswordDirectionalAttackRuntime();
-  assert.equal(runtime.snapshot.phase, LONGSWORD_ATTACK_PHASES.IDLE);
+  assert.equal(runtime.snapshot.phase, ATTACK_PHASES.IDLE);
   const started = runtime.start('right');
   assert.equal(started.accepted, true);
-  assert.equal(started.snapshot.phase, LONGSWORD_ATTACK_PHASES.WINDUP);
+  assert.equal(started.snapshot.phase, ATTACK_PHASES.WINDUP);
 
   const profile = started.snapshot.action.runtime;
   const intoActiveMs = profile.activeStartSeconds * 1000 + 1;
   const active = runtime.update(intoActiveMs);
-  assert.equal(active.phase, LONGSWORD_ATTACK_PHASES.ACTIVE);
+  assert.equal(active.phase, ATTACK_PHASES.ACTIVE);
   assert.equal(active.direction, 'right');
 
   const pastActiveMs = (profile.activeEndSeconds - active.elapsedSeconds) * 1000 + 1;
   const recovery = runtime.update(pastActiveMs);
-  assert.equal(recovery.phase, LONGSWORD_ATTACK_PHASES.RECOVERY);
+  assert.equal(recovery.phase, ATTACK_PHASES.RECOVERY);
 
   const completed = runtime.update(profile.durationSeconds * 1000);
   assert.equal(completed.completed, true);
   assert.equal(completed.direction, 'right');
-  assert.equal(runtime.snapshot.phase, LONGSWORD_ATTACK_PHASES.IDLE);
+  assert.equal(runtime.snapshot.phase, ATTACK_PHASES.IDLE);
   assert.equal(runtime.snapshot.lastCompleted.direction, 'right');
 });
 
@@ -138,9 +138,9 @@ test('G4.3B.1 interrupt freezes the active source pose instead of resetting to i
   });
 
   assert.equal(interrupted.accepted, true);
-  assert.equal(interrupted.snapshot.phase, LONGSWORD_ATTACK_PHASES.INTERRUPTED);
+  assert.equal(interrupted.snapshot.phase, ATTACK_PHASES.INTERRUPTED);
   assert.equal(interrupted.snapshot.interruption.stage, LONGSWORD_ATTACK_INTERRUPTION_STAGE);
-  assert.equal(interrupted.snapshot.interruption.phaseAtInterrupt, LONGSWORD_ATTACK_PHASES.ACTIVE);
+  assert.equal(interrupted.snapshot.interruption.phaseAtInterrupt, ATTACK_PHASES.ACTIVE);
   assert.equal(interrupted.snapshot.interruption.clipId, EXPECTED.left.clipId);
   assert.equal(interrupted.snapshot.interruption.direction, 'left');
   // The frozen pose is a place in the clip, so it is compared in source time; the instant it
@@ -169,7 +169,7 @@ test('G4.3B.1 update does not advance the frozen source time after interruption'
   const beforeSource = runtime.snapshot.sourceTimeSeconds;
   const beforeElapsed = runtime.snapshot.elapsedSeconds;
   const frozen = runtime.update(500);
-  assert.equal(frozen.phase, LONGSWORD_ATTACK_PHASES.INTERRUPTED);
+  assert.equal(frozen.phase, ATTACK_PHASES.INTERRUPTED);
   assert.equal(frozen.frozenByInterruption, true);
   assert.equal(frozen.sourceTimeSeconds, beforeSource);
   assert.equal(frozen.elapsedSeconds, beforeElapsed);
@@ -256,7 +256,7 @@ test('G4.3B.1 interruption can be handed off explicitly and preserves lastInterr
   const handoff = runtime.releaseInterruption();
   assert.equal(handoff.accepted, true);
   assert.equal(handoff.released.outcome, 'block');
-  assert.equal(runtime.snapshot.phase, LONGSWORD_ATTACK_PHASES.IDLE);
+  assert.equal(runtime.snapshot.phase, ATTACK_PHASES.IDLE);
   assert.equal(runtime.snapshot.lastInterrupted.outcome, 'block');
 
   const next = runtime.start('left');

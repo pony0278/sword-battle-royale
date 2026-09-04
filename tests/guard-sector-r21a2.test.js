@@ -9,7 +9,7 @@ import {
   GUARD_SECTOR_STAGE,
   planGuardSector,
 } from '../src/combat/guard-sector.js';
-import { LONGSWORD_ATTACK_DIRECTIONS } from '../src/combat/longsword-directional-metadata.js';
+import { ATTACK_DIRECTIONS } from '../src/combat/attack-directions.js';
 
 const aim = (offsetX, offsetY, currentSector = null) => planGuardSector({
   offsetX, offsetY, viewportWidth: 1100, viewportHeight: 800, currentSector,
@@ -20,7 +20,7 @@ test('R21A.2 a sector is named after the attack it answers', () => {
   // The whole convention, in one assertion. R21A.1 measured that the swings carry no geometry to
   // match - all three windups travel on the defender's right - so this naming is the only thing
   // tying a player's aim to an attack, and it drifting apart is the failure that replaces a mirror.
-  assert.deepEqual([...GUARD_SECTORS].sort(), [...LONGSWORD_ATTACK_DIRECTIONS].sort());
+  assert.deepEqual([...GUARD_SECTORS].sort(), [...ATTACK_DIRECTIONS].sort());
   assert.equal(GUARD_SECTORS_MATCH_ATTACK_DIRECTIONS, true);
   for (const sector of GUARD_SECTORS) {
     assert.equal(typeof GUARD_SECTOR_AXIS_DEGREES[sector], 'number', `${sector} needs a screen axis`);

@@ -4,7 +4,7 @@ import {
   applyGuardQuaternionOffsetsWeighted,
   quaternionFromEulerDegrees,
   resetGuardQuaternionOffsetRuntime,
-} from '../src/combat/longsword-guard-correction.js';
+} from '../src/combat/guard-quaternion-correction.js';
 
 class FakeQuaternion {
   constructor(x = 0, y = 0, z = 0, w = 1) { this.set(x, y, z, w); }

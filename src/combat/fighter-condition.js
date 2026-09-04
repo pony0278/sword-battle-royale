@@ -1,3 +1,4 @@
+// @ts-check
 import { getLongswordDirectionalAttackProfile } from './longsword-directional-attack-runtime.js';
 import {
   GUARD_REACTION_VARIANTS,
@@ -45,8 +46,39 @@ export const PARRY_STAGGER_SECONDS = 1;
 // before the blade arrives. Reading the direction is what buys the guaranteed second.
 export const ASSISTED_PARRY_STAGGER_SECONDS = 0.5;
 
-// The blow every fighter's swing lands at, kept here because the stagger above is derived from it.
-export const MEASURED_CONTACT_SECONDS = getLongswordDirectionalAttackProfile('top').contactSeconds;
+// S1.C1 — the blow every fighter's swing lands at, kept here because the stagger above is derived
+// from it, and asked of a weapon rather than resolved once at import.
+//
+// Until S1.C1 this was `getLongswordDirectionalAttackProfile('top').contactSeconds`, evaluated when
+// the module loaded. That is a single value for the whole process, and both rules that read it are
+// rules about the weapon being swung rather than about the longsword: the stagger has to outlast
+// the last legal follow-up PLUS the blade's own travel, and the opponent's guard reaction has to
+// beat that same travel (opponent-guard.js reads 0.43 for exactly this reason). A second weapon
+// with a different reach answers both differently, and could not while this was a constant.
+//
+// WHY 'top' is the direction asked, which was an accident worth making deliberate: the runtime
+// warps all three directions onto one contact, so the direction chosen should not matter. Measured,
+// at the default tempo, it very nearly does not:
+//
+//   top     source 0.43   runtime 0.43
+//   right   source 0.23   runtime 0.4301
+//   left    source 0.26   runtime 0.43
+//
+// RIGHT lands 0.1ms later than the other two - the warp's own arithmetic, not float noise, which is
+// what the +5e-17 on LEFT is. TOP is the direction whose source contact already IS the target, so
+// asking it returns the number the warp is aiming at rather than the number it arrived at.
+export const CANONICAL_CONTACT_DIRECTION = 'top';
+
+export function measuredContactSecondsFor({
+  getDirectionalAttackProfile = getLongswordDirectionalAttackProfile,
+  direction = CANONICAL_CONTACT_DIRECTION,
+} = {}) {
+  return getDirectionalAttackProfile(direction).contactSeconds;
+}
+
+// The longsword's answer, which is every answer while it is the only weapon. Kept as a constant so
+// the three tests that read it, and the comment in opponent-guard.js that quotes it, do not move.
+export const MEASURED_CONTACT_SECONDS = measuredContactSecondsFor();
 
 export function followupWindowSecondsFor(variant) {
   const profile = LONGSWORD_GUARD_REACTION_PROFILES[variant];
@@ -130,6 +162,14 @@ export function createFighterCondition({ maxHealth = DUEL_MAX_HEALTH } = {}) {
 
 // Who won, if anybody has. Kept as a function of two conditions rather than as state of its own:
 // there is exactly one duel and its result is entirely implied by the two fighters in it.
+// S1.C2: `= {}` makes the parameter's inferred type `{}`, which has neither field. Said explicitly,
+// with the conditions optional because judging a duel that has not started is a real call - the
+// 'no-duel' branch below is what answers it.
+/**
+ * @param {object} [duel]
+ * @param {ReturnType<typeof createFighterCondition>} [duel.playerCondition]
+ * @param {ReturnType<typeof createFighterCondition>} [duel.opponentCondition]
+ */
 export function judgeDuel({ playerCondition, opponentCondition } = {}) {
   const player = playerCondition?.report ?? null;
   const opponent = opponentCondition?.report ?? null;

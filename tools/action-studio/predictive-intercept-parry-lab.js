@@ -12,10 +12,7 @@ import { loadSkyrimConvertedAnimationLibrary } from '../../src/animation/skyrim-
 import { composeSkyrimWeaponMountCalibration } from '../../src/animation/skyrim-weapon-bind-calibration.js';
 import { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } from '../../src/combat/guard-state-machine.js';
 import { createGuardPresentationRuntime } from '../../src/combat/guard-presentation-runtime.js';
-import {
-  createLongswordDirectionalAttackRuntime,
-  LONGSWORD_ATTACK_PHASES,
-} from '../../src/combat/longsword-directional-attack-runtime.js';
+import { createLongswordDirectionalAttackRuntime } from '../../src/combat/longsword-directional-attack-runtime.js';
 import { captureRigPose, applyRigPose, blendRecoveryPose } from '../../src/combat/guard-recovery-bridge.js';
 import { sampleLongswordAttackRecovery } from '../../src/combat/longsword-contact-recovery-presentation.js';
 import { probeSweptSwordBucklerContact } from '../../src/combat/swept-sword-buckler-contact.js';
@@ -31,6 +28,7 @@ import {
   createPredictiveInterceptParryPresentationRuntime,
 } from '../../src/combat/predictive-intercept-parry.js';
 import { createTwoActorCombatIntegration } from '../../src/combat/two-actor-combat-integration.js';
+import { ATTACK_PHASES } from '../../src/combat/attack-phases.js';
 
 const THREE = window.THREE;
 if (!THREE?.WebGLRenderer || !THREE?.GLTFLoader) {
@@ -281,7 +279,7 @@ function updatePredictiveParry(snapshot, currentBlade, deltaSeconds) {
     predictedMarker.visible = false;
     return;
   }
-  if (snapshot.phase === LONGSWORD_ATTACK_PHASES.INTERRUPTED || snapshot.phase === LONGSWORD_ATTACK_PHASES.IDLE) return;
+  if (snapshot.phase === ATTACK_PHASES.INTERRUPTED || snapshot.phase === ATTACK_PHASES.IDLE) return;
 
   const surface = buckler.getWorldParrySurface();
   latestAnalysis = analyzePredictiveInterceptParry({
@@ -348,7 +346,7 @@ function updatePredictiveParry(snapshot, currentBlade, deltaSeconds) {
 
 function updateBlockTracking(snapshot, currentBlade, deltaSeconds) {
   if (selectedMode !== 'block' || !previousBlade || !snapshot.action || firstContact) return;
-  if (snapshot.phase === LONGSWORD_ATTACK_PHASES.INTERRUPTED || snapshot.phase === LONGSWORD_ATTACK_PHASES.IDLE) return;
+  if (snapshot.phase === ATTACK_PHASES.INTERRUPTED || snapshot.phase === ATTACK_PHASES.IDLE) return;
   latestTrackingPlan = planGuardThreatCorrection({
     mode: 'guard',
     previousBlade,
@@ -368,7 +366,7 @@ function updateContact(snapshot, currentBlade, deltaSeconds) {
     currentBlade,
     bucklerSurface: buckler.getWorldParrySurface(),
     deltaSeconds,
-    active: snapshot.phase === LONGSWORD_ATTACK_PHASES.ACTIVE,
+    active: snapshot.phase === ATTACK_PHASES.ACTIVE,
   });
   if (!latestContact.contact) return;
 

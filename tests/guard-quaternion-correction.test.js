@@ -8,7 +8,7 @@ import {
   quaternionAngleDegrees,
   quaternionFromEulerDegrees,
   validateGuardQuaternionOffsets,
-} from '../src/combat/longsword-guard-correction.js';
+} from '../src/combat/guard-quaternion-correction.js';
 
 test('G2.5.1 quaternion helpers preserve identity and XYZ authoring semantics', () => {
   assert.deepEqual(normalizeQuaternionArray([0, 0, 0, 0]), [0, 0, 0, 1]);

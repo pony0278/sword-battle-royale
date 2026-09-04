@@ -9,7 +9,7 @@ import {
   evaluateCommittedParryInput,
 } from '../src/combat/committed-parry-contact-gate.js';
 import { GUARD_SECTORS } from '../src/combat/guard-sector.js';
-import { LONGSWORD_ATTACK_DIRECTIONS } from '../src/combat/longsword-directional-metadata.js';
+import { ATTACK_DIRECTIONS } from '../src/combat/attack-directions.js';
 
 // R21C.1 - a parry is answered by direction; a block is not.
 //
@@ -29,7 +29,7 @@ const press = (direction, aimedSector) => evaluateCommittedParryInput({
 });
 
 test('R21C.1 pointing at the swing is what arms the parry', () => {
-  for (const direction of LONGSWORD_ATTACK_DIRECTIONS) {
+  for (const direction of ATTACK_DIRECTIONS) {
     // R21Q.1: "its own direction" is the sector the attack arrives from, not the name of the clip.
     // The clips are named for the attacker's hand and the sector for the screen, so the lateral
     // pair mirrors between them; this test asserted the raw names until the mirror was measured.

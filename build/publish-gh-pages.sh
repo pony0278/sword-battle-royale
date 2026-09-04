@@ -90,8 +90,32 @@ if [[ "$MODE" == "publish" ]]; then
       --exclude='./.git' \
       --exclude='./.github' \
       --exclude='./node_modules' \
+      --exclude='./dist' \
       -cf - . \
     | tar -C "$DEST" -xf -
+
+  # Vite - overlay the built page and its chunks on top of the repository copy.
+  #
+  # The site is still the repository, because it is more than one page: thirty-odd lab pages and the
+  # preview index all live in it and all still load their modules raw. Two pages are bundled - the
+  # one the community plays, and Action Studio - so those two and the shared chunks are replaced
+  # here. The repository's own tools/action-studio/index.html stays underneath and is what a
+  # file:// checkout still opens; it is overwritten only in the published copy.
+  #
+  # The built HTML references its chunks as '../../bundle/…' - relative to the page, which is two
+  # levels down - so bundle/ lands at the site root beside assets/. A preview publishes into
+  # preview/<slug>/, and because every path is relative the same overlay works there unchanged.
+  if [[ -d "$REPO_ROOT/dist" ]]; then
+    for page in shield-driven-contact-coupling-lab.html index.html; do
+      cp "$REPO_ROOT/dist/tools/action-studio/$page" "$DEST/tools/action-studio/$page"
+    done
+    rm -rf "${DEST:?}/bundle"
+    cp -r "$REPO_ROOT/dist/bundle" "$DEST/bundle"
+    echo "overlaid 2 built pages and $(ls "$DEST/bundle" | wc -l) chunks"
+  else
+    echo "dist/ missing: publishing the unbundled page. Run npm run build:web first." >&2
+    exit 1
+  fi
 else
   rm -rf "${PAGES:?}/$TARGET_DIR"
 fi

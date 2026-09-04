@@ -194,7 +194,24 @@ export const loadUal2AnimationLibrary = async (loader, options = {}) => {
     throw new Error('loadUal2AnimationLibrary requires THREE and the target procedural rig');
   }
   const baseUrl = String(options.baseUrl || DEFAULT_BASE_URL).replace(/\/?$/, '/');
-  const loaded = await Promise.all(UAL2_ANIMATION_FILES.map(async (entry) => {
+  // Which of the pack's clips this page needs.
+  //
+  // UAL2_ANIMATION_FILES is the CATALOGUE - what the pack contains - and stays complete, because
+  // knowing what is available is what makes a second weapon's sourcing a lookup rather than a
+  // search. What a page LOADS is a different question, and until this option existed the two were
+  // the same answer: all eight clips, 1.5MB, of which the game plays two.
+  //
+  // Ids may arrive bare ('Sword_Regular_A') or prefixed as the retargeted clip is named
+  // ('UAL2/Sword_Regular_A'), because callers hold the prefixed form - it is what a weapon's
+  // timings record names - and should not have to strip it to ask for a file.
+  const wanted = options.clipIds ? new Set(options.clipIds.map(String)) : null;
+  const requested = wanted
+    ? UAL2_ANIMATION_FILES.filter((entry) => wanted.has(entry.id) || wanted.has(`UAL2/${entry.id}`))
+    : UAL2_ANIMATION_FILES;
+  if (wanted && requested.length === 0) {
+    throw new Error(`loadUal2AnimationLibrary was asked for clips it does not have: ${[...wanted].join(', ')}`);
+  }
+  const loaded = await Promise.all(requested.map(async (entry) => {
     const gltf = await loadGlb(loader, `${baseUrl}${entry.file}`);
     try {
       return retargetUal2Clip(THREE, gltf, rig, { id: entry.id, fps: options.fps || 30 });
@@ -204,7 +221,8 @@ export const loadUal2AnimationLibrary = async (loader, options = {}) => {
   }));
   return {
     clips: new Map(loaded.map((clip) => [clip.name, clip])),
-    files: UAL2_ANIMATION_FILES,
+    files: requested,
+    catalogue: UAL2_ANIMATION_FILES,
     duplicates: [],
     source: 'ual2',
     retargetFps: options.fps || 30,

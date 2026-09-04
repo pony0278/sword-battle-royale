@@ -65,7 +65,7 @@ function build(overrides = {}) {
     camera,
     attackRuntime: createLongswordDirectionalAttackRuntime({}),
     createOwnershipTaps: () => ({}),
-    longswordAttackPhases: { WINDUP: 'attack_windup', ACTIVE: 'attack_active' },
+    attackPhases: { WINDUP: 'attack_windup', ACTIVE: 'attack_active' },
     promptHoldMs: 1500,
     presentationServices: {
       captureRigPose: () => ({}), applyRigPose: () => {}, blendRecoveryPose: () => ({}),

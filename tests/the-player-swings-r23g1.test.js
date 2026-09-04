@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createShieldParryLaneController } from '../src/game/lane-controller.js';
-import { LONGSWORD_ATTACK_PHASES } from '../src/combat/longsword-directional-attack-runtime.js';
+import { ATTACK_PHASES } from '../src/combat/attack-phases.js';
 import { ATTACK_ADVANCE_PROFILES } from '../src/combat/attack-advance.js';
 import { DIRECTIONAL_PARRY_KEYS } from '../src/combat/directional-parry-input.js';
 import { GUARD_SECTORS } from '../src/combat/guard-sector.js';
@@ -36,7 +36,7 @@ function swing(lane, { swinger, seconds, contactSeconds = 0.43, direction = 'top
   lane.startAttack(direction, contactSeconds, { swinger });
   const step = 1 / 60;
   for (let elapsed = step; elapsed <= seconds + 1e-9; elapsed += step) {
-    lane.update(elapsed, true, LONGSWORD_ATTACK_PHASES.ACTIVE);
+    lane.update(elapsed, true, ATTACK_PHASES.ACTIVE);
     lane.walk(step, null);
   }
 }
@@ -86,7 +86,7 @@ test('R23G.1 one swing at a time is the ledger\'s rule, not a policy on top of i
   // runtime and one swinging slot, so a second swing does not fight the first, it overwrites it.
   const lane = harness();
   lane.startAttack('top', 0.43, { swinger: 'defender' });
-  lane.update(0.2, true, LONGSWORD_ATTACK_PHASES.ACTIVE);
+  lane.update(0.2, true, ATTACK_PHASES.ACTIVE);
   assert.equal(lane.swingingSlot, 'defender');
   lane.startAttack('top', 0.43, { swinger: 'attacker' });
   assert.equal(lane.swingingSlot, 'attacker',
