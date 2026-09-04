@@ -48,6 +48,18 @@ identical.
 wrist tracks are both busy - 190 and 197 rotation keys - which is the point: it is a two-handed
 hold, and the left hand is on the hilt rather than free.
 
+## Where it is loaded
+
+```text
+Action Studio → External Motion Library → Skyrim Greatsword → Load selected pack
+Action Studio → V3 Rig Line Only → Stage weapon → Greatsword
+```
+
+`SKYRIM_GREATSWORD_CONVERTED_FILES` in `src/animation/skyrim-converted-animation-library.js` is the
+list, and it is deliberately separate from `SKYRIM_GUARD_CONVERTED_FILES`: the Guard state machine
+plays every entry in its own list, and the derived parry-deflect clips are built from the `shd_*`
+family by name. Nothing in the fight reaches for this clip yet.
+
 ## Its tracks were pruned, and yours will need to be too
 
 `2hm_idle.hkx` carries **210** transform tracks. This skeleton has **99** animation bones. Skyrim

@@ -142,7 +142,32 @@ first thing to say where a two-handed grip actually goes.
 `tests/the-clip-holds-the-sword-the-retarget-does-not.test.js` pins all of it, the control included,
 in the same spirit as handoff/44's record of failure: numbers for a fix to beat.
 
+## It is loadable now
+
+Action Studio's **External Motion Library → Skyrim Greatsword → Load selected pack** fetches it and
+retargets it, and **V3 Rig Line Only → Stage weapon** swaps the figure's blade so the pose can be
+read against the sword it is meant to hold. Both are driven end to end by
+`build/verify-built-studio.mjs` against the built page, alongside the Guard Runtime sample it
+already reproduced.
+
+Three decisions worth keeping:
+
+- **Its own pack, not a fifth guard entry.** `SKYRIM_GREATSWORD_CONVERTED_FILES` and its own base
+  URL. The Guard state machine plays every entry in its own list, and the derived parry-deflect
+  clips are built from the `shd_*` family by name — a greatsword clip in that list would end up
+  inside the Guard machine. The test asserts the pack produces no virtual clips.
+- **The weapon is held, not captured.** The preview runtime and the motion-guide overlay each read
+  the sword once at construction — the trail reads its tip, the off-hand guide reads its secondary
+  grip — so both now take a `setSword`. Without it the swap leaves the old blade's trail behind.
+- **The 82 KB is paid by the authoring page only.** The standalone studio bundle went 512,092 →
+  600,348 bytes; the community lab chunk stayed at 495.66 kB and carries no reference to the
+  greatsword at all. That is the split R22J.1's absence assertion exists to protect.
+
+The status line says what the measurement found, where an author will read it: *"1 converted
+greatsword clip retargeted at 30 fps · the off hand does not reach the hilt yet"*.
+
 ## Still not done
 
-The clip is not in `SKYRIM_GUARD_CONVERTED_FILES` or any loader, so nothing plays it yet;
-`greatsword-attack-timings.js` is still ten `null`s; and the off-hand IK does not exist.
+Nothing in the fight plays it — the Guard machine does not reach for it and
+`greatsword-attack-timings.js` is still ten `null`s — and the off-hand IK does not exist, which is
+what the grip measurement above says is now required.

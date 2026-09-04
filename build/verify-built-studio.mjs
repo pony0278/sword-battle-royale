@@ -33,6 +33,13 @@ const EXPECTED_CLIP = 'SKYRIM_GUARD/power_parry_g363';
 const SOURCE_MS_MIN = 810;
 const SOURCE_MS_MAX = 830;
 
+// The greatsword pack, which is loaded through the page's own External Motion Library controls
+// rather than a sampler. There is no in-page gate for it and no committed numbers to reproduce -
+// the question is only whether the clip the bake produced can be selected and retargeted by the
+// built page at all, which is the thing a person opening the studio would try first.
+const GREATSWORD_SOURCE = 'greatsword';
+const GREATSWORD_CLIP = 'SKYRIM_GREATSWORD/2hm_idle';
+
 const CANDIDATES = [
   process.env.CHROME_PATH,
   '/opt/pw-browsers/chromium',
@@ -139,6 +146,66 @@ try {
       }
     }
   }
+  if (!failure) {
+    const greatsword = await page.evaluate(async ({ source, clipId }) => {
+      const pack = document.getElementById('animationPackSource');
+      const options = [...pack.options].map((option) => option.value);
+      if (!options.includes(source)) return { options, loaded: false, clips: [] };
+      pack.value = source;
+      pack.dispatchEvent(new Event('change', { bubbles: true }));
+      document.getElementById('loadKayKitAnimations').click();
+      const clipSelect = document.getElementById('kaykitClip');
+      // The load fetches and retargets; polled rather than slept on, and given up on loudly.
+      const deadline = Date.now() + 60000;
+      while (Date.now() < deadline) {
+        if ([...clipSelect.options].some((option) => option.value === clipId)) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return {
+        options,
+        loaded: [...clipSelect.options].some((option) => option.value === clipId),
+        clips: [...clipSelect.options].map((option) => option.value).filter(Boolean),
+        status: document.getElementById('kaykitStatus')?.textContent || '',
+      };
+    }, { source: GREATSWORD_SOURCE, clipId: GREATSWORD_CLIP });
+
+    // And the stage weapon, which is the other half of "see the two-handed idle": the pose read
+    // while the figure holds a longsword says very little. Driven through the page's own select
+    // rather than the swap function, because the wiring between them is what could break.
+    const weapon = await page.evaluate(async () => {
+      const select = document.getElementById('stageWeapon');
+      if (!select) return { present: false };
+      const before = globalThis.__actionStudio?.weaponRigId;
+      select.value = 'greatsword';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return {
+        present: true,
+        before,
+        after: globalThis.__actionStudio?.weaponRigId,
+        stillInHand: globalThis.__actionStudio?.handRWeaponAttached,
+      };
+    });
+
+    console.log(`pack options    ${greatsword.options.join(', ')}`);
+    console.log(`greatsword      ${greatsword.loaded ? 'loaded' : 'NOT LOADED'} · clips: ${greatsword.clips.join(', ') || 'none'}`);
+    if (greatsword.status) console.log(`                ${greatsword.status}`);
+
+    console.log(`stage weapon    ${weapon.present ? `${weapon.before} -> ${weapon.after}` : 'NO SELECTOR'}`);
+
+    if (!weapon.present) failure = 'the stage weapon selector (#stageWeapon) is missing';
+    else if (weapon.after !== 'v3_procedural_greatsword') failure = `stage weapon is ${weapon.after}, expected v3_procedural_greatsword`;
+    else if (!weapon.stillInHand) failure = 'the swapped weapon is not attached to HAND_R';
+    else if (!greatsword.options.includes(GREATSWORD_SOURCE)) {
+      failure = `the pack selector offers no "${GREATSWORD_SOURCE}" source: ${greatsword.options.join(', ')}`;
+    } else if (!greatsword.loaded) {
+      failure = `${GREATSWORD_CLIP} never reached the clip list: ${greatsword.clips.join(', ') || 'the list stayed empty'}`;
+    } else if (errors.length > 0) {
+      failure = `${errors.length} console errors while loading the greatsword pack: ${errors[0]}`;
+    } else if (notFound.length > 0) {
+      failure = `the built site could not answer ${notFound[0]}`;
+    }
+  }
 } finally {
   await browser.close();
   await server.close();
@@ -148,4 +215,4 @@ if (failure) {
   console.error(`\nFAIL · ${failure}`);
   process.exit(1);
 }
-console.log('\nPASS · the bundled Action Studio boots on one origin and its Guard Runtime reproduces the record');
+console.log('\nPASS · the bundled Action Studio boots on one origin, its Guard Runtime reproduces the record, and the greatsword pack loads');

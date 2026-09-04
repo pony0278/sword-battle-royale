@@ -43,7 +43,25 @@ export const SKYRIM_GUARD_CONVERTED_FILES = Object.freeze([
   ...SKYRIM_GUARD_REACTION_CONVERTED_FILES,
 ]);
 
+// The greatsword pack. A separate list and a separate directory rather than a fifth guard entry,
+// because these are not Guard clips: nothing in the Guard state machine plays them, and the
+// production parry-deflect clips this module derives are built from the shd_* family by name.
+//
+// The bake is this repository's own (handoff/46) rather than the 2025 Blender ones, and it is not
+// a two-handed grip yet - the source clip holds the hilt with both hands and the rotation-only
+// retarget loses that reach. tests/the-clip-holds-the-sword-the-retarget-does-not.test.js has the
+// numbers. It is loadable so it can be looked at while that is fixed.
+export const SKYRIM_GREATSWORD_CONVERTED_FILES = Object.freeze([
+  Object.freeze({
+    id: '2hm_idle',
+    file: '2hm_idle.source.glb',
+    clipId: 'SKYRIM_GREATSWORD/2hm_idle',
+    role: 'Two-Handed Idle',
+  }),
+]);
+
 const DEFAULT_BASE_URL = '../../assets/skyrim/guard/converted/';
+export const SKYRIM_GREATSWORD_BASE_URL = '../../assets/skyrim/greatsword/converted/';
 
 function normalizedBaseUrl(value) {
   return String(value || DEFAULT_BASE_URL).replace(/\/?$/, '/');
