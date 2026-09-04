@@ -13,7 +13,8 @@
     "build:web": "vite build",
     "verify:built-lab": "node build/verify-built-lab.mjs",
     "verify:built-studio": "node build/verify-built-studio.mjs",
-    "extract:greatsword": "node build/extract-greatsword-geometry.mjs"
+    "extract:greatsword": "node build/extract-greatsword-geometry.mjs",
+    "measure:grip-reach": "node build/measure-grip-reach.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1",

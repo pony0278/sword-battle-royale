@@ -63,6 +63,10 @@
 //   guard-quaternion-correction.js        B - the rig maths that reads that scope, renamed from
 //                                         longsword-guard-correction.js. Its offsets arrive as a
 //                                         parameter, and the annotations say they arrive frozen.
+//   ../animation/two-hand-grip.js         The off hand on the hilt. Typed because it is a seam a
+//                                         second weapon and a future clip both come through:
+//                                         twoHandGripLandmarkSeconds takes a timings profile and
+//                                         the type says which four landmarks it needs.
 {
   "compilerOptions": {
     "allowJs": true,

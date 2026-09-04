@@ -1,6 +1,7 @@
 import { createAnimationClip } from './animation-clip.js';
 import { normalizeMotionGuide } from './motion-guide-schema.js';
 import { normalizePose } from './pose-utils.js';
+import { TWO_HAND_LEFT_ARM, applyTwoHandGrip } from './two-hand-grip.js';
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
@@ -24,24 +25,13 @@ function withLegs(pose, leadFoot, values) {
   };
 }
 
-const TWO_HAND_LEFT_ARM = Object.freeze({
-  ready: Object.freeze({ aL_sx: -84, aL_sy: -2, aL_sz: 16, aL_ex: 86, aL_wx: -6, aL_wy: -18, aL_wz: 4, aL_stretch: 1.03 }),
-  windup: Object.freeze({ aL_sx: -142, aL_sy: 6, aL_sz: 10, aL_ex: 62, aL_wx: -18, aL_wy: -10, aL_wz: 0, aL_stretch: 1.05 }),
-  commit: Object.freeze({ aL_sx: -118, aL_sy: 4, aL_sz: 8, aL_ex: 46, aL_wx: -8, aL_wy: -12, aL_wz: 0, aL_stretch: 1.04 }),
-  plant: Object.freeze({ aL_sx: -94, aL_sy: 3, aL_sz: 6, aL_ex: 33, aL_wx: 0, aL_wy: -10, aL_wz: 0, aL_stretch: 1.03 }),
-  impact: Object.freeze({ aL_sx: -64, aL_sy: 4, aL_sz: 4, aL_ex: 16, aL_wx: 12, aL_wy: -8, aL_wz: 0, aL_stretch: 1.02 }),
-  follow: Object.freeze({ aL_sx: -36, aL_sy: 6, aL_sz: 4, aL_ex: 28, aL_wx: 18, aL_wy: -8, aL_wz: 0, aL_stretch: 1.02 }),
-  recover: Object.freeze({ aL_sx: -84, aL_sy: -2, aL_sz: 16, aL_ex: 86, aL_wx: -6, aL_wy: -18, aL_wz: 4, aL_stretch: 1.03 }),
-});
-
+// The seven-phase left arm moved to two-hand-grip.js when the greatsword needed it: a second caller
+// should not have to import a clip baker to get an arm. Same numbers, same blend - the baked clip
+// is byte-identical across the move, which is the only thing that makes it a move rather than a
+// change.
 function withTwoHandGrip(pose, guide, phase) {
   if (!guide.twoHandGrip) return pose;
-  const profile = TWO_HAND_LEFT_ARM[phase];
-  const weight = guide.secondaryGripWeight;
-  return Object.fromEntries(Object.entries(pose).map(([key, value]) => [
-    key,
-    key in profile ? value + (profile[key] - value) * weight : value,
-  ]));
+  return applyTwoHandGrip(pose, TWO_HAND_LEFT_ARM[phase], guide.secondaryGripWeight);
 }
 
 function withPlantedLeadFoot(plant, pose, guide) {
