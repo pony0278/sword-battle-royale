@@ -55,6 +55,13 @@ Route B from handoff/10 §4 in-container.
 
 ## The structural reason, which is the durable finding
 
+> **CORRECTED — see handoff/46.** The registry table above still holds. The claim below does not:
+> GitHub repositories *can* be fetched here. `curl` is proxied and 403s, which is all that was
+> tested; `git clone` over the session's git proxy serves anonymous reads of public repositories,
+> and `add_repo` attaches them. HavokLib was cloned, built and used, and the bake it produced
+> reproduces the 2025 Blender bake of `shd_blockidle` exactly. **A negative result about an
+> environment is only as strong as the number of ways it was tried, and this one was tried once.**
+
 The known open-source converters — hkxpack, hkxconv, HavokLib and friends — live on GitHub, not in a
 package registry, and **this environment cannot fetch them.** Every GitHub repository outside the
 session's own scope returns 403; `github.com/pony0278/sword-battle-royale` returns 200 and four
@@ -74,6 +81,11 @@ So the blocker is not "no tool exists" — tools exist. It is that a source-only
 this container, and a compiled Windows one has no runtime here.
 
 ## Why writing one was refused
+
+> **Still correct, and it is what made the correction above safe to act on.** The decoder was never
+> written; a reviewed one was fetched, and then held to the standard this section demands — its
+> output had to reproduce a bake that had already been reviewed, which is a check the argument below
+> says is the only thing that makes a decoder usable at all.
 
 Parsing the 2010 packfile (classnames / types / data) is work but tractable.
 Decompressing `hkaSplineCompressedAnimation` is not: per-track quantisation and spline blocks,
