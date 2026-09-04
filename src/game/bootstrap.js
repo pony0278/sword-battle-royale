@@ -2,6 +2,7 @@
 // Ready state, Guard entry, initial report, and initial attack ordering stay in the R281 entry.
 
 import { createDebugSword, mountDebugSword } from '../character/debug-sword.js';
+import { LONGSWORD } from './weapon.js';
 import { DEFAULT_KAYKIT_SWORD_MOUNT } from '../character/default-character-mount.js';
 import { loadUal1AnimationLibrary } from '../animation/ual1-animation-library.js';
 import { loadUal2AnimationLibrary } from '../animation/ual2-animation-library.js';
@@ -25,7 +26,12 @@ export { LANE_WALK_CLIPS };
 export async function bootstrapShieldParryLabAssets({ THREE, attacker, defender, labStage }) {
   const [ual1, ual2, skyrim, kaykit, defenderUal1] = await Promise.all([
     loadUal1AnimationLibrary(new THREE.GLTFLoader(), { THREE, rig: attacker.rig, fps: 30 }),
-    loadUal2AnimationLibrary(new THREE.GLTFLoader(), { THREE, rig: attacker.rig, fps: 30 }),
+    // Cold start: only the clips a weapon actually names. UAL2 ships eight and the game plays two -
+    // measured, the other six (Regular_C, Regular_Combo, Heavy_Combo, Dash, Block, Hit_Knockback)
+    // have no consumer anywhere but comments, and cost 1.35MB on every first visit. The list is
+    // DERIVED from the weapon rather than written here, so adding a move loads its clip and nothing
+    // has to be kept in step by hand.
+    loadUal2AnimationLibrary(new THREE.GLTFLoader(), { THREE, rig: attacker.rig, fps: 30, clipIds: LONGSWORD.attackTimings.clipIds }),
     loadSkyrimConvertedAnimationLibrary(new THREE.GLTFLoader(), { THREE, rig: defender.rig, fps: 30 }),
     // R19C.2: locomotion. These are KayKit's own clips on KayKit's own rig, so they need no
     // retarget - which is why they are loaded straight rather than through one of the fitted

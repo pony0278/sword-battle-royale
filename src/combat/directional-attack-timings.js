@@ -179,6 +179,10 @@ export function createDirectionalAttackTimings({
     stage,
     fps: defaultFps,
     directions,
+    // Which animation clips this weapon's moves actually name. The asset loaders take this, so
+    // adding a direction loads its clip and removing one stops loading it, without a second list
+    // anywhere to keep in step - which is the failure mode every hand-maintained clip list has.
+    clipIds: Object.freeze([...new Set(directions.map((direction) => attacks[direction]?.clipId).filter(Boolean))]),
     getProfile,
     createDefinition,
     definitions: Object.freeze(Object.fromEntries(
