@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createFighter } from '../src/game/fighter.js';
-import { LONGSWORD, WEAPONS, defineWeapon, equipWeapon, getWeapon } from '../src/game/weapon.js';
+import { LONGSWORD, WEAPONS, defineMove, defineWeapon, equipWeapon, getWeapon } from '../src/game/weapon.js';
+import { MOVE_CATEGORIES } from '../src/combat/move-categories.js';
 import { createGuardPresentationTable } from '../src/combat/guard-presentation-table.js';
 import { GUARD_REACTION_VARIANTS } from '../src/combat/guard-reaction-presentation.js';
 import { GUARD_STATES } from '../src/combat/guard-states.js';
@@ -60,7 +61,13 @@ function stubWeapon(id) {
     id,
     // The attack side only has to answer getProfile for a fighter to carry it; the full timings
     // record is G1's business and is measured, not stubbed.
-    attackTimings: { getProfile: () => Object.freeze({ weapon: id, contactSeconds: 0.61 }) },
+    moves: {
+      light: defineMove({
+        id: 'light',
+        category: MOVE_CATEGORIES.LIGHT,
+        timings: { getProfile: () => Object.freeze({ weapon: id, contactSeconds: 0.61 }) },
+      }),
+    },
     guardPresentation: createGuardPresentationTable({
       base: { clipId: `${id}/hold`, correctionLayerId: `${id}_v1` },
       authoringState: { authored: true, authoredStage: 'W1-test' },
@@ -119,9 +126,10 @@ test('W1 a fighter refuses a weapon that is not one', () => {
     () => createFighter(THREE, { character: stubCharacter(), buckler: stubBuckler(), weapon: {} }),
     /requires a weapon/,
   );
-  assert.throws(() => defineWeapon({ id: 'x', guardPresentation: {} }), /attack timings/);
-  assert.throws(() => defineWeapon({ id: 'x', attackTimings: { getProfile() {} } }), /guard presentation/);
-  assert.throws(() => defineWeapon({ attackTimings: { getProfile() {} }, guardPresentation: {} }), /needs an id/);
+  const aLight = { light: defineMove({ id: 'light', category: MOVE_CATEGORIES.LIGHT, timings: { getProfile() {} } }) };
+  assert.throws(() => defineWeapon({ id: 'x', guardPresentation: {} }), /needs at least one move/);
+  assert.throws(() => defineWeapon({ id: 'x', moves: aLight }), /guard presentation/);
+  assert.throws(() => defineWeapon({ moves: aLight, guardPresentation: {} }), /needs an id/);
 });
 
 test('W1 equipping adds this fighter\'s instance without touching the definition', () => {
