@@ -1,0 +1,88 @@
+// S1.C2 — type checking, opted into one file at a time.
+//
+// NOT a TypeScript migration, and deliberately not the first step of one. Measured before this was
+// written: `checkJs` across the whole of src/ reports 244 errors in 53 files, and the ones sampled
+// are inference gaps rather than defects - `Object.freeze` narrowing a 0 to the literal type `0`,
+// and `options = {}` inferring `{}` for a parameter every caller passes something to. Fixing 244 of
+// those to reach a green baseline is a large diff across measured combat modules, and the only
+// thing that proves such a diff did not move the fight is `npm run verify:combat`, which is
+// all-or-nothing: if the golden grid goes red after a sweep, nothing says which file did it.
+//
+// So `checkJs` is OFF here, and a file opts in by carrying `// @ts-check` at the top. A file
+// without it is still part of the program - so imports resolve and types flow across module
+// boundaries - but its own body is not reported on. That makes the checked set a list this
+// repository grows deliberately, one seam at a time, each addition small enough to prove.
+//
+// The seams are where a type is worth having, because a seam's whole purpose is to be a contract
+// that a second implementation has to satisfy: when a katana's guard metadata arrives without a
+// correctionLayerId, this says so before the browser does.
+//
+// The list to date, and why each is on it:
+//   fighter-condition.js                  S1.C1 - measuredContactSecondsFor takes a weapon's own
+//                                         profile accessor, and nothing but a type says what shape
+//                                         that accessor has to return.
+//   guard-state-machine.js                S1.C2 - the presentation table it builds is the thing
+//   longsword-guard-metadata.js           being moved out; these three are its inputs.
+//   guard-counter-presentation.js
+//   guard-reaction-presentation.js
+//   longsword-directional-metadata.js     S1.C1's inputs: the directional profile and the runtime
+//   longsword-directional-attack-runtime.js  that warps it.
+//   guard-states.js                       S1.C2 step 3 - the guard vocabulary and the graph over
+//                                         it, with no imports of its own. Step 4's table builder
+//                                         keys by GUARD_STATES, and a type here is what says a
+//                                         weapon's table has to cover every state.
+//   guard-presentation-table.js           S1.C2 step 4 - THE seam. Its parameter list is the
+//                                         contract a second weapon's guard has to satisfy, and the
+//                                         reason this file exists at all: a katana whose metadata
+//                                         arrives without a correctionLayerId is told so here.
+//   longsword-guard-presentation.js       the longsword's answer to that contract - the first of
+//                                         what should eventually be six.
+//   directional-attack-timings.js         G1 - the attack side's equivalent seam. Six tables of
+//                                         per-direction measurements become its parameters, and a
+//                                         greatsword is a second record shaped like the longsword's.
+//   longsword-attack-timings.js           the longsword's six tables.
+//   greatsword-attack-timings.js          G1 - the same record with the numbers missing. Typed so
+//                                         that when the measurements arrive, a table of the wrong
+//                                         shape is caught here rather than in the golden grid.
+//   ../game/weapon.js                     W1/W3 - what a fighter carries and what it can do.
+//                                         defineWeapon and defineMove are the contract every weapon
+//                                         in the registry satisfies, and equipWeapon keeps the
+//                                         shared definition apart from one fighter's Object3D.
+//   move-categories.js                    W3 - light and heavy, and what each word means. No
+//                                         imports and no numbers: the milliseconds are per weapon.
+//   attack-directions.js                  B - the directional triangle, taken out of the longsword's
+//                                         metadata. Three words with no imports; typed so that a
+//                                         weapon's directions have to be these words.
+//   attack-phases.js                      B - the phase vocabulary and the phase test, taken out of
+//                                         longsword-directional-attack-runtime.js. getAttackPhase
+//                                         reads three landmarks off a profile, and the type says
+//                                         which three.
+//   guard-correction-scope.js             B - which bones a guard correction may touch and how far,
+//                                         taken out of longsword-guard-metadata.js. The rig's
+//                                         anatomy, not the weapon's.
+//   guard-quaternion-correction.js        B - the rig maths that reads that scope, renamed from
+//                                         longsword-guard-correction.js. Its offsets arrive as a
+//                                         parameter, and the annotations say they arrive frozen.
+//   ../animation/two-hand-grip.js         The off hand on the hilt. Typed because it is a seam a
+//                                         second weapon and a future clip both come through:
+//                                         twoHandGripLandmarkSeconds takes a timings profile and
+//                                         the type says which four landmarks it needs.
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Left off on purpose. The measured 244 is at strict:false; turning it on before the checked
+    // set has grown would make every addition expensive at exactly the moment the habit is
+    // forming. It is a dial to turn once the list below is long, not now.
+    "strict": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  // The whole of src/ is in the program so that types flow through imports. Only the files
+  // carrying `// @ts-check` are reported on.
+  "include": ["src/**/*.js"]
+}

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>R20Q.1 · Camera Lab — 鎖定/自由 第三人稱相機調校</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}
+    body{display:grid;grid-template-columns:minmax(0,1fr) 430px;overflow:hidden}main{position:relative;min-width:0;min-height:0}canvas{width:100%;height:100%;display:block}
+    aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:19px;margin:0 0 6px}h2{font-size:13px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}
+    button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:9px 11px;margin:3px;cursor:pointer}button.active{border-color:#75e6c2;background:#18352f}
+    .row{display:flex;flex-wrap:wrap}.note{color:#9eb0c8;font-size:12px}
+    .hud{position:absolute;left:16px;top:16px;min-width:520px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.6 ui-monospace,monospace;pointer-events:none}
+    .legend{position:absolute;left:16px;bottom:16px;right:16px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:8px 10px;font-size:12px}
+    .debug-range{display:grid;grid-template-columns:1fr auto;gap:3px 10px;margin:9px 0}.debug-range input{grid-column:1/-1;width:100%}.debug-range output{color:#7ef0ad;font:700 12px ui-monospace,monospace}
+    pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px;max-height:300px;overflow:auto}
+    .good{color:#7ef0ad}.warn{color:#ffd27a}.bad{color:#ff8c8c}
+    @media(max-width:900px){html,body{height:auto;min-height:100%;overflow:auto}body{display:block}main{height:58vh;min-height:360px}.hud{left:10px;right:10px;min-width:0;font-size:11px}.legend{display:none}aside{border-left:0;border-top:1px solid #26354d}button{flex:1 1 30%;min-height:44px}}
+  </style>
+  <script>
+    // The page loads Three.js from the CDN like every other lab here; ?local=1 loads the copy in
+    // node_modules instead, which is how a headless probe boots it behind a proxy that blocks the
+    // CDN. document.write keeps both script tags blocking and in order, ahead of the module below.
+    (function () {
+      var local = new URLSearchParams(location.search).has('local');
+      var sources = local
+        ? ['/node_modules/three/build/three.min.js', '/node_modules/three/examples/js/loaders/GLTFLoader.js']
+        : ['https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js', 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js'];
+      for (var index = 0; index < sources.length; index += 1) {
+        document.write('<script src="' + sources[index] + '"><\/script>');
+      }
+    }());
+  </script>
+</head>
+<body>
+  <main>
+    <canvas id="canvas"></canvas>
+    <div class="hud" id="hud">載入中…</div>
+    <div class="legend">
+      R20Q.1 相機實驗室 · v=camera-lab-r20r2 · 共用 src/combat/third-person-camera.js 的解算與 profile,這裡只調數字,不是第二台相機<br>
+      WASD 移動防守方 · 拖曳畫面轉動鏡頭(自由模式) · L 切換鎖定/自由 · 空白鍵播放攻擊
+    </div>
+  </main>
+  <aside>
+    <h1>鎖定 / 自由 相機</h1>
+    <p class="note">
+      這一頁的產出是一組數字。畫面裡的兩個人、三段揮砍、距離區間都跟戰鬥實驗室同一份資料,但戰鬥實驗室在你調完之前完全不動 —
+      調好之後按「輸出 profile」,把數字貼回 <code>src/combat/third-person-camera.js</code>,兩邊就會用同一台相機。<br>
+      <b>R20R.2:鎖定模式已定案為「半身+過肩」並寫進模組</b>(FOV 74 / 俯角 19 / 距離 2.85 / 看向 0.69 / 方位 20 / panZ 1.45,三格相同)。
+      自由模式與延遲常數還是種子,沒進過這個實驗室。
+    </p>
+
+    <h2>模式</h2>
+    <div class="row">
+      <button data-mode="locked">鎖定 Locked</button>
+      <button data-mode="free">自由 Free</button>
+    </div>
+
+    <h2>距離</h2>
+    <label class="debug-range">
+      <span>兩人距離(1.1m 接觸下限 → 5.0m 脫離鎖定)</span><output id="separationValue">2.40m</output>
+      <input id="separation" type="range" min="1.1" max="5" step="0.05" value="2.4">
+    </label>
+
+    <div id="lockedPanel">
+      <h2>鎖定 · 距離關鍵格</h2>
+      <div class="row">
+        <button data-key="0">近 1.4m</button>
+        <button data-key="1">中 2.4m</button>
+        <button data-key="2">遠 4.0m</button>
+        <button id="follow">跟著距離自動選</button>
+      </div>
+      <p class="note">三格之間內插,超出兩端就維持端點。改一格只影響那個距離附近的取景。</p>
+      <div id="lockedControls"></div>
+    </div>
+
+    <div id="freePanel">
+      <h2>自由 · 跟隨</h2>
+      <p class="note">自由模式只有一組數字:相機跟著你看的方向,俯角由拖曳控制並夾在上下限之間。</p>
+      <div id="freeControls"></div>
+    </div>
+
+    <h2>動態 · 延遲</h2>
+    <p class="note">指數逼近的時間常數,不是每幀比例 — 換一台機器、換一個更新率,鏡頭仍然是同一支。</p>
+    <div id="dynamicsControls"></div>
+
+    <h2>播放攻擊</h2>
+    <div class="row">
+      <button data-direction="TOP">TOP</button>
+      <button data-direction="RIGHT">RIGHT</button>
+      <button data-direction="LEFT">LEFT</button>
+      <button id="loop">循環</button>
+    </div>
+    <p class="note">LEFT 是最低的一刀,也是最容易掉出畫面下緣的一刀,值得多看幾次。</p>
+
+    <h2>預設組 · 比較</h2>
+    <p class="note">一鍵切換整組數字,切完會自動重掃。也可以在瀏覽器 console 輸入 <code>cameraLab.help()</code> 直接打數字。</p>
+    <div class="row">
+      <button data-preset="current">現行 profile</button>
+      <button data-preset="yours">你調的</button>
+      <button data-preset="propagated">甲 推廣</button>
+      <button data-preset="softened">乙 折衷</button>
+      <button data-preset="halfBody">半身(第一版)</button>
+      <button data-preset="opponentFirst">對手優先</button>
+      <button data-preset="halfBodyShoulder">半身+過肩(建議)</button>
+      <button data-preset="halfBodyBehind">半身+正後方</button>
+    </div>
+
+    <h2>視窗適配(安全框)</h2>
+    <p class="note">
+      同一組數字在不同視窗要付不同的水平代價。開啟後,解算器會把過肩角度(或 panZ)收到剛好讓你的護欄留在畫面內 ——
+      收多少<b>只跟畫面比例有關,跟兩人距離無關</b>(量過:4:3 是 12°,16:9 是 24°,整條 1.1–5.0m 帶都一樣),
+      所以它只在改變視窗時算一次,不會變成走路時的鏡頭自轉。
+    </p>
+    <div class="row">
+      <button id="safeFrame">開啟適配</button>
+      <button data-prefer="crop">窄視窗保半身</button>
+      <button data-prefer="shoulder">窄視窗保過肩</button>
+      <button data-prefer="balanced">各收一半</button>
+    </div>
+    <p class="note">
+      模擬視窗比例 —— 會用該比例的投影並把畫面裁成那個形狀來渲染,不是只改個數字。
+      <b>R20R.1:遊戲只支援橫向,最低 1.2:1</b>;低於此值遊戲會要求玩家轉橫向並停掉輸入(世界照跑,不然轉個手機就能凍結戰鬥)。
+      直向那顆留著是為了看清楚我們放棄了什麼。
+    </p>
+    <div class="row">
+      <button data-aspect="live">實際畫布</button>
+      <button data-aspect="1.3333">4:3</button>
+      <button data-aspect="1.7778">16:9</button>
+      <button data-aspect="2.3333">21:9</button>
+      <button data-aspect="1.2">1.2:1(最低支援)</button>
+      <button data-aspect="0.5625">直向(不支援,示範)</button>
+    </div>
+
+    <h2>出框檢查</h2>
+    <p class="note">不是參數,是驗收:把 1.1–5.0m 掃過一遍,看兩個人的身體是否都還在畫面裡。任何一次改動都會重掃。</p>
+    <div class="row"><button id="sweepNow">重新掃描</button></div>
+    <pre id="sweep">—</pre>
+
+    <h2>輸出</h2>
+    <div class="row">
+      <button id="emit">輸出 profile</button>
+      <button id="copy">複製</button>
+      <button id="reset">回到現行 profile</button>
+    </div>
+    <pre id="output"></pre>
+  </aside>
+  <script type="module" src="./camera-lab.js?v=camera-lab-r20r2"></script>
+</body>
+</html>

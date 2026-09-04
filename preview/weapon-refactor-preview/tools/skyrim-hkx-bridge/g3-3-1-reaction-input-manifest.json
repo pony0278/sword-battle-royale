@@ -1,0 +1,111 @@
+{
+  "stage": "G3.3.1",
+  "family": "Skyrim shield block reactions",
+  "baseline": "SKYRIM_GUARD/shd_blockidle",
+  "inspection": {
+    "expectedHavokVersion": "hk_2010.2.0-r1",
+    "expectedAnimationClass": "hkaSplineCompressedAnimation",
+    "expectedBindingClass": "hkaAnimationBinding",
+    "expectedRootMarker": "NPC Root [Root]",
+    "canonicalJointCount": 99,
+    "visualProbeRunId": 32139901355,
+    "visualArtifactId": 9325459654,
+    "visualArtifactDigest": "sha256:78cdb1d40f7b04e0fac56a291c23a334f64f52fd9b8671bf0a8c1874846e9b0d"
+  },
+  "inputs": [
+    {
+      "id": "shd_blockhit",
+      "byteLength": 22496,
+      "sha256": "139f0e90d25bd9be5657fecdb5912adbe6bce453949518769ee02f7ed01cfa04",
+      "markers": ["hk_2010.2.0-r1", "hkaSplineCompressedAnimation", "hkaAnimationBinding", "NPC Root [Root]", "FootScuffLeft", "FootScuffRight"],
+      "intendedReviewRole": "block-hit",
+      "stage1Decision": "ADOPT WITH CORRECTIONS",
+      "decoded": { "durationSeconds": 0.8, "frames": 25, "fps": 30, "tracks": 99 },
+      "engineering": {
+        "translationScale": 0.01031482,
+        "rootMaxExcursion": 0,
+        "hipsMaxExcursion": 0.1141525221,
+        "hipsExcursionHeightRatio": 0.0919527815,
+        "armMaxDirectionErrorDegrees": 0.00001,
+        "safe": true
+      },
+      "finalDecision": "ADOPT WITH CORRECTIONS",
+      "finalRole": "guard-block-hit",
+      "visualReason": "Clearly reads as weapon-side impact/recoil and remains attached/stable, but the 0.8 s source reaction is longer than the compact Guard hit we want. Preserve the source recoil and foot/weight response, then trim or time-window the late recovery into G3.2 Recover instead of authoring a replacement."
+    },
+    {
+      "id": "shd_blockbashintro",
+      "byteLength": 6576,
+      "sha256": "78d4569e12a855264b4667667763381ad729796ae3d26ad8c42e8d7724e3583b",
+      "markers": ["hk_2010.2.0-r1", "hkaSplineCompressedAnimation", "hkaAnimationBinding", "NPC Root [Root]"],
+      "intendedReviewRole": "parry-intro",
+      "stage1Decision": "ADOPT WITH CORRECTIONS",
+      "decoded": { "durationSeconds": 0.3, "frames": 10, "fps": 30, "tracks": 99 },
+      "engineering": {
+        "translationScale": 0.01031482,
+        "rootMaxExcursion": 0,
+        "hipsMaxExcursion": 0.0641437984,
+        "hipsExcursionHeightRatio": 0.0516694731,
+        "armMaxDirectionErrorDegrees": 0.000006,
+        "safe": true
+      },
+      "finalDecision": "REJECT",
+      "rejectionScope": "post-confirmation G3.3 parry reaction chain",
+      "preserveAsOptionalReference": true,
+      "optionalFutureRole": "pre-contact parry-attempt startup or defensive wind-up",
+      "visualReason": "The real Blockman playback reads as preparation/wind-up rather than the instant weapon displacement that should follow PARRY_CONFIRMED. It is technically clean, but placing it after confirmed contact would delay the defensive response and reverse the intended combat timing."
+    },
+    {
+      "id": "shd_blockbash",
+      "byteLength": 8064,
+      "sha256": "37bc83926597a65e7660cae7367a3dd0b0f23d812137907a7548b3754bf90bfd",
+      "markers": ["hk_2010.2.0-r1", "hkaSplineCompressedAnimation", "hkaAnimationBinding", "NPC Root [Root]"],
+      "intendedReviewRole": "parry-deflect-or-counter",
+      "stage1Decision": "ADOPT WITH CORRECTIONS",
+      "decoded": { "durationSeconds": 0.3333333433, "frames": 11, "fps": 30, "tracks": 99 },
+      "engineering": {
+        "translationScale": 0.01031482,
+        "rootMaxExcursion": 0,
+        "hipsMaxExcursion": 0.132907831,
+        "hipsExcursionHeightRatio": 0.1070606634,
+        "armMaxDirectionErrorDegrees": 0.000009,
+        "safe": true
+      },
+      "finalDecision": "ADOPT",
+      "finalRole": "guard-parry-deflect",
+      "visualReason": "The 0.333 s motion is compact and immediately reads as an active outward weapon deflection. The longsword remains visually dominant enough after the canonical Triangle correction, root stays fixed, and no reaction-specific pose correction is required beyond the existing Guard-family calibration."
+    },
+    {
+      "id": "shd_blockbashpower",
+      "byteLength": 10544,
+      "sha256": "b5813d5877b2cf698913d3fbb228078d8e7384780db79957f133326f74c36168",
+      "markers": ["hk_2010.2.0-r1", "hkaSplineCompressedAnimation", "hkaAnimationBinding", "NPC Root [Root]"],
+      "intendedReviewRole": "perfect-parry-strong-deflect-or-counter",
+      "stage1Decision": "ADOPT WITH CORRECTIONS",
+      "decoded": { "durationSeconds": 0.7, "frames": 22, "fps": 30, "tracks": 99 },
+      "engineering": {
+        "translationScale": 0.01031482,
+        "rootMaxExcursion": 0,
+        "hipsMaxExcursion": 0.1833248635,
+        "hipsExcursionHeightRatio": 0.1476728749,
+        "armMaxDirectionErrorDegrees": 0.00001,
+        "safe": true
+      },
+      "finalDecision": "ADOPT WITH CORRECTIONS",
+      "finalRole": "perfect-parry-strong-deflect",
+      "visualReason": "The motion provides a visibly stronger cross-body sweep and body commitment than shd_blockbash, which is ideal for Perfect Parry. Keep it, but trim/weight the late follow-through so it remains a strong deflect and does not read as a full counter attack before the authoritative Counter state begins."
+    },
+    {
+      "id": "shd_blockanticipate",
+      "byteLength": 9584,
+      "sha256": "433396d9e20e7a63f1d17f51a3009244e3666d9c8c7d553c93e051a2e8152bb7",
+      "markers": ["hk_2010.2.0-r1", "hkaSplineCompressedAnimation", "hkaAnimationBinding", "NPC Root [Root]"],
+      "intendedReviewRole": "anticipation-or-brace",
+      "stage1Decision": "REJECT",
+      "finalDecision": "REJECT",
+      "rejectionScope": "reactive G3.3 Block/Parry reaction path",
+      "preserveAsOptionalReference": true,
+      "optionalFutureRole": "AI defensive telegraph, heavy-guard brace, or pre-contact anticipation"
+    }
+  ]
+}

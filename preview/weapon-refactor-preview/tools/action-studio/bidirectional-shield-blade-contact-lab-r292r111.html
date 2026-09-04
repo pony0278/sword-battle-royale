@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>G4.3B.5R.2.9.2R1.1.1 Bidirectional Shield–Blade Contact Inspector</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}body{display:grid;grid-template-columns:minmax(0,1fr) 440px;overflow:hidden}main{position:relative;min-width:0;min-height:0}canvas{width:100%;height:100%;display:block;touch-action:none}aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:19px;margin:0 0 6px}h2{font-size:12px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}button,select{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:9px 12px;margin:3px;cursor:pointer}button:hover,select:hover{border-color:#75e6c2}.row{display:flex;flex-wrap:wrap;gap:6px}.note{color:#9eb0c8;font-size:12px}.hud{position:absolute;left:16px;top:16px;min-width:720px;max-width:calc(100% - 32px);background:#07101add;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.55 ui-monospace,monospace;pointer-events:none}.legend{position:absolute;left:16px;bottom:16px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:8px 10px;font-size:12px;pointer-events:none}.cameraHelp{position:absolute;right:16px;bottom:16px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:8px 10px;color:#b9cbe2;font-size:11px;pointer-events:none}.metric{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:8px 0;padding:10px;border:1px solid #243147;border-radius:8px;background:#080d14}.metric b{color:#ddecff}.control{display:grid;grid-template-columns:150px 1fr 62px;gap:8px;align-items:center;margin:9px 0}.control input{width:100%}.check{display:block;margin:8px 0}.good{color:#7ef0ad}.warn{color:#ffd27a}.bad{color:#ff8c8c}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px;max-height:260px;overflow:auto}@media(max-width:920px){html,body{height:auto;min-height:100%;overflow:auto}body{display:block}main{height:62vh;min-height:420px}.hud{left:10px;right:10px;top:10px;min-width:0;font-size:10px}.cameraHelp{display:none}aside{border-left:0;border-top:1px solid #26354d}}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+<main>
+  <canvas id="canvas"></canvas>
+  <div class="hud"><b>G4.3B.5R.2.9.2R1.1.1 · Contact Inspector</b><div id="hudPlayback">Playback: —</div><div id="hudContact">Contact: waiting…</div><div id="hudSurface">Surface: —</div><div id="hudPersistence">Persistence: —</div><div id="hudImpulse">Coupled impulse: —</div><div id="hudShield">Shield reaction: —</div><div id="hudArm">Arm response: —</div><div id="hudServo">Servo: —</div></div>
+  <div class="legend">Orange disc = shield contact patch · Magenta = blade witness · Yellow = normal · Green = tangent · White = relative velocity</div>
+  <div class="cameraHelp">Mouse L: orbit · Wheel: zoom · Mouse R: pan<br>首次接觸自動 Pause；每次 +1 physics step = 4.17ms</div>
+</main>
+<aside>
+<h1>Bidirectional Contact Inspector</h1><div class="note">建議測法：Strong bidirectional → 等首次接觸自動 Pause → 切 Contact close-up 或 Blade side → 用滑鼠自由 Orbit → 連續按 +1 physics step。橘色圓片是盾面接觸 patch，洋紅點是同一 bladeFraction 在劍身上的 witness；兩者之間的洋紅線就是可直接觀察的 gap。</div>
+<h2>Playback / Physics</h2><div class="row"><button id="restart">Restart</button><button id="togglePause">Pause</button><button id="stepPhysics">+1 physics step</button><select id="timeScale"><option value="1">1.00×</option><option value="0.25" selected>0.25×</option><option value="0.1">0.10×</option></select></div>
+<label class="check"><input id="autoPauseContact" type="checkbox" checked> Auto pause on first contact</label>
+<h2>Camera</h2><div class="row"><button id="viewOverview">Overview</button><button id="viewContact">Contact close-up</button><button id="viewBladeSide">Blade side</button><button id="viewShieldFace">Shield face</button></div>
+<h2>Contact Visualization</h2>
+<label class="check"><input id="showContactPatch" type="checkbox" checked> Show contact patch + blade witness + gap</label>
+<label class="check"><input id="showVectors" type="checkbox" checked> Show normal / tangent / relative velocity</label>
+<label class="check"><input id="xrayShield" type="checkbox" checked> X-ray shield during inspection</label>
+<label class="check"><input id="showTarget" type="checkbox"> Show motor target ghost</label>
+<label class="control"><span>Contact patch size</span><input id="patchSize" type="range" min="0.04" max="0.16" step="0.01" value="0.09"><b id="patchSizeValue">9cm</b></label>
+<h2>Presets</h2><div class="row"><button id="strong">Strong bidirectional</button><button id="heavy">Heavy shield</button><button id="softServo">Soft servo</button></div>
+<label class="control"><span>Shield speed</span><input id="shieldSpeed" type="range" min="0.7" max="2.3" step="0.05" value="1.65"><b id="shieldSpeedValue">1.65×</b></label>
+<label class="control"><span>Shield mass</span><input id="shieldMass" type="range" min="2.5" max="10" step="0.25" value="5.6"><b id="shieldMassValue">5.60kg</b></label>
+<label class="control"><span>Servo strength</span><input id="servoScale" type="range" min="0.45" max="1.6" step="0.05" value="1"><b id="servoScaleValue">1.00×</b></label>
+<label class="control"><span>Contact max</span><input id="contactMs" type="range" min="12" max="34" step="2" value="30"><b id="contactMsValue">30ms</b></label>
+<h2>Acceptance</h2><div class="metric"><span>Camera</span><b>orbit / zoom / pan + presets</b><span>First contact</span><b>auto-pause inspectable</b><span>Contact surface</span><b>patch + blade witness + gap</b><span>Vectors</span><b>normal / tangent / relative v</b><span>Timeline</span><b>240Hz single-step</b><span>Physics authority</span><b>unchanged R1.1.1 solver</b></div>
+<h2>Verification</h2><div id="status" class="warn">Loading…</div><pre id="report">Not run.</pre>
+</aside>
+<script type="module" src="./bidirectional-shield-blade-contact-lab-r292r111.js?v=g43b5r292r111-inspector"></script>
+</body></html>

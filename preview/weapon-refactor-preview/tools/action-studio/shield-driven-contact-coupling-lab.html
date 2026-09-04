@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Step 3A · Live Shield → Sword → Wrist-Grip Constraint</title>
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;height:100%;background:#090e16;color:#e9f0fb;font:14px/1.45 system-ui,sans-serif}
+    body{display:grid;grid-template-columns:minmax(0,1fr) 430px;overflow:hidden}main{position:relative;min-width:0;min-height:0}canvas{width:100%;height:100%;display:block}
+    aside{overflow:auto;border-left:1px solid #26354d;padding:18px;background:#0e1521}h1{font-size:19px;margin:0 0 6px}h2{font-size:13px;margin:20px 0 8px;color:#94b8e8;text-transform:uppercase;letter-spacing:.08em}
+    button{background:#182338;color:#dce9fb;border:1px solid #334969;border-radius:7px;padding:9px 11px;margin:3px;cursor:pointer}button.active{border-color:#75e6c2;background:#18352f}button.input-flash{outline:3px solid #ffe17a;background:#594713}button.retry-attention{outline:2px solid #ff9f68;background:#542b25}.row{display:flex;flex-wrap:wrap}.note{color:#9eb0c8;font-size:12px}
+    .hud{position:absolute;left:16px;top:16px;min-width:660px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:10px 12px;font:12px/1.5 ui-monospace,monospace;pointer-events:none}.legend{position:absolute;left:16px;bottom:16px;background:#07101add;border:1px solid #26354d;border-radius:10px;padding:8px 10px;font-size:12px}
+    .parry-cue{position:absolute;left:50%;top:38%;width:min(760px,90%);transform:translate(-50%,-50%);padding:16px 22px;border:2px solid #53647d;border-radius:14px;background:#07101aee;text-align:center;pointer-events:none;box-shadow:0 10px 40px #000a}.parry-cue span{display:block;color:#9eb0c8;font:700 11px/1.2 system-ui,sans-serif;letter-spacing:.16em}.parry-cue strong{display:block;margin:6px 0 5px;font:900 clamp(22px,4vw,45px)/1 system-ui,sans-serif}.parry-cue small{display:block;color:#c4d2e5;font:600 12px/1.45 ui-monospace,monospace;white-space:normal}.parry-cue.used small{text-align:left}.parry-cue.ready{border-color:#f7e56f;background:#42360bea;box-shadow:0 0 35px #f7d84b88}.parry-cue.ready strong{color:#fff18a;animation:parryPulse .45s ease-in-out infinite alternate}.parry-cue.armed,.parry-cue.confirmed{border-color:#62e8ad;background:#0d382cea}.parry-cue.armed strong,.parry-cue.confirmed strong{color:#7ef0ad}.parry-cue.used,.parry-cue.late{border-color:#ff7e74;background:#411b1bea}.parry-cue.used strong,.parry-cue.late strong{color:#ff9b91}.parry-cue.wait strong,.parry-cue.geometry strong{color:#ffd27a}.parry-cue.idle{opacity:.72}@keyframes parryPulse{from{transform:scale(1)}to{transform:scale(1.045)}}
+    .metric{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:8px 0;padding:10px;border:1px solid #243147;border-radius:8px;background:#080d14}.metric b{color:#ddecff}.toggle{display:flex;align-items:center;gap:8px;margin:10px 0}.debug-range{display:grid;grid-template-columns:1fr auto;gap:3px 10px;margin:10px 0}.debug-range input{grid-column:1/-1;width:100%}.debug-range output{color:#7ef0ad;font:700 12px ui-monospace,monospace}pre{white-space:pre-wrap;background:#080d14;border:1px solid #243147;border-radius:8px;padding:10px;font-size:11px;max-height:330px;overflow:auto}.good{color:#7ef0ad}.warn{color:#ffd27a}.bad{color:#ff8c8c}
+
+    /* R20Y.1: the panels stopped being notes beside the stage and became a lid on it - the HUD
+       covers the top of the scene and the legend, which has grown a paragraph per stage, covers the
+       bottom. Both collapse to a single title bar now, at every width rather than only on a phone,
+       and the choice is remembered. H hides everything at once for watching a fight with nothing on
+       top of it. Only the title bar takes clicks, so dragging the camera through the HUD still
+       reaches the canvas exactly as it did. */
+    .hud>b,.legend>b{display:block;position:relative;cursor:pointer;pointer-events:auto;padding-right:20px;color:#94b8e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .hud>b::after,.legend>b::after{content:'\25BC';position:absolute;right:0;top:0}
+    .hud.expanded>b::after,.legend.expanded>b::after{content:'\25B2'}
+    .hud:not(.expanded)>:not(b),.legend:not(.expanded)>:not(b){display:none}
+    .hud.expanded>b{white-space:normal}
+    .legend{max-width:min(920px,60vw);pointer-events:none}
+    .legend:not(.expanded){max-width:320px}
+    .legend.expanded>span{display:block;max-height:34vh;overflow-y:auto;pointer-events:auto}
+    body.overlays-off .hud,body.overlays-off .legend,body.overlays-off .parry-cue{display:none}
+    .hud:not(.expanded){min-width:0}
+    /* The cue is a timing prompt, but between exchanges it is a mode label sitting on the fighters'
+       heads. Idle it steps down and out of the middle; the moment an attack is live it is back at
+       full size in the centre, which is the only time its position is load-bearing. */
+    .parry-cue.idle{opacity:.6;left:auto;right:16px;top:16px;bottom:auto;width:auto;max-width:320px;transform:none;padding:8px 12px;text-align:right}
+    .parry-cue.idle strong{margin:2px 0;font-size:17px}
+    .parry-cue.idle span{letter-spacing:.1em}
+    /* R21A.2: the guard sector indicator. Bottom centre, small, and part of the overlay set H
+       hides - it is information about the fight, so it sits where a player already looks for the
+       fighters without covering them. */
+    /* R21N.1: the indicator IS the control now. It already showed the three directions and already
+       sat where the eye is, so making it pressable adds an affordance instead of a second widget -
+       and gives desktop and touch the same target. */
+    .guard-sector{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:grid;
+      grid-template-columns:46px 46px 46px;gap:8px;font:700 17px/46px ui-monospace,monospace;text-align:center}
+    .guard-sector div{border:1px solid #35476899;border-radius:10px;background:#07101abb;color:#5f7796;
+      cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;
+      transition:color .08s,border-color .08s,background .08s}
+    .guard-sector div small{display:block;font:500 9px/1 ui-monospace,monospace;color:#4a5f7d;margin-top:-11px}
+    .guard-sector div.aimed{color:#7ef0ad;border-color:#7ef0ad;background:#0d382ccc}
+    .guard-sector div:active{color:#7ef0ad;border-color:#7ef0ad;background:#12503acc}
+    body.overlays-off .guard-sector{display:none}
+    @media(max-width:900px){
+      html,body{height:auto;min-height:100%;overflow:auto}body{display:block}main{height:58vh;min-height:360px}
+      /* On a phone the ten diagnostic lines wrap to two or three lines each and
+         the panel grows taller than the scene, so it collapses to its title bar
+         and expands on tap into its own scroll area instead of covering play. */
+      .hud{left:10px;right:10px;top:10px;min-width:0;font-size:11px;pointer-events:auto;cursor:pointer}
+      .hud:not(.expanded)>:not(b){display:none}
+      .hud>b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:20px;position:relative}
+      .hud>b::after{content:'▼';position:absolute;right:0;top:0;color:#94b8e8}
+      .hud.expanded{max-height:52vh;overflow-y:auto}
+      .hud.expanded>b{white-space:normal}
+      .hud.expanded>b::after{content:'▲'}
+      .legend{display:none}
+      .metric{grid-template-columns:1fr;gap:1px 0}.metric b{margin-bottom:7px}
+      aside{border-left:0;border-top:1px solid #26354d}button{flex:1 1 30%;min-height:44px}
+    }
+    #touchPad {
+    position: fixed; right: 14px; bottom: 14px; z-index: 30;
+    display: grid; grid-template-columns: 56px 56px 56px; grid-template-rows: 56px 56px 56px;
+    grid-template-areas: ". up dodge" "left guard right" ". down attack"; gap: 6px;
+    opacity: 0.85; touch-action: none;
+  }
+  #touchPad button {
+    font-size: 20px; border-radius: 12px; border: 1px solid #3a4a5a;
+    background: rgba(20, 30, 42, 0.75); color: #cfe3f7; padding: 0;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #touchPad button:active { background: rgba(70, 110, 150, 0.9); }
+  /* R24F.1 (#35): a touch screen is a phone playing, not a lab. Measured before: a phone opened on
+     a 58vh scene under a 207px HUD with six thousand pixels of lab text stacked below, and any
+     Android in landscape (over 900 CSS px wide) got the desktop layout, whose HUD covered the
+     fighters completely. Keyed on the pointer, not the width, for exactly that reason. The scene
+     takes the viewport, the aside hides behind a Lab lid, the sector indicator steps up off the
+     player's feet (it sat on them in landscape), and the start overlay owns the first tap. */
+  .lab-toggle{display:none}
+  .start-overlay{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#050a12d9;color:#dceaff;text-align:center;font:600 18px/1.5 system-ui,sans-serif}
+  .start-overlay[hidden]{display:none}
+  .start-overlay>*,.start-button>span{display:none}
+  .start-overlay[data-kind=rotate] .start-rotate{display:block}
+  .start-overlay[data-kind=start] .start-button,.start-overlay[data-kind=rematch] .start-button{display:block}
+  .start-overlay[data-kind=start] .when-start,.start-overlay[data-kind=rematch] .when-rematch{display:inline}
+  .start-overlay[data-kind=countdown] .start-count{display:block}
+  .start-button{flex:none;font:700 28px/1 system-ui,sans-serif;padding:18px 48px;border-radius:16px;border:1px solid #7ef0ad;background:#0d382c;color:#7ef0ad;min-height:0}
+  .start-count{font:800 96px/1 ui-monospace,monospace;color:#7ef0ad}
+  .start-rotate{font-size:22px}.start-rotate small{display:block;font-size:13px;color:#94b8e8;margin-top:8px}
+  .start-rotate .phone{display:inline-block;font-size:48px;transform:rotate(90deg)}
+  @media (pointer: coarse){
+    html,body{height:100%;overflow:hidden}body{display:block}
+    main{height:100vh;height:100dvh;min-height:0;width:100%}
+    aside{display:none}
+    body.lab-open aside{display:block;position:fixed;inset:0;z-index:50;overflow:auto;background:#0b1220;border:0}
+    .lab-toggle{display:block;position:fixed;right:12px;top:12px;z-index:60;flex:none;min-height:0;padding:6px 10px;font-size:12px;opacity:.75}
+    /* R24J.1 (#40): the phone's controls. Hidden until the pointer is coarse; every offset below is
+     a fixed pixel count because CSS px per mm measured 5.65-5.90 across four phone sizes - a 4%
+     spread - so a fixed size is the same physical size on all of them. */
+  .touch-zone,.touch-actions,.touch-notice{display:none}
+  .touch-notice[hidden]{display:none}
+  @media (pointer: coarse){
+    #touchPad{display:none}
+    .touch-zone{display:block;position:fixed;left:0;bottom:0;width:42%;height:82%;z-index:30;touch-action:none}
+    /* R24J.2: anchored to the bottom, not the middle of its zone. At top:50% the ring's centre sat
+       160px above the screen's foot while the blade's sat 90px - the left thumb was reaching up for
+       a stick the right thumb never had to. Bottom-anchored it centres 114px up, near the blade's,
+       and it scales with the screen instead of with the zone's height. */
+    .touch-stick{position:absolute;left:110px;bottom:24px;width:180px;height:180px;transform:translateX(-50%);border-radius:50%;
+      border:1px solid #3a4a5a66;background:rgba(20,30,42,.30);opacity:.55;transition:opacity .12s linear}
+    .touch-zone.holding .touch-stick{opacity:1}
+    .touch-stick-knob{position:absolute;left:50%;top:50%;width:76px;height:76px;margin:-38px 0 0 -38px;border-radius:50%;
+      border:1px solid #7ea8d8aa;background:rgba(60,90,130,.6)}
+    .touch-actions{display:block;position:fixed;right:0;bottom:0;width:270px;height:290px;z-index:30;pointer-events:none}
+    .touch-btn{position:absolute;pointer-events:auto;flex:none;min-height:0;padding:0;border-radius:50%;
+      border:1px solid #3a4a5a;background:rgba(20,30,42,.78);color:#cfe3f7;touch-action:none;
+      user-select:none;-webkit-user-select:none;display:flex;align-items:center;justify-content:center}
+    .touch-btn:active{background:rgba(70,110,150,.92)}
+    .touch-btn small{position:absolute;bottom:5px;font:700 10px/1 ui-monospace,monospace;color:#7ef0ad}
+    /* Centres measured against a 45mm (259px) thumb arc from the bottom-right corner: 21mm, 38mm,
+       41mm - and x never below 630, where the fighters end at 604. */
+    .touch-attack{right:32px;bottom:46px;width:88px;height:88px;font-size:34px;border-color:#7ef0ad99}
+    .touch-guard{right:146px;bottom:88px;width:68px;height:68px;font-size:26px}
+    .touch-dodge{right:100px;bottom:172px;width:56px;height:56px;font-size:20px}
+    .touch-notice{display:block;position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:35;
+      padding:6px 12px;border-radius:8px;background:rgba(46,22,30,.88);color:#ffb4b4;
+      font:600 12px/1.4 system-ui,sans-serif;pointer-events:none;white-space:nowrap}
+    /* The sector cells become a read-out: the stick aims now, and they sat where it lives. */
+    .guard-sector{left:50%;top:10px;bottom:auto;transform:translateX(-50%);pointer-events:none}
+    .guard-sector div{pointer-events:none}
+  }
+  /* R24G.1: the HUD hides over the fight on touch - even folded it stood 81px tall across the top
+       and a person said it was in the way - and comes back under the Lab lid, where the log is. */
+    .hud{display:none;left:10px;right:70px;top:10px;min-width:0;font-size:11px;pointer-events:auto}
+    body.lab-open .hud{display:block;position:fixed;z-index:55}
+    body.lab-open aside{padding-top:150px}
+    .hud.expanded{max-height:40vh;overflow-y:auto}
+    .hud button{flex:none;min-height:0;font-size:11px}
+    .legend{display:none}
+    /* R24J.1: the cells were the left thumb's aim until the stick took that job; the read-out now
+       sits clear of both thumbs, at the top, where the folded HUD used to be. */
+    .guard-sector{left:50%;right:auto;top:10px;bottom:auto;transform:translateX(-50%)}
+    .guard-sector div small{display:none} /* J/I/L name keys nobody has here */
+    /* The Lab lid moves off the parry cue's idle corner; the top left is the only free one now. */
+    .lab-toggle{right:auto;left:12px}
+  }
+  .pad-up { grid-area: up; } .pad-down { grid-area: down; }
+  .pad-left { grid-area: left; } .pad-right { grid-area: right; }
+  .pad-guard { grid-area: guard; } .pad-dodge { grid-area: dodge; }
+  .pad-attack { grid-area: attack; border-color: #7ef0ad88; } /* R24F.2 (#36): the right thumb's blade */
+</style>
+  <!-- Vite: Three.js r128 is imported by the entry module and bundled with it. -->
+  <script type="module" crossorigin src="../../bundle/lab-BzzKlGfc.js"></script>
+  <link rel="modulepreload" crossorigin href="../../bundle/three-BPmRDOES.js">
+  <link rel="modulepreload" crossorigin href="../../bundle/three-namespace-B-l7R2Y0.js">
+  <link rel="modulepreload" crossorigin href="../../bundle/skyrim-converted-animation-library-BiHeqcKc.js">
+</head>
+<body>
+  <main>
+    <canvas id="canvas" tabindex="0"></canvas>
+    <!-- R19W.1: touch movement pad. Each button is a virtual arrow key - pressing one puts the
+         same key code into the same held-set the keyboard uses, so touch and keys share one
+         intent pipeline and cannot drift apart. -->
+    <div id="touchPad" aria-hidden="true">
+      <button data-move="ArrowUp" class="pad-up">▲</button>
+      <button data-move="ArrowLeft" class="pad-left">◀</button>
+      <button data-move="ArrowRight" class="pad-right">▶</button>
+      <button data-move="ArrowDown" class="pad-down">▼</button>
+      <button data-hold-guard class="pad-guard">🛡</button>
+      <!-- R24F.2 (#36): the blade. Fires on pointerdown like the mouse button does (R23H.1) - a
+           click would wait for the finger to lift. Direction is the last sector cell pressed, else TOP. -->
+      <button data-dodge class="pad-dodge">✦</button>
+      <button data-attack-touch class="pad-attack">⚔</button>
+    </div>
+    <!-- R24F.1: what a phone sees first. The kind is painted by lab-ui from src/game/mobile-start. -->
+    <div id="startOverlay" class="start-overlay" hidden data-kind="">
+      <div class="start-rotate"><span class="phone">📱</span><br>請把手機轉成橫向<small>直向沒有位置放盾和刀 · 沒反應的話請開啟自動旋轉</small></div>
+      <button id="startButton" type="button" class="start-button"><span class="when-start">開始</span><span class="when-rematch">再來一場</span></button>
+      <div id="startCount" class="start-count"></div>
+    </div>
+    <button id="labToggle" type="button" class="lab-toggle">Lab</button>
+    <!-- R24J.1 (#40): the phone's controls. Left thumb steers and, while an action is held, names
+         the direction; the right thumb acts, MOBA-style with the blade biggest and nearest the
+         corner. Shown only on a coarse pointer - the desktop keeps its keyboard and mouse, and the
+         pad above stays for them. Geometry measured: the fighters occupy x 266-604 of 844, both
+         clusters sit in the free strips and inside a 45mm thumb arc. -->
+    <div id="touchStickZone" class="touch-zone" aria-hidden="true">
+      <div id="touchStick" class="touch-stick"><div id="touchStickKnob" class="touch-stick-knob"></div></div>
+    </div>
+    <div id="touchActions" class="touch-actions" aria-hidden="true">
+      <button id="touchAttack" type="button" data-touch-action="attack" class="touch-btn touch-attack">⚔<small></small></button>
+      <button id="touchGuard" type="button" data-touch-action="guard" class="touch-btn touch-guard">🛡<small></small></button>
+      <button id="touchDodge" type="button" data-touch-action="dodge" class="touch-btn touch-dodge">✦<small></small></button>
+    </div>
+    <div id="touchNotice" class="touch-notice" hidden></div>
+    <div id="parryCue" class="parry-cue wait"><span>BEST PARRY TIMING · R18I5</span><strong id="parryCueMain">LOADING…</strong><small id="parryCueDetail">等待即時 attack gate</small></div>
+    <!-- R21N.1: press one of these to parry in that direction - the press names the direction AND
+         is the timed input, so there is nothing to aim first. Keys I/J/L do the same. -->
+    <div id="guardSector" class="guard-sector"><div data-sector="left">&#9664;<small>J</small></div><div data-sector="top">&#9650;<small>I</small></div><div data-sector="right">&#9654;<small>L</small></div></div>
+    <div class="hud">
+      <b>Step 3A · Live Shield → Sword → Arm → OLD B3 · BUILD R18I5 TOP/RIGHT</b>
+      <!-- R23Y.1: the HUD is pointer-events:none so its text cannot be selected; the log gets its
+           own copy button here, next to the lines it copies, sharing the panel button's copier. -->
+      <div style="display:flex;align-items:flex-start;gap:8px"><div id="hudDuel" style="flex:1;font:700 14px/1.5 ui-monospace,monospace;color:#dceaff;white-space:pre-line">你 ·········· —   對手 ·········· —</div><button id="copyDuelLog" type="button" style="pointer-events:auto;padding:4px 8px;font-size:12px">複製戰鬥紀錄</button></div>
+      <div id="hudAttack">Attack commitment / TTC: loading…</div>
+      <div id="hudInput">Input capture: click the scene, then press F</div>
+      <div id="hudContact">REAL Sword × Shield: —</div>
+      <div id="hudCoupling">Parry gate: —</div>
+      <div id="hudShield">Shield reach: —</div>
+      <div id="hudWeapon">Shield → Sword → Hand: —</div>
+      <div id="hudSeparation">Step 3A isolation: —</div>
+      <div id="hudLineClearance">LINE CLEAR: waiting</div>
+      <div id="hudRecoil">OLD B3 recoil: —</div>
+      <div id="hudDiagnostic">STEP 3A diagnostic: —</div>
+      <div id="hudParryTally">Parry 命中: —</div>
+      <div id="hudOpponent">對手: 手動</div>
+    </div>
+    <div class="legend"><b>說明 · 按鍵與各階段量測紀錄</b><span>R20Y.1:面板可收合 —— 點 HUD 或這行說明的標題列收合/展開,按 H 一次隱藏全部疊層(HUD、說明、中央提示),選擇會記在瀏覽器裡。中央的 parry 提示在沒有攻擊進行時縮到右下角,攻擊一開始就跳回畫面中央原本的大小。 · B6c2:BLOCK 模式預設不設防,按住 F 才舉盾(放開即收;但已成立的 parry 或進行中的接觸會打完才收 — R20H.2),不舉盾會挨打;在對方出手後的正確窗口內「剛舉起」的盾自動升級為 parry(R20H.1 Sekiro 式,輕點即可:RIGHT 約115–170ms、LEFT 約220–320ms、TOP 約270–370ms,太早=普通格擋、太晚=遲舉盾自負);交鋒中才舉的盾會直接就位而非慢慢移過去(R20J.1),但仍需在接觸前約 70ms 以上舉起才來得及;LEFT 的打擊期已重新配速(R20M.1:原本單一影格內轉 132°、峰值 3972°/s,現為 1332°/s,接觸從 0.26s 移到 0.38s,起手期不變)· 格擋判定的盾面比視覺盤面寬 2cm(R20L.1:盾攔不住比手臂快 30 倍的劍,格擋本來就是「擋在路上」,擦到即算,但遲舉盾的懲罰不變) · ↑↓ 防守者進退 · ←→ 防守者側移(R19V.1,繞著對手轉)· Space 閃避(R20F.1,配方向鍵選向,無鍵=後閃;i-frame 窗 0.1–0.3s,持盾中不可閃,冷卻 1s)· 觸控:右下方向鈕+🛡持盾+✦閃避· Shift+↑↓ 攻擊者進退(揮擊中攻擊者由步伐接管)· WASD 移動(鎖定時 A/D 繞著對手側移)· Tab 鎖定/解除 · R20T.2:LEFT 是低位橫掃,刀刃在離攻擊者約 1.10m 處通過,所以貼到 1.05m 以內時它會從身體後方掃過去(TOP/RIGHT 沒有這個內緣;舉盾仍然擋得下,因為盾在身體前面)——太近時 HUD 的接觸那行會直接說「太近」 · R20T.4:最小間距 0.9m 現在由 ledger 自己守著(原本只有走路的規劃器在擋,所以前向閃避會穿進去 25cm)· R20U.1:按住 Shift 全速奔跑 1.5 m/s(未鎖定、未舉盾、未揮砍時,任何方向 —— 自由模式下沒有「後退」,身體會以 180°/s 轉向你要去的方向)—— 量到的事實是這套戰鬥裡沒有人能脫離(走路後退淨 −0.25 m/s、後閃更糟 −0.75m/循環),所以「離開」需要一個動詞,而它的代價是先放掉鎖定。鎖定時仍然是三段走路速度(前 1.0/後 0.75/側 0.75),因為那裡朝向由兩人的連線決定,後退是真的後退 · R20V.3:自由模式下「面向你要去的方向」,舉不舉盾都一樣(R20V.2 曾讓舉盾固定朝向,量測上有效——誤差從 112° 降到 22°——但實測手感不直覺,已移除)。代價是量到的:未鎖定又在移動時,盾幾乎守不住(側移 0.25 秒身體就轉開 50°+),所以自由模式是用來趕路的,要打就按 Tab 鎖定 · R20W.1:走路/奔跑的腳步接上了地面 —— 自由移動從 R20S.3 起直接寫進 ledger,而步態一直只吃舊的 lane step(對玩家恆為 0),所以玩家的腿從那時候就沒動過(實測:1.04 m/s 移動,步態回報 0.00 m/s);同時步幅不再用「0.8 個腿長」推估,改成從每支 clip 自己的腳掌著地量出來(Walking_A 作者速度 0.643 m/s、Walking_B 1.053 m/s ≈ 我們的走路速度,所以走路 clip 換成 Walking_B),倒退也改成正播它自己的 clip 而不是倒帶。衝刺 1.5 m/s 沿用走路 clip 播 1.42 倍:唯一的跑步 clip Running_A 是為 3.27 m/s 畫的(63% 騰空),在 1.5 m/s 只會播 0.46 倍變慢動作 —— 要讓衝刺長得像跑步是速度的決定,不是動畫的決定 · R20W.2:三個修正 ——(a)骨架的線是每幀從骨頭重建的,而關節的點是掛在骨頭底下自己跟著走,結果每個寫姿勢的環節都只動骨頭不重建線,線就停在「最後一次重繪」的那個姿勢,點卻是真的 —— 所以走路時點在動、線不動。現在在 render 前、所有寫入者之後統一重繪兩個角色。(b)走路動作原本只借腿(R19E.1,因為舉盾時上半身是盾的),但自由移動讓人可以不舉盾走路,那時上半身沒東西要守,卻還卡在持劍待機 —— 現在沒舉盾時走路擁有整個身體,舉盾時仍然只借腿。(c)衝刺改用 Running_A:接手的門檻不是「按了 Shift」,而是量出來的步態轉換點 1.36 m/s(Froude 0.5,這副 0.3765m 腿),走路 1.0 在下面、衝刺 1.5 在上面。代價照實記著:Running_A 是為 3.27 m/s 畫的,在 1.5 m/s 播 0.46 倍,騰空姿勢會撐比較久 —— 如果飄,要調的是衝刺速度(Running_A 大約 2.0 m/s 以上才誠實),不是再換一支 clip · R20X.1(實驗,等你看過再決定去留):側移的腿轉向行進方向。整個 KayKit 資產包裡橫向的循環只有 Running_Strafe_Left/Right,量出來是 ±3.04 m/s、80% 騰空,我們側移 0.75 m/s 播 0.247 倍 —— 一個循環 3.24 秒、在空中掛 2.6 秒,不能用;而把側移調快到讓它誠實(1.52 m/s 才 0.5 倍)會把「繞圈超越起手瞄準」的半徑從 0.95m(在 0.9m 接觸底線內,所以到不了)推到 1.94m 的正常交戰距離,那是改戰鬥不是改動畫。所以改成把 upperleg.l/r 繞垂直軸轉一個「身體座標下的行進角」:正面走路 clip、用完整位移驅動、腿沿自己的軸零滑動,膝蓋和腳跟著轉,骨盆以上完全不動(R19E.1 量過動到 hips 會把舉盾的上半身整個帶歪)。純側移要在髖部轉 90°,最壞情況 108°(側後方那一段還算「前進 clip」)。量到一個坑:直線側移在身體座標下帶一點負的前向分量(朝向一直追著連線轉),不設死區的話會被判成後退去播倒退 clip · R21A.1/R21A.2:方向性 parry 的第一步 —— **方向存在、看得見,但還沒有任何規則讀它**。滑鼠決定你的扇區(螢幕上=TOP、右=RIGHT、左=LEFT),畫面下方中央的三格顯示:綠色=你指著的方向,琥珀色=對手已經 committed 的方向。鎖定時滑鼠本來就完全沒有用途(鏡頭被鎖定接管、free look 在鎖定時直接 return),所以這個輸入不跟任何東西衝突。量測發現的兩件事:(a)三招在起手期**全部從防守者的右邊來**——RIGHT 和 LEFT 沒有任何一幀在左側,TOP 只有最後一幀越過中線,所以「RIGHT 從右邊來」是錯的,方向名稱與幾何無關,是約定;真正區分它們的是刀尖垂直速度(TOP +4.45 m/s 上舉、RIGHT −1.79 幾乎水平、LEFT −7.01 從 2.19m 砍下),而且 1.4/1.8/2.4m 三個距離逐幀完全相同。(b)三者最難分辨的瞬間是 183ms(最小距離 0.41m),正好是 RIGHT 必須決定的時刻。指示器真正買到的不是「看見方向」,是讓玩家的碼表從 commitment 當下(0ms)起跑而不是從畫面分得出來的 67ms —— 那 67ms 正好是 RIGHT 的 210ms 窗口差的那一截 · R21B.1:RIGHT 重新配速 —— 實測沒有人擋得下它,量測說原因是兩個而不是一個:峰值 2686 deg/s(超過真實劍術快速期 700–1200 的兩倍多),以及**起手期本身已經是打擊**(676–1234 deg/s,而 TOP 的預備是 53–325、LEFT 是 374–670),沒有可讀的預備動作。LEFT 那次的做法(只拉爆發段)不能移植,因為 RIGHT 的接觸落在爆發的前段,只拉爆發只會把接觸從 0.23 移到 0.26s,窗口還是 240ms 就關。所以起手期和爆發一起拉 1.6 倍,倍率取自兩個已經被接受的數字:峰值 2686÷1.6=1679 ≈ TOP 未動的 1667;接觸 0.23×1.6=0.368s,剛好在 LEFT 已被實測確認可反應的 0.380s 之內,所以 RIGHT 仍然是三招裡最快的。事後在實驗室重量:峰值 1667(跟 TOP 一模一樣)、起手期 17→183ms 變成 17→283ms、打擊期 217→250 變成 317→417ms。parry 窗口從 10–210ms 移到 148–348ms,完美窗口 293–323ms。**golden grid 11 格全數重現、parry gate 三個方向全過** —— 因為 goldens 記的是結果(擋下/彈開/中身)、姿態與間距,不是時間,所以純粹的重新配速不會動到它們;那同時也是這次改動確實只改了時序的證據 · R21C.1:**parry 現在要方向對才成立**(格擋完全不動 —— 盾仍然是全向的、長按 F 照樣擋得下,所以 golden grid 的 11 格全部有效)。判定在**按下的那一幀**,不是接觸那一幀:接觸判定會讓早按的人有多達 220ms 去修正瞄準、晚按的人只有 20ms,等於獎勵「先按再瞄」——而早按本來是比較差的評價。沒瞄準(扇區為 null)算不符,指示器三格全暗把這個狀態畫出來。瞄錯只是這次拿不到 parry:一次攻擊一次嘗試的規則本來就在(`parry-input-already-used-for-attack`),所以賭錯的代價是「沒賺到」而不是「挨打」。實測 6/6 走真正的玩家路徑(盾放下、窗口內舉起):瞄對 3/3 parry、瞄錯 3/3 格擋;握著盾不放時 9/9 全部擋下,不管瞄哪裡。過程中被瀏覽器關卡抓到一個只有它抓得到的錯:同一個評估函式每幀也用來算「窗口開了沒」的提示(`manual:false`),我一開始把方向條件也加在那裡,提示就永遠是 false、任何 parry 都按不出來 —— 提示講的是時間,按下講的才是瞄準 · R21C.2:號誌燈只剩**你自己的瞄準**。原本它用同三格的顏色同時畫「我指哪裡」和「對手打哪裡」——兩個獨立變數共用一個視覺通道,結果「瞄準與攻擊相符」這個最該一眼認出的狀態,變成第三種要學的顏色。威脅那半是**拿掉**而不是搬走:一個要求你注意對手的遊戲,不該在起手期把視線往畫面下方拉。代價是量過的:R21A.1 量到指示器買到的是 67ms(對手 committed 到動畫分得出來之間的落差),沒有它,碼表從動畫分辨得出來才開始跑。要讀的東西也是量過的——三招全部從防守者的右邊來,靠刀尖垂直速度區分:**往上舉 = TOP、從 2.19m 高處落下 = LEFT、幾乎水平 = RIGHT**。HUD 多了一行 Parry 命中計數,**按方向、按失敗原因分開**:方向錯代表這一招讀不出來(該修的是動畫的可讀性),時機錯代表窗口太緊(該修的是配速),混在一起的失敗率只會說「很難」 · Cyan = shield target · yellow = sword contact · red = original attack axis · green/orange = current sword axis PASS/FAIL · purple = wrist→hilt line</span></div>
+  </main>
+  <aside>
+    <h1>Step 3A · Live Shield → Sword → Wrist-Grip</h1>
+    <div class="note">保留已確認的手動 Parry gate。真實 Sword × Shield swept contact 先建立 ParryImpact、保存精確接觸姿勢並選定一次歷史 OLD B3 的 25° Parried ReactionDefinition；接觸期間由盾劍約束維持 upperarm.r → lowerarm.r → wrist.r → hand／hilt，並以最終世界空間劍柄量測做 bounded residual correction。DEFLECT_IMPULSE marker 會鎖存；TOP／RIGHT 優先以 7/7 通過後釋放，若呈現品質仍差少量，有效的真實 Parry 也會走 fail-safe 28ms continuity bridge，不能永久卡住 OLD B3。OLD B3 軀幹與腿從撞擊當下即開始後仰並鎖存於 impulse peak；DEFLECT_IMPULSE 釋放後，武器手臂經 28ms bridge 併入進行中的 OLD B3，雙方根節點同時各自後退（攻擊者 16cm、防守者 5cm 反作用力，接觸判定期間維持零位移），並以最終骨架的世界空間頭、肩與髖位置驗證後仰。LEFT release 仍暫緩，獨立 shoulder／clavicle helper維持關閉。</div>
+
+    <h2>Attack direction</h2>
+    <div class="row"><button data-attack="top">TOP</button><button data-attack="right" class="active">RIGHT</button><button data-attack="left">LEFT</button></div>
+
+    <h2>Defense</h2>
+    <div class="row"><button data-mode="block">BLOCK</button><button data-mode="parry">PARRY</button></div>
+
+    <h2>Manual Parry input</h2>
+    <div class="note">攻擊開始後觀察 HUD 的 committed / TTC；在 committed YES 且 TTC 約 60–180ms 時按下按鈕或 F 鍵。每次攻擊只能嘗試一次，太早或太晚都要重開下一次攻擊。</div>
+    <div class="row"><button id="parryNow">PARRY NOW (F)</button><button id="retryAttack">RETRY ATTACK</button></div>
+
+    <h2>Step 1 · isolate OLD B3</h2>
+    <div class="note">保留上一階段的直接診斷鈕；它會略過所有第二步 gate 與真實碰撞，只用來重查 B3。</div>
+    <div class="row"><button id="forceOldB3">FORCE OLD B3</button></div>
+
+    <div class="metric">
+      <span>Parry types</span><b>one · no Perfect</b>
+      <span>Input authority</span><b>manual PARRY NOW</b>
+      <span>Attack commitment</span><b>authored movementStartSeconds</b>
+      <span>Valid TTC</span><b>60–180 ms</b>
+      <span>Shield tracking correction</span><b>clamp ≤ 0.18 m</b>
+      <span>Predictive geometry</span><b>geometry-guided shield motion clamped to the 60cm lunge-reach budget · unreachable linear target may fall back to measured current sweep · guidance · cannot veto input</b><span>Target continuity</span><b>previous post-tracking shield → primary relative drive → recapture rotated shield → bounded residual drive → real contact</b>
+      <span>Success authority</span><b>real swept Sword × Shield contact</b>
+      <span>Invalid / no input</span><b>falls back to BLOCK</b>
+      <span>Body hurtbox</span><b>the defender can now be struck · four bands taken from the rig's own bones (head / chest / waist / knees), so a crouched or displaced fighter is hit where they actually are · the shield is asked first, always: a blade the guard caught never reaches the body · a hit is the fact the blade arrived, not damage</b>
+      <span>Guard coverage (BLOCK)</span><b>omnidirectional · the guard reads the committed direction, waits out a 70ms reaction delay, then covers it: directional anchor → predicted threat once it is credible → measured swept approach once the blade is close · the shield arm is bounded to 75cm of travel at 2.5m/s (R19M.1; it was 34cm at 1.55m/s, calibrated before attacks carried a step) and a low threat also recruits the planted crouch, so a short-warning attack still gets through · what that buys, measured per direction rather than claimed: TOP blocks reliably from about 1.14m of contact separation out, LEFT from about 1.14m, RIGHT only from about 1.34m and never closer. Below roughly 0.95m no direction blocks at all - the blade base arrives past the shield plane, so the attacker is inside the guard rather than beating it · and blocking is not the same as mattering: paired against unguarded runs (R19L.2), most blocks out at range are against swings that were going to miss anyway</b>
+      <span>Motion authority</span><b>current world shield surface · every frame</b><span>Early low stance</span><b>predicted future sword point ≤ 180ms starts posture only; once engaged, hold until real contact or attack reset</b>
+      <span>Preset motion curve</span><b>none</b>
+      <span>After success</span><b>ParryImpact selects one exaggerated OLD B3 plan whose torso and legs run from impact · latched DEFLECT_IMPULSE + the 7/7 inspection (all directions), or confirmed-Parry fail-safe, starts a 28ms continuity bridge; the weapon arm joins the running OLD B3</b>
+      <span>Physical arm chain</span><b>during contact: bounded upperarm.r → lowerarm.r → wrist.r → hand / socket / hilt · after DEFLECT_IMPULSE: contact correction fades to zero before visible OLD B3 arm sweep · separate shoulder/clavicle helper off · all three directions release</b>
+      <span>LINE CLEAR gates</span><b>sword axis ≥ 7° · hilt offline ≥ 2.5cm · wrist→grip ≥ 7°</b>
+    </div>
+
+    <label class="toggle"><input id="opponentDrive" type="checkbox"> 對手自動化：自己走位到量測帶 + 三方向輪流出手（Parry 輸入仍然是你的）</label>
+    <div class="row"><button id="copyTally" type="button">複製統計</button><button id="copySwings" type="button">複製戰鬥紀錄</button></div>
+    <label class="toggle"><input id="autoRepeat" type="checkbox"> Auto repeat attack (Parry input stays manual)</label>
+    <!-- R21P.1: off by default. It rescales the pre-contact phase to 0.12x and freezes the sim for
+         1.5s when the window opens, which is the thing every measurement here is timing - and it
+         reset to checked on every reload, so three whole playtests were recorded through it before
+         the report started stamping the condition. Whoever wants frame-by-frame review can ask. -->
+    <label class="toggle"><input id="slowReview" type="checkbox"> Pre-contact Parry review: 0.12× + hold prompt 1.5s (Block + Step 3A + direct OLD B3 stay 1.00×)</label>
+    <label class="toggle"><input id="showSurface" type="checkbox" checked> Show shield parry surface</label>
+
+    <section id="stanceDebugPanel" hidden>
+      <h2>DEBUG MODE · LOW STANCE</h2>
+      <div class="note">只調整程序化預測、姿態深度與速度；不改 Parry 輸入或真實碰撞成功權限。變更後按 APPLY + RETRY 測下一次攻擊。</div>
+      <label class="debug-range" for="debugLeadMs"><span>Predict lead window</span><output id="debugLeadMsValue">180ms</output><input id="debugLeadMs" type="range" min="60" max="400" step="10" value="180"></label>
+      <label class="debug-range" for="debugMaxCrouchCm"><span>Maximum crouch</span><output id="debugMaxCrouchCmValue">4.5cm</output><input id="debugMaxCrouchCm" type="range" min="1" max="8" step="0.1" value="4.5"></label>
+      <label class="debug-range" for="debugCrouchSpeed"><span>Crouch speed</span><output id="debugCrouchSpeedValue">1.05m/s</output><input id="debugCrouchSpeed" type="range" min="0.2" max="3" step="0.05" value="1.05"></label>
+      <label class="debug-range" for="debugEdgeCm"><span>Outside-edge activation</span><output id="debugEdgeCmValue">1.0cm</output><input id="debugEdgeCm" type="range" min="0.2" max="3" step="0.1" value="1"></label>
+      <label class="debug-range" for="debugPlaneCm"><span>Predicted plane tolerance</span><output id="debugPlaneCmValue">1.2cm</output><input id="debugPlaneCm" type="range" min="0.2" max="5" step="0.1" value="1.2"></label>
+      <label class="debug-range" for="debugLowGapCm"><span>Minimum gap below shield</span><output id="debugLowGapCmValue">0.8cm</output><input id="debugLowGapCm" type="range" min="0" max="5" step="0.1" value="0.8"></label>
+      <label class="debug-range" for="debugDownRatio"><span>Minimum downward ratio</span><output id="debugDownRatioValue">0.75</output><input id="debugDownRatio" type="range" min="0.2" max="1" step="0.05" value="0.75"></label>
+      <label class="debug-range" for="debugKneeBandCm"><span>Knee-line vertical band</span><output id="debugKneeBandCmValue">16cm</output><input id="debugKneeBandCm" type="range" min="5" max="30" step="1" value="16"></label>
+      <label class="debug-range" for="debugArmAttemptCm"><span>Arm-attempt gate</span><output id="debugArmAttemptCmValue">0.5cm</output><input id="debugArmAttemptCm" type="range" min="0" max="2" step="0.1" value="0.5"></label>
+      <div id="debugProfileSummary" class="note">Debug profile loading…</div>
+      <div class="row"><button id="debugApplyRetry">APPLY + RETRY</button><button id="debugResetDefaults">RESET R18I5 DEFAULTS</button></div>
+    </section>
+
+    <h2>Expected causality</h2>
+    <div class="metric"><span>1</span><b>Attack crosses authored commitment marker</b><span>2</span><b>TTC enters 60–180ms window</b><span>3</span><b>PARRY NOW stays visible for review</b><span>4</span><b>Player presses F and defender starts the Parry action</b><span>5</span><b>Select a reachable intercept: linear prediction or surface-relative measured edge correction, clamped to the 60cm lunge-reach budget</b><span>6</span><b>Recapture the rotated shield and persistent arm carry; wrist.l solves the shield plane, then chest/spine may extend a saturated arm; predicted knee-line/low-gap threats recruit the planted stance before contact · no step and no authored crouch curve</b><span>7</span><b>Real swept Sword × Shield contact creates ParryImpact, freezes the exact attacker contact pose, selects one OLD B3 definition and starts its torso and leg channels immediately</b><span>8</span><b>During live contact, bounded upperarm.r, lowerarm.r and wrist.r correction keeps the sword coupled to the moving shield; final hilt clearance is corrected in a closed loop</b><span>9</span><b>Latched DEFLECT_IMPULSE and TOP / RIGHT 7/7 authorize normal release; a confirmed real Parry has a fail-safe release instead of an infinite hold</b><span>10</span><b>A 28ms continuity bridge fades the constrained arm into the running OLD B3 without restarting its body</b><span>11</span><b>OLD B3 torso and legs run from impact and latch at the impulse peak; after DEFLECT_IMPULSE the weapon arm joins the running reaction with full authority</b></div>
+
+    <h2>What to check</h2>
+    <div class="metric"><span>Too early</span><b>REJECTED · no automatic later success</b><span>Valid timing</span><b>ARMED, then only succeeds on visible contact</b><span>Too late</span><b>REJECTED / BLOCK</b><span>No PARRY NOW</span><b>BLOCK</b><span>Success</span><b>ParryImpact selects OLD B3 · final hilt clearance receives bounded residual correction · DEFLECT_IMPULSE is latched · 7/7 (LEFT on its low-sweep calibration) uses the normal 28ms bridge; confirmed real Parry uses the same bridge as a fail-safe and cannot remain frozen · OLD B3 body reacts visibly during contact and the arm joins after DEFLECT_IMPULSE</b><span>Performance acceptance</span><b>Verification report ≤ 60,000 characters · trace stores compact scalar frames only</b><span>Failure diagnostic</span><b>failed gate + actual / required value · terminal state shown separately</b><span>Whiff category</span><b>outside shield edge / missed shield plane / outside active window</b><span>Whiff distances</span><b>blade % · final plane/edge gap · persistent arm tracking · residual edge/plane · arm edge before→after · wrist/torso · threat zone + blade/rim/knee heights · lowgap/kdist · early stance · crouch/hips · foot drift</b><span>LEFT intercept target</span><b>MEASURED SWEEP preserves world direction + 1.2cm inset; R18I compares the measured sword point with the predicted future sword point, starts the planted knee-line/low-gap stance up to 180ms early, then holds it through the last residual gap until real contact or reset; measured geometry remains preferred whenever active · no authored curve · real contact still required · LEFT drives the same full arm chain and releases normally</b><span>Contact location</span><b>blade percentage + BASE/MID/TIP · shield radial position + FACE/RIM</b><span>Direction check</span><b>RIGHT / LEFT must deflect in opposite directions</b><span>R18I defender allowed</span><b>defender wrist.l · chest · spine · hips · upper/lower legs · foot orientation correction</b><span>R18I attacker allowed</span><b>OLD B3 torso and legs run during contact while correction owns the weapon arm; after DEFLECT_IMPULSE the arm joins the running reaction</b><span>Bounded displacement</span><b>after DEFLECT_IMPULSE only · attacker root ≤ 16cm backward, defender ≤ 5cm as the reaction force · both settle back to base before the exchange ends · zero displacement while the swept probe owns success · attacker shoulder correction still off</b></div>
+
+    <h2>Free inspection camera</h2>
+    <div class="metric"><span>開啟方式</span><b>網址加 <code>?camera=free</code></b><span>Orbit</span><b>left drag</b><span>Pan</span><b>right / middle / Shift+left drag</b><span>Zoom</span><b>mouse wheel</b><span>Move focus</span><b>W A S D · Q down · E up</b><span>Quick reset</span><b>3/4 · Side · Contact</b></div>
+    <p class="note">R20S.3:預設是遊戲自己的第三人稱相機(鎖定時半身過肩),觀察相機成為偵錯用的選項;開啟後 WASD 回去飛相機,人物只能用方向鍵走。</p>
+    <h2>Views · quick reset</h2><div class="row"><button data-view="three">3/4</button><button data-view="side">Side</button><button data-view="contact">Contact</button></div>
+    <h2>Verification</h2><div id="status" class="warn">Loading…</div><pre id="report">Not run.</pre>
+  </aside>
+  <script>
+    // R20Y.1: panel collapse. The HUD and the legend both fold to their title bar, the state is
+    // remembered per browser, and H hides every overlay at once. Wrapped in try/catch throughout
+    // because a browser with site data blocked throws on the read rather than returning nothing.
+    (function () {
+      function read(key, fallback) {
+        try { var value = localStorage.getItem(key); return value == null ? fallback : value === '1'; }
+        catch (error) { return fallback; }
+      }
+      function write(key, value) {
+        try { localStorage.setItem(key, value ? '1' : '0'); } catch (error) { /* nothing to do */ }
+      }
+      // The phone layout already folded the HUD by default and that stays; a desktop opens with the
+      // live diagnostics up and the legend - which is reference text, not state - folded away.
+      // R24F.1: and a touch screen folds it whatever its width - an Android in landscape is wide.
+      var wide = window.matchMedia('(min-width:901px)').matches && !window.matchMedia('(pointer: coarse)').matches;
+      [
+        { el: document.querySelector('.hud'), key: 'r281.hud.expanded', open: wide },
+        { el: document.querySelector('.legend'), key: 'r281.legend.expanded', open: false },
+      ].forEach(function (panel) {
+        if (!panel.el) return;
+        panel.el.classList.toggle('expanded', read(panel.key, panel.open));
+        var title = panel.el.querySelector('b');
+        if (!title) return;
+        title.addEventListener('click', function () {
+          write(panel.key, panel.el.classList.toggle('expanded'));
+        });
+      });
+      if (read('r281.overlays.hidden', false)) document.body.classList.add('overlays-off');
+      document.addEventListener('keydown', function (event) {
+        if (event.code !== 'KeyH' || event.metaKey || event.ctrlKey || event.altKey) return;
+        var tag = (event.target && event.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || (event.target && event.target.isContentEditable)) return;
+        write('r281.overlays.hidden', document.body.classList.toggle('overlays-off'));
+      });
+    })();
+  </script>
+</body>
+</html>

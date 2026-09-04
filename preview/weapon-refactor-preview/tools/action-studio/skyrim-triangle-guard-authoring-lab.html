@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>G2.5.1 Triangle Forward Base Guard Authoring Lab</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0b1018;--panel:#111827ed;--line:#31405b;--text:#e8edf7;--muted:#91a0b8;--good:#65d68b;--warn:#f0bd63;--bad:#ff7474;--cyan:#68d8ff}
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:13px/1.4 system-ui,sans-serif}
+    canvas{position:absolute;inset:0;width:100%;height:100%}.panel{position:absolute;top:14px;left:14px;width:min(440px,calc(100vw - 28px));max-height:calc(100vh - 28px);overflow:auto;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);backdrop-filter:blur(10px)}
+    h1{font-size:16px;margin:0 0 4px}.sub{color:var(--muted);margin-bottom:12px}.toolbar{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}button{border:1px solid #40516f;background:#192337;color:var(--text);border-radius:7px;padding:7px 9px;cursor:pointer}button:hover{border-color:var(--cyan)}button.primary{background:#173a4a;border-color:#3faed0}.status{padding:8px 10px;border-radius:8px;background:#0a1220;margin:8px 0;font-weight:700}.good{color:var(--good)}.warning{color:var(--warn)}.bad{color:var(--bad)}
+    .section{border-top:1px solid #2b374c;padding-top:10px;margin-top:10px}.section h2{font-size:13px;margin:0 0 7px}.bone{padding:8px;border:1px solid #29364b;border-radius:8px;margin:6px 0}.bone-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:6px}.budget{color:var(--muted)}.axis{display:grid;grid-template-columns:18px 1fr 58px;align-items:center;gap:6px;margin:3px 0}.axis input[type=range]{width:100%}.axis input[type=number]{width:58px;background:#0b1220;color:var(--text);border:1px solid #34445e;border-radius:5px;padding:3px}
+    .metrics{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-variant-numeric:tabular-nums}.metrics .pass{color:var(--good)}.metrics .fail{color:var(--bad)}textarea{width:100%;height:155px;background:#090f19;color:#cfe8f7;border:1px solid #33425c;border-radius:8px;padding:8px;font:11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical}.small{color:var(--muted);font-size:11px}.viewbar{position:absolute;right:14px;top:14px;display:flex;gap:6px;background:#111827d9;border:1px solid var(--line);border-radius:9px;padding:7px}
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="viewbar"><button data-view="front">Front</button><button data-view="three">3/4</button><button data-view="side">Side</button><button data-view="back">Back</button></div>
+  <section class="panel">
+    <h1>G2.5.1 — Triangle Forward Base Guard Authoring Lab</h1>
+    <div class="sub">Canonical Skyrim <code>shd_blockidle</code> + frozen G2.4 retarget + G2.4.5 weapon bind.</div>
+    <div id="status" class="status">BOOTING</div>
+    <div class="toolbar">
+      <button id="loadCanonical" class="primary">Load Canonical</button>
+      <button id="freeze50">Freeze 50%</button>
+      <button id="autoFit" class="primary">Auto-fit Seed</button>
+      <button id="validate5">Validate 5 Samples</button>
+      <button id="resetAll">Reset</button>
+    </div>
+    <div class="section">
+      <h2>Allowed correction bones</h2>
+      <div class="small">Local Euler is only an authoring UI. Exported canonical data is normalized local quaternion. handslot.r is capped at 15° fine trim.</div>
+      <div id="boneControls"></div>
+    </div>
+    <div class="section">
+      <h2>Triangle metrics</h2>
+      <div id="metrics" class="metrics"></div>
+    </div>
+    <div class="section">
+      <h2>5-sample acceptance</h2>
+      <pre id="validation" class="small">Not run yet.</pre>
+    </div>
+    <div class="section">
+      <h2>Canonical export</h2>
+      <div class="toolbar"><button id="refreshExport">Refresh Export</button><button id="copyExport">Copy</button></div>
+      <textarea id="exportText" spellcheck="false"></textarea>
+    </div>
+  </section>
+  <script>
+    function exposeG251Failure(kind, detail){
+      document.documentElement.dataset.g251='fail';
+      document.documentElement.dataset.g251Phase=kind;
+      const status=document.getElementById('status');
+      if(status){status.textContent='FAIL · '+kind+' · '+String(detail||'unknown');status.className='status bad';}
+    }
+    window.addEventListener('error',e=>exposeG251Failure('window-error',e.error?.stack||e.message));
+    window.addEventListener('unhandledrejection',e=>exposeG251Failure('unhandled-rejection',e.reason?.stack||e.reason));
+  </script>
+  <script type="module">
+    document.documentElement.dataset.g251Phase='module-shell';
+    import('./skyrim-triangle-guard-authoring-lab.js').catch(error=>exposeG251Failure('module-import',error?.stack||error?.message||error));
+  </script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>G1 · KayKit Guard Source Review</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background:#0b0d12; color:#e9edf5; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; display:grid; grid-template-rows:auto 1fr; }
+    header { padding:16px 20px; border-bottom:1px solid #2b303b; display:flex; justify-content:space-between; gap:16px; align-items:center; }
+    header h1 { margin:0; font-size:20px; }
+    header p { margin:4px 0 0; color:#929caf; font-size:12px; }
+    header a { color:#dce6ff; text-decoration:none; border:1px solid #394154; border-radius:8px; padding:8px 10px; }
+    main { min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 370px; }
+    .stage { position:relative; min-height:520px; background:radial-gradient(circle at 50% 36%, #202634 0, #0d1017 56%, #080a0e 100%); }
+    canvas { width:100%; height:100%; display:block; }
+    .hud { position:absolute; left:18px; top:18px; display:grid; gap:4px; pointer-events:none; }
+    .hud b { font-size:18px; letter-spacing:.05em; }
+    .hud span { color:#9da8ba; font-size:12px; }
+    aside { overflow:auto; padding:16px; border-left:1px solid #2b303b; background:#10131a; }
+    .panel { border:1px solid #2b303b; border-radius:12px; padding:14px; margin-bottom:12px; background:#151922; }
+    .panel h2 { font-size:13px; margin:0 0 10px; text-transform:uppercase; letter-spacing:.08em; }
+    .hint { color:#9ca6b8; font-size:12px; line-height:1.55; }
+    select, button, input { width:100%; background:#0d1118; color:#eef3ff; border:1px solid #394154; border-radius:8px; padding:9px 10px; }
+    button { cursor:pointer; font-weight:700; }
+    button:hover { border-color:#6f83ad; }
+    button.primary { background:#253657; border-color:#506da7; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+    .readout { display:grid; grid-template-columns:110px 1fr; gap:8px; padding:6px 0; border-bottom:1px solid #252b36; font-size:12px; }
+    .readout span:first-child { color:#8e99aa; }
+    output { color:#fff; font-variant-numeric:tabular-nums; }
+    .status { margin-top:10px; padding:9px 10px; background:#0d1118; border-radius:8px; color:#b9c6dc; font-size:12px; line-height:1.45; }
+    .status.error { color:#ff9d9d; }
+    .scrub { margin-top:10px; }
+    .scrub label { display:flex; justify-content:space-between; font-size:12px; color:#9da8ba; margin-bottom:6px; }
+    .decision { border-left:3px solid #5c76a7; padding-left:10px; }
+    @media (max-width:900px) { main { grid-template-columns:1fr; } aside { border-left:0; border-top:1px solid #2b303b; } .stage { min-height:56vh; } }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <header>
+    <div><h1>G1 · KayKit Guard Source Review</h1><p>Source review only · no directional additive pose · no combat resolution</p></div>
+    <a href="./">← Action Studio</a>
+  </header>
+  <main>
+    <section class="stage">
+      <canvas id="reviewCanvas"></canvas>
+      <div class="hud"><b id="hudClip">NOT LOADED</b><span id="hudMode">KayKit melee source</span></div>
+    </section>
+    <aside>
+      <section class="panel">
+        <h2>KayKit Guard Sources</h2>
+        <button id="loadReview" class="primary">Load KayKit melee pack</button>
+        <select id="reviewClip" style="margin-top:8px"></select>
+        <div class="grid">
+          <button id="previewOnce">▶ Once</button>
+          <button id="previewLoop">↻ Loop</button>
+          <button id="holdEnd">▮ Hold End</button>
+          <button id="stopReview">■ Rest Pose</button>
+        </div>
+        <div class="scrub">
+          <label><span>Freeze / inspect frame</span><output id="sampleTimeValue">0.000s</output></label>
+          <input id="sampleTime" type="range" min="0" max="1" step="0.001" value="0">
+        </div>
+        <div id="reviewStatus" class="status">Load the melee pack, then compare Once / Loop / frozen frames.</div>
+      </section>
+
+      <section class="panel">
+        <h2>Source Facts</h2>
+        <div class="readout"><span>Role</span><output id="roleValue">—</output></div>
+        <div class="readout"><span>Duration</span><output id="durationValue">—</output></div>
+        <div class="readout"><span>Default review</span><output id="modeValue">—</output></div>
+        <div class="readout"><span>Hold strategy</span><output id="strategyValue">—</output></div>
+      </section>
+
+      <section class="panel decision">
+        <h2>G1 Decision Rule</h2>
+        <p class="hint"><b>Melee_Blocking</b> 先當 authored Guard Hold 候選。比較 Loop 與 Freeze：如果 loop 接縫自然，G2 直接用 authored loop；如果會抽動或姿勢太鬆，就挑一個最緊湊的 frozen hold frame，再在 G2 疊加很小的 breathing / directional offset。</p>
+        <p class="hint">這一頁只決定來源動畫怎麼用，不會建立 TOP / RIGHT / LEFT，也不會做 Block / Parry 判定。</p>
+      </section>
+    </aside>
+  </main>
+  <script type="module" src="./guard-source-review.js"></script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+// R18M.3 — DOM lookup only. No gameplay/runtime authority lives here.
+
+const REQUIRED_IDS = Object.freeze([
+  'startOverlay', 'startButton', 'startCount', 'labToggle', // R24F.1: the phone's start sequence and the lab lid
+  'touchStickZone', 'touchStick', 'touchStickKnob', 'touchAttack', 'touchGuard', 'touchDodge', 'touchNotice', // R24J.1: the phone's controls
+  'hudDuel',
+  'hudAttack',
+  'hudInput',
+  'parryCue',
+  'parryCueMain',
+  'parryCueDetail',
+  'hudContact',
+  'hudCoupling',
+  'hudShield',
+  'hudWeapon',
+  'hudSeparation',
+  'hudLineClearance',
+  'hudRecoil',
+  'hudDiagnostic',
+  'hudParryTally',
+  'hudOpponent',
+  'status',
+  'report',
+  'autoRepeat',
+  'opponentDrive',
+  'copyTally',
+  'copySwings', // R23M.1
+  'copyDuelLog', // R23Y.1: the same log, copied from where it is shown
+  'slowReview',
+  'showSurface',
+  'forceOldB3',
+  'parryNow',
+  'retryAttack',
+  'stanceDebugPanel',
+  'debugProfileSummary',
+  'debugApplyRetry',
+  'debugResetDefaults',
+]);
+
+export function createShieldParryLabDom(documentRef) {
+  const elements = {};
+  for (const id of REQUIRED_IDS) {
+    const element = documentRef.getElementById(id);
+    if (!element) throw new Error(`R18M.3 missing required lab element #${id}`);
+    const key = id === 'report' ? 'reportNode' : id;
+    elements[key] = element;
+  }
+  return Object.freeze(elements);
+}
+
+export { REQUIRED_IDS as SHIELD_PARRY_LAB_REQUIRED_DOM_IDS };

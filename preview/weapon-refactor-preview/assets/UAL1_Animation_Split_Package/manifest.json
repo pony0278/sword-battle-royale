@@ -1,0 +1,16 @@
+{
+  "package_name": "UAL1_Animation_Split_Package",
+  "source": "Universal Animation Library[Standard]",
+  "license": "CC0 1.0 Universal (Public Domain Dedication)",
+  "animation_count": 2,
+  "animations": [
+    {
+      "name": "Sword_Attack",
+      "duration_seconds": 1.533
+    },
+    {
+      "name": "Sword_Idle",
+      "duration_seconds": 1.667
+    }
+  ]
+}

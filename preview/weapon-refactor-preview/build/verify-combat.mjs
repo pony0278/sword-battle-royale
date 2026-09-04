@@ -1,0 +1,89 @@
+// The two browser gates, as one command.
+//
+// The golden grid replays eleven measured exchanges and diffs every outcome, posture, relevance
+// verdict and separation against the committed record; the parry gate plays one parry per direction
+// and reads the verdicts the in-page probe stamps. Between them they are the only thing that proves
+// a change did not move the measured combat, and until now they lived in a habit rather than in CI -
+// no workflow ran either, and neither could have, because the page they drive was gitignored.
+//
+// So: generate that page, serve the repository, run both, and fail loudly.
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { startStaticServer } from '../tools/static-server.mjs';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+// Where a chromium-shaped browser lives, in the order worth trying. CHROME_PATH first so a runner
+// or a sandbox can simply say; the rest covers the GitHub runner image and a local playwright.
+const CANDIDATES = [
+  process.env.CHROME_PATH,
+  '/opt/pw-browsers/chromium',
+  '/usr/bin/google-chrome',
+  '/usr/bin/chromium-browser',
+  '/usr/bin/chromium',
+].filter(Boolean);
+
+function findBrowser() {
+  const found = CANDIDATES.find((candidate) => existsSync(candidate));
+  if (found) return found;
+  throw new Error(`no chromium-shaped browser found. Tried:\n  ${CANDIDATES.join('\n  ')}\nSet CHROME_PATH.`);
+}
+
+function run(label, script, args, env) {
+  return new Promise((resolvePromise) => {
+    const child = spawn(process.execPath, [script, ...args], {
+      cwd: ROOT,
+      env: { ...process.env, ...env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    child.stdout.on('data', (chunk) => { output += chunk; process.stdout.write(chunk); });
+    child.stderr.on('data', (chunk) => { output += chunk; process.stderr.write(chunk); });
+    child.on('close', (code) => resolvePromise({ label, code, output }));
+  });
+}
+
+// Vite - the gates run against the BUILT page, which is the page that ships.
+//
+// Until the bundle existed there were two pages: the published one pulling Three.js from a CDN, and
+// a generated probe copy pointing at node_modules so a runner with no egress could boot it.
+// build-probe-lab.mjs existed to keep those two in step, and R20Z had already paid for the lesson
+// that a hand-synced second page drifts. The bundle removes the reason for the second page
+// entirely: Three.js is a module import now, so what is built is what is served is what is
+// measured, and there is one page again.
+await run('web build', 'node_modules/vite/bin/vite.js', ['build'], {});
+
+const served = await startStaticServer({ root: resolve(ROOT, 'dist'), port: Number(process.env.VERIFY_PORT || 0) });
+const browser = findBrowser();
+const base = `${served.url}/tools/action-studio`;
+console.log(`verify:combat · browser ${browser} · serving ${served.url}`);
+
+const results = [];
+try {
+  // The built page - the one the site serves. No CDN is involved any more, so a verification run
+  // can no longer fail because someone else's origin was slow.
+  const env = { PARRY_GATE_PAGE: 'shield-driven-contact-coupling-lab.html' };
+  results.push(await run('golden grid', 'tools/action-studio/b1-golden/verify-golden-grid.mjs', [browser, base], env));
+  results.push(await run('parry gate', 'tools/action-studio/verify-shield-parry-gate.mjs', [browser, base], env));
+  // R21P.1: the third question - not "did the parry compose" but "was a legal press defended".
+  results.push(await run('defence matrix', 'tools/action-studio/verify-defence-matrix.mjs', [browser, base], env));
+} finally {
+  await served.close();
+}
+
+const failed = results.filter((result) => result.code !== 0);
+console.log('');
+for (const result of results) console.log(`${result.code === 0 ? 'PASS' : 'FAIL'} · ${result.label}`);
+// R21W.1: the evidence, repeated where the verdict is. A gate's own detail is printed as it runs
+// and is a screen or three above by the time the summary appears - which is how one red golden
+// grid run this cycle left nothing to look at. The gates already capture their output; this simply
+// stops it from having scrolled away.
+for (const result of failed) {
+  console.log(`\n--- ${result.label} · exit ${result.code} ---`);
+  const lines = result.output.trimEnd().split('\n');
+  console.log(lines.slice(-40).join('\n'));
+  if (lines.length > 40) console.log(`(${lines.length - 40} earlier lines above)`);
+}
+if (failed.length) process.exit(1);
