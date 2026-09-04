@@ -31,6 +31,12 @@
 //                                         it, with no imports of its own. Step 4's table builder
 //                                         keys by GUARD_STATES, and a type here is what says a
 //                                         weapon's table has to cover every state.
+//   guard-presentation-table.js           S1.C2 step 4 - THE seam. Its parameter list is the
+//                                         contract a second weapon's guard has to satisfy, and the
+//                                         reason this file exists at all: a katana whose metadata
+//                                         arrives without a correctionLayerId is told so here.
+//   longsword-guard-presentation.js       the longsword's answer to that contract - the first of
+//                                         what should eventually be six.
 {
   "compilerOptions": {
     "allowJs": true,

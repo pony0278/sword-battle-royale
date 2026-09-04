@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LONGSWORD_GUARD_PRESENTATION } from '../src/combat/guard-state-machine.js';
+import { GUARD_STATES, LONGSWORD_GUARD_PRESENTATION } from '../src/combat/guard-state-machine.js';
+import { createGuardPresentationTable } from '../src/combat/guard-presentation-table.js';
+import { GUARD_REACTION_VARIANTS } from '../src/combat/guard-reaction-presentation.js';
 
 // S1.C2, step 1 of four - the table, pinned before anything moves it.
 //
@@ -165,4 +167,58 @@ test('S1.C2 the table and everything in it stays frozen, whoever builds it', () 
   for (const [state, entry] of Object.entries(LONGSWORD_GUARD_PRESENTATION)) {
     assert.equal(Object.isFrozen(entry), true, `${state} is not frozen`);
   }
+});
+
+// S1.C2, after step 4 - the point of the whole thing, stated as a test rather than as a claim.
+//
+// A weapon that does not exist builds its own table through the same function, and nothing in
+// guard-state-machine.js knows or has to. If this ever needs an edit to that module to keep
+// passing, the seam is in the wrong place.
+test('S1.C2 a weapon that is not the longsword builds its own table, and the machine does not change', () => {
+  const katanaStandIn = createGuardPresentationTable({
+    base: { clipId: 'KATANA/iai_hold', correctionLayerId: 'katana_iai_v1' },
+    authoringState: { authored: true, authoredStage: 'S9.9.9' },
+    transitionProfileIds: { ENTER: 'katana_enter', RECOVER: 'katana_recover', EXIT: 'katana_exit' },
+    reactionVariants: GUARD_REACTION_VARIANTS,
+    reactionProfiles: {
+      [GUARD_REACTION_VARIANTS.BLOCK_HIT]: {
+        clipId: 'KATANA/block', id: 'katana_block', variant: 'block-hit',
+        sourceWindow: { startSeconds: 0, endSeconds: 0.4 },
+        counterWindowSeconds: [0.1, 0.4], completionEvent: 'reaction_complete',
+      },
+      [GUARD_REACTION_VARIANTS.PARRY]: {
+        clipId: 'KATANA/parry', id: 'katana_parry', variant: 'parry',
+        sourceWindow: { startSeconds: 0, endSeconds: 0.5 },
+        counterWindowSeconds: [0.05, 0.25], completionEvent: 'reaction_complete',
+      },
+      [GUARD_REACTION_VARIANTS.PERFECT_PARRY]: {
+        clipId: 'KATANA/iai', id: 'katana_iai', variant: 'perfect-parry',
+        sourceWindow: { startSeconds: 0, endSeconds: 0.5 },
+        counterWindowSeconds: [0.05, 0.3], completionEvent: 'reaction_complete',
+      },
+    },
+    counterProfile: {
+      clipId: 'KATANA/draw_slash', id: 'katana_counter', sourceFamily: 'kaykit-melee',
+      completionEvent: 'counter_complete', correctionWeight: 0,
+      weaponMountProfileId: 'kaykit-default', authoredStage: 'S9.9.9', inPlace: true, loop: false,
+    },
+    guardMountProfileId: 'katana-calibrated',
+    transitionAuthoredStage: 'S9.9.9',
+    reactionAuthoredStage: 'S9.9.9',
+  });
+
+  // Same states, so getGuardPresentation's lookup and its NEUTRAL fallback work unchanged.
+  assert.deepEqual(Object.keys(katanaStandIn).sort(), Object.keys(LONGSWORD_GUARD_PRESENTATION).sort());
+  // And none of the longsword in it.
+  assert.equal(katanaStandIn[GUARD_STATES.HOLD].clipId, 'KATANA/iai_hold');
+  assert.equal(katanaStandIn[GUARD_STATES.HOLD].weaponMountProfileId, 'katana-calibrated');
+  assert.equal(katanaStandIn[GUARD_STATES.PARRY].variants['perfect-parry'].clipId, 'KATANA/iai');
+  // The counter keeps its own mount rather than the guard's, for both weapons and for the same
+  // reason: it is a swing, not a hold.
+  assert.equal(katanaStandIn[GUARD_STATES.COUNTER].weaponMountProfileId, 'kaykit-default');
+  // NEUTRAL is the one entry every weapon shares, because standing with nothing raised is not a
+  // weapon's business.
+  assert.deepEqual(katanaStandIn[GUARD_STATES.NEUTRAL], LONGSWORD_GUARD_PRESENTATION[GUARD_STATES.NEUTRAL]);
+  // Building a second table did not disturb the first.
+  assert.deepEqual(canonical(LONGSWORD_GUARD_PRESENTATION), canonical(PINNED));
 });

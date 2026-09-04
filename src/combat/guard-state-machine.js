@@ -1,127 +1,35 @@
 // @ts-check
 import {
-  LONGSWORD_GUARD_BASE,
-  LONGSWORD_GUARD_AUTHORING_STATE,
-} from './longsword-guard-metadata.js';
-import { GUARD_TRANSITION_PROFILE_IDS } from './guard-transition-presentation.js';
-import {
-  GUARD_REACTION_VARIANTS,
-  LONGSWORD_GUARD_REACTION_PROFILES,
-  getGuardReactionProfile,
-} from './guard-reaction-presentation.js';
-import {
-  GUARD_WEAPON_MOUNT_PROFILE_IDS,
-  LONGSWORD_GUARD_COUNTER_PROFILE,
-} from './guard-counter-presentation.js';
-
-import {
   GUARD_STATES,
   GUARD_EVENTS,
   GUARD_EVENT_AUTHORITY,
   GUARD_TRANSITION_GRAPH,
 } from './guard-states.js';
+import { getGuardReactionProfile } from './guard-reaction-presentation.js';
+import { LONGSWORD_GUARD_PRESENTATION } from './longsword-guard-presentation.js';
 
-// S1.C2 step 3: the vocabulary and the graph moved to guard-states.js so that step 4's table
-// builder can key by GUARD_STATES without importing this module back. Re-exported here because
-// thirty-one modules import these names from this path and none of them should have to care.
+// S1.C2 — what this module used to be, and what it is now.
+//
+// It held eight states, the graph over them, AND a table of how one weapon presents each of those
+// states, built from four longsword imports when the module loaded. handoff/39 recorded the table
+// as category C: a mechanic with a weapon frozen into it. Both halves left, in that order, and what
+// remains is the machine.
+//
+// Step 3 sent the vocabulary and the graph DOWN to guard-states.js, which imports nothing, so that
+// step 4's builder could key a table by GUARD_STATES without importing this module back.
+// Step 4 sent the table UP to the weapon that owns it: longsword-guard-presentation.js assembles it
+// with createGuardPresentationTable, and this module receives one already built.
+//
+// Both are re-exported. Thirty-one modules import GUARD_STATES from this path and two tests import
+// LONGSWORD_GUARD_PRESENTATION from it; none of them should have to care where either now lives.
+// The second re-export carries an assumption with it - that there is one table, and it is the
+// longsword's. The day there are two, what this module holds is whichever one the fighter carries,
+// and that re-export is the line that says so.
 export { GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, GUARD_TRANSITION_GRAPH };
+export { LONGSWORD_GUARD_PRESENTATION };
 
 export const GUARD_STATE_AUTHORITY_NOTE =
   'Presentation state only. Authoritative combat simulation confirms block, parry and counter outcomes.';
-
-function authoredGuardTransition(role, transitionProfileId) {
-  return Object.freeze({
-    role,
-    clipId: LONGSWORD_GUARD_BASE.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    transitionProfileId,
-    weaponMountProfileId: GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD,
-    authored: true,
-    authoredStage: 'G3.2',
-    inPlace: true,
-    loop: true,
-  });
-}
-
-function authoredGuardReaction(role, profile, extra = {}) {
-  return Object.freeze({
-    role,
-    clipId: profile.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    reactionProfileId: profile.id,
-    reactionVariant: profile.variant,
-    sourceWindow: profile.sourceWindow,
-    counterWindowSeconds: profile.counterWindowSeconds,
-    completionEvent: profile.completionEvent,
-    weaponMountProfileId: GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD,
-    authored: true,
-    authoredStage: 'G3.3.2',
-    inPlace: true,
-    loop: false,
-    ...extra,
-  });
-}
-
-function authoredGuardCounter() {
-  const profile = LONGSWORD_GUARD_COUNTER_PROFILE;
-  return Object.freeze({
-    role: 'guard-counter',
-    clipId: profile.clipId,
-    counterProfileId: profile.id,
-    sourceFamily: profile.sourceFamily,
-    completionEvent: profile.completionEvent,
-    correctionWeight: profile.correctionWeight,
-    weaponMountProfileId: profile.weaponMountProfileId,
-    authored: true,
-    authoredStage: profile.authoredStage,
-    inPlace: profile.inPlace,
-    loop: profile.loop,
-  });
-}
-
-const BLOCK_HIT_PROFILE = LONGSWORD_GUARD_REACTION_PROFILES[GUARD_REACTION_VARIANTS.BLOCK_HIT];
-const PARRY_PROFILE = LONGSWORD_GUARD_REACTION_PROFILES[GUARD_REACTION_VARIANTS.PARRY];
-const PERFECT_PARRY_PROFILE = LONGSWORD_GUARD_REACTION_PROFILES[GUARD_REACTION_VARIANTS.PERFECT_PARRY];
-
-export const LONGSWORD_GUARD_PRESENTATION = Object.freeze({
-  [GUARD_STATES.NEUTRAL]: Object.freeze({
-    role: 'neutral',
-    clipId: null,
-    authored: false,
-    inPlace: true,
-    loop: true,
-  }),
-  [GUARD_STATES.ENTER]: authoredGuardTransition('guard-enter', GUARD_TRANSITION_PROFILE_IDS.ENTER),
-  [GUARD_STATES.HOLD]: Object.freeze({
-    role: 'guard-hold',
-    clipId: LONGSWORD_GUARD_BASE.clipId,
-    correctionLayerId: LONGSWORD_GUARD_BASE.correctionLayerId,
-    correctionAuthoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    weaponMountProfileId: GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD,
-    authored: LONGSWORD_GUARD_AUTHORING_STATE.authored === true,
-    authoredStage: LONGSWORD_GUARD_AUTHORING_STATE.authoredStage,
-    inPlace: true,
-    loop: true,
-  }),
-  [GUARD_STATES.BLOCK_HIT]: authoredGuardReaction('block-hit', BLOCK_HIT_PROFILE),
-  [GUARD_STATES.PARRY]: authoredGuardReaction('parry-reaction', PARRY_PROFILE, {
-    variants: Object.freeze({
-      [GUARD_REACTION_VARIANTS.PARRY]: Object.freeze({
-        clipId: PARRY_PROFILE.clipId,
-        reactionProfileId: PARRY_PROFILE.id,
-      }),
-      [GUARD_REACTION_VARIANTS.PERFECT_PARRY]: Object.freeze({
-        clipId: PERFECT_PARRY_PROFILE.clipId,
-        reactionProfileId: PERFECT_PARRY_PROFILE.id,
-      }),
-    }),
-  }),
-  [GUARD_STATES.COUNTER]: authoredGuardCounter(),
-  [GUARD_STATES.RECOVER]: authoredGuardTransition('guard-recover', GUARD_TRANSITION_PROFILE_IDS.RECOVER),
-  [GUARD_STATES.EXIT]: authoredGuardTransition('guard-exit', GUARD_TRANSITION_PROFILE_IDS.EXIT),
-});
 
 function frozenPayload(payload) {
   if (!payload || typeof payload !== 'object') return Object.freeze({});
