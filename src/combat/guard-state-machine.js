@@ -63,9 +63,12 @@ function outcomeForEvent(event) {
   return null;
 }
 
-export function getGuardPresentation(state, payload = {}) {
-  const baseline = LONGSWORD_GUARD_PRESENTATION[state]
-    || LONGSWORD_GUARD_PRESENTATION[GUARD_STATES.NEUTRAL];
+// W1: the table is a parameter now, defaulting to the longsword's. S1.C2 step 4 moved the table out
+// of this module but left the machine reading one fixed import, which was enough while no fighter
+// carried a weapon. A fighter carries one now, so the machine is asked which table to read.
+export function getGuardPresentation(state, payload = {}, presentation = LONGSWORD_GUARD_PRESENTATION) {
+  const baseline = presentation[state]
+    || presentation[GUARD_STATES.NEUTRAL];
   const reaction = getGuardReactionProfile(state, payload);
   if (!reaction) return baseline;
   if (baseline.reactionProfileId === reaction.id && baseline.clipId === reaction.clipId) return baseline;
@@ -85,6 +88,10 @@ export function createGuardStateMachine(options = {}) {
     ? options.initialState
     : GUARD_STATES.NEUTRAL;
   let guardHeld = Boolean(options.guardHeld);
+  // W1: which weapon's guard this machine presents. The longsword while nothing says otherwise,
+  // which is every existing caller - two in src/, seventeen lab pages and five tests, none of
+  // which had to change to gain the option.
+  const presentation = options.presentation || LONGSWORD_GUARD_PRESENTATION;
   let elapsedMs = 0;
   let sequence = 0;
   let lastOutcome = null;
@@ -99,7 +106,7 @@ export function createGuardStateMachine(options = {}) {
       sequence,
       lastOutcome,
       lastTransition,
-      presentation: getGuardPresentation(state, lastTransition?.payload || {}),
+      presentation: getGuardPresentation(state, lastTransition?.payload || {}, presentation),
       authority: GUARD_STATE_AUTHORITY_NOTE,
     });
   }

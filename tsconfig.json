@@ -44,6 +44,10 @@
 //   greatsword-attack-timings.js          G1 - the same record with the numbers missing. Typed so
 //                                         that when the measurements arrive, a table of the wrong
 //                                         shape is caught here rather than in the golden grid.
+//   ../game/weapon.js                     W1 - what a fighter carries. defineWeapon's parameters
+//                                         are the contract every weapon in the registry satisfies,
+//                                         and equipWeapon keeps the shared definition apart from
+//                                         one fighter's Object3D.
 {
   "compilerOptions": {
     "allowJs": true,
