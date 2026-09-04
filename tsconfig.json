@@ -27,6 +27,10 @@
 //   guard-reaction-presentation.js
 //   longsword-directional-metadata.js     S1.C1's inputs: the directional profile and the runtime
 //   longsword-directional-attack-runtime.js  that warps it.
+//   guard-states.js                       S1.C2 step 3 - the guard vocabulary and the graph over
+//                                         it, with no imports of its own. Step 4's table builder
+//                                         keys by GUARD_STATES, and a type here is what says a
+//                                         weapon's table has to cover every state.
 {
   "compilerOptions": {
     "allowJs": true,
