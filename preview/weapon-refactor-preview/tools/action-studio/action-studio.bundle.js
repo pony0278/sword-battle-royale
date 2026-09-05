@@ -15095,6 +15095,18 @@ const SKYRIM_GREATSWORD_CONVERTED_FILES = Object.freeze([
     clipId: 'SKYRIM_GREATSWORD/2hm_idle',
     role: 'Two-Handed Idle',
   }),
+  // A second take of the same animation name, from a different .hkx: 2.5 s against the first's
+  // 6.667 s, same skeleton, same 46 retarget curves. It is here to be LOOKED AT, not adopted -
+  // measured through build/measure-skyrim-grip-reach.mjs it fails the grip test on every sample
+  // where the first passes on every one, and the off-hand IK refuses it out-of-reach rather than
+  // forcing the arm. tests/the-two-takes-of-the-idle-are-not-interchangeable.test.js holds that
+  // difference so adopting this one has to be a decision rather than an accident.
+  Object.freeze({
+    id: '2hm_idle_alt',
+    file: '2hm_idle_alt.source.glb',
+    clipId: 'SKYRIM_GREATSWORD/2hm_idle_alt',
+    role: 'Two-Handed Idle (alt take)',
+  }),
 ]);
 
 const DEFAULT_BASE_URL = '../../assets/skyrim/guard/converted/';
@@ -18483,6 +18495,7 @@ function shouldLoopClip(name) {
   const clipId = String(name || '');
   if (clipId === 'SKYRIM_GUARD/shd_blockidle') return true;
   if (clipId === 'SKYRIM_GREATSWORD/2hm_idle') return true;
+  if (clipId === 'SKYRIM_GREATSWORD/2hm_idle_alt') return true;
   if (/^SKYRIM_GUARD\/shd_block(?:hit|bash|bashpower)$/i.test(clipId)) return false;
   return /Idle|Walking|Running|Block|Crouching|Sneaking|Crawling/i.test(clipId);
 }

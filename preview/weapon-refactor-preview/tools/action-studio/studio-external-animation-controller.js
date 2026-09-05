@@ -40,6 +40,7 @@ function shouldLoopClip(name) {
   const clipId = String(name || '');
   if (clipId === 'SKYRIM_GUARD/shd_blockidle') return true;
   if (clipId === 'SKYRIM_GREATSWORD/2hm_idle') return true;
+  if (clipId === 'SKYRIM_GREATSWORD/2hm_idle_alt') return true;
   if (/^SKYRIM_GUARD\/shd_block(?:hit|bash|bashpower)$/i.test(clipId)) return false;
   return /Idle|Walking|Running|Block|Crouching|Sneaking|Crawling/i.test(clipId);
 }

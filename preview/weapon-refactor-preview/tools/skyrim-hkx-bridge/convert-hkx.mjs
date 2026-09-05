@@ -53,6 +53,19 @@ function run(command, args, options = {}) {
   });
 }
 
+// Makes hk_to_gltf emit its default config. The module has to actually run for that, so it is
+// pointed at a scratch file it will refuse; the refusal is the point, the config is the output.
+async function seedToolsetConfig(configPath) {
+  const seeding = path.join('/tmp', `hkx-seed-config-${process.pid}`);
+  await mkdir(seeding, { recursive: true });
+  const decoy = path.join(seeding, 'seed.hkx');
+  await writeFile(decoy, '', 'utf8');
+  await run(TOOLSET, ['hk_to_gltf', decoy], { cwd: path.dirname(TOOLSET) }).catch(() => {});
+  if (!existsSync(configPath)) {
+    throw new Error(`hk_to_gltf did not write ${configPath}; the toolset build may be incomplete`);
+  }
+}
+
 export async function convertHkx(skeletonHkx, animationHkx, outDir = path.join(ROOT, 'assets')) {
   if (!existsSync(TOOLSET)) {
     throw new Error(`havok_toolset not built. Run tools/skyrim-hkx-bridge/build-havok-toolset.sh (looked in ${TOOLSET})`);
@@ -65,6 +78,10 @@ export async function convertHkx(skeletonHkx, animationHkx, outDir = path.join(R
   }
 
   const configPath = path.join(path.dirname(TOOLSET), 'havok_toolset.config');
+  // A freshly built toolset has no config yet - hk_to_gltf writes its defaults the first time a
+  // module runs, and only then. Without this, the first conversion after a rebuild died on a bare
+  // ENOENT for a file the recipe never told anyone to create.
+  if (!existsSync(configPath)) await seedToolsetConfig(configPath);
   const config = await readFile(configPath, 'utf8');
   await writeFile(configPath, config
     .replace(/sample-rate="\d+"/, `sample-rate="${SOURCE_BAKE_SETTINGS.sampleRate}"`)
