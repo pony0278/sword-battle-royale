@@ -8727,8 +8727,277 @@ const V3_GREATSWORD_DEFINITION = defineV3Weapon({
 return Object.freeze({ V3_GREATSWORD_DEFINITION });
 })();
 
-// src/character/default-character-mount.js
+// src/animation/two-bone-ik.js
+const __actionStudioModule19 = (() => {
+// Two-bone IK: put the end of a limb on a point, by rotating two joints.
+//
+// Analytic, not iterative. A two-bone chain has one degree of freedom left once the effector's
+// position is fixed - the limb can spin about the line from shoulder to target - and that freedom
+// is spent HERE by keeping the plane the arm is already in. That is deliberate: the plane comes
+// from the retargeted animation, so the elbow keeps pointing where the animator put it, and this
+// solver never has to invent a pole vector it would have no evidence for.
+//
+// The chain is (root, mid, effector). Only root and mid are written. Everything from mid outward -
+// the wrist, the hand, the socket the weapon or shield hangs on - is treated as rigid and rides
+// along, which is what makes it correct to aim a SOCKET rather than a bone: the second segment's
+// length is measured to the effector, wherever it is.
+//
+// TWO REFUSALS, both of which return applied:false and restore the pose rather than doing their
+// best. A solver that quietly does its best is how a limb ends up somewhere nobody chose:
+//
+//   out of reach     the target is further than the two segments can span. Reaching for it would
+//                    lock the arm straight and point it at something it cannot hold.
+//   over budget      the correction exceeds maxCorrectionDegrees at either joint. The budget is
+//                    the caller's statement of how much of the animation it is willing to overwrite.
+
+function rotateBoneInWorld(THREE, bone, deltaWorldQuaternion) {
+  const parentWorld = bone.parent
+    ? bone.parent.getWorldQuaternion(new THREE.Quaternion())
+    : new THREE.Quaternion();
+  const boneWorld = bone.getWorldQuaternion(new THREE.Quaternion());
+  const desired = deltaWorldQuaternion.clone().multiply(boneWorld);
+  bone.quaternion.copy(parentWorld.invert().multiply(desired)).normalize();
+}
+
+function worldPosition(THREE, object3d) {
+  return object3d.getWorldPosition(new THREE.Vector3());
+}
+
+// The plane the arm bends in. Normally the one it is already in; when the arm is straight there is
+// no such plane, so the target picks one - bending toward what we are reaching for is the only
+// choice with a reason behind it.
+function bendAxis(THREE, fromMid, toMid, target, mid) {
+  const axis = new THREE.Vector3().crossVectors(fromMid, toMid);
+  if (axis.lengthSq() > 1e-10) return axis.normalize();
+  const fallback = new THREE.Vector3().crossVectors(fromMid, target.clone().sub(mid));
+  if (fallback.lengthSq() > 1e-10) return fallback.normalize();
+  // Fully degenerate: shoulder, effector and target are collinear. Any perpendicular will do.
+  const arbitrary = Math.abs(fromMid.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+  return new THREE.Vector3().crossVectors(fromMid, arbitrary).normalize();
+}
+
+/**
+ * Rotate `root` and `mid` so that `effector` lands on `target`.
+ *
+ * @param {object} THREE Three.js namespace (Quaternion, Vector3, MathUtils).
+ * @param {object} options
+ * @param {object} options.root   the shoulder-side bone, rotated second
+ * @param {object} options.mid    the elbow-side bone, rotated first
+ * @param {object} options.effector the object whose world position must reach the target
+ * @param {object} options.target THREE.Vector3, in world space
+ * @param {number} [options.maxCorrectionDegrees] per-joint budget; over it, nothing is written
+ * @param {object} [options.updateRoot] what to updateMatrixWorld on between steps; defaults to root
+ */
+function solveTwoBoneIk(THREE, options = {}) {
+  const { root, mid, effector, target } = options;
+  if (!root || !mid || !effector || !target) throw new Error('solveTwoBoneIk needs root, mid, effector and target');
+  const budget = Number.isFinite(options.maxCorrectionDegrees) ? options.maxCorrectionDegrees : Infinity;
+  const updateRoot = options.updateRoot || root;
+
+  const before = { root: root.quaternion.clone(), mid: mid.quaternion.clone() };
+  const restore = () => {
+    root.quaternion.copy(before.root);
+    mid.quaternion.copy(before.mid);
+    updateRoot.updateMatrixWorld(true);
+  };
+
+  const shoulder = worldPosition(THREE, root);
+  const elbow = worldPosition(THREE, mid);
+  const handStart = worldPosition(THREE, effector);
+  const upper = shoulder.distanceTo(elbow);
+  const fore = elbow.distanceTo(handStart);
+  const gapBefore = handStart.distanceTo(target);
+  const report = { applied: false, gapBefore, gapAfter: gapBefore, upper, fore, rootDegrees: 0, midDegrees: 0 };
+
+  if (upper < 1e-6 || fore < 1e-6) return { ...report, reason: 'degenerate-chain' };
+
+  const span = upper + fore;
+  const distance = shoulder.distanceTo(target);
+  if (distance > span) return { ...report, reason: 'out-of-reach', reach: span, distance };
+
+  // 1. The elbow, by the law of cosines: the interior angle that makes the chain span `distance`.
+  const toShoulder = shoulder.clone().sub(elbow);
+  const toHand = handStart.clone().sub(elbow);
+  const axis = bendAxis(THREE, toShoulder, toHand, target, elbow);
+  const currentAngle = toShoulder.angleTo(toHand);
+  const clampedDistance = Math.max(Math.abs(upper - fore) + 1e-6, Math.min(span - 1e-6, distance));
+  const cosine = (upper * upper + fore * fore - clampedDistance * clampedDistance) / (2 * upper * fore);
+  const desiredAngle = Math.acos(Math.max(-1, Math.min(1, cosine)));
+  const midDelta = desiredAngle - currentAngle;
+
+  // 2. The shoulder, swinging the now-correctly-bent arm onto the target.
+  rotateBoneInWorld(THREE, mid, new THREE.Quaternion().setFromAxisAngle(axis, midDelta));
+  updateRoot.updateMatrixWorld(true);
+  const handBent = worldPosition(THREE, effector);
+  const from = handBent.clone().sub(shoulder);
+  const to = target.clone().sub(shoulder);
+  if (from.lengthSq() < 1e-12 || to.lengthSq() < 1e-12) {
+    restore();
+    return { ...report, reason: 'degenerate-target' };
+  }
+  const swing = new THREE.Quaternion().setFromUnitVectors(from.clone().normalize(), to.clone().normalize());
+  const rootDegrees = THREE.MathUtils.radToDeg(2 * Math.acos(Math.min(1, Math.abs(swing.w))));
+  const midDegrees = Math.abs(THREE.MathUtils.radToDeg(midDelta));
+
+  if (midDegrees > budget || rootDegrees > budget) {
+    restore();
+    return { ...report, reason: 'over-budget', rootDegrees, midDegrees, budget };
+  }
+
+  rotateBoneInWorld(THREE, root, swing);
+  updateRoot.updateMatrixWorld(true);
+  const gapAfter = worldPosition(THREE, effector).distanceTo(target);
+  return { applied: true, gapBefore, gapAfter, upper, fore, rootDegrees, midDegrees, reason: null };
+}
+return Object.freeze({ solveTwoBoneIk });
+})();
+
+// src/animation/off-hand-grip-ik.js
+const __actionStudioModule18 = (() => {
+// The off hand goes on the hilt.
+//
+// WHY THIS IS NEEDED, measured rather than assumed (handoff/46): a retargeted Skyrim two-handed
+// clip keeps the POSE - wrist to wrist comes out 1.32x the source's - but not the GRIP. This rig
+// hangs its equipment sockets 15.1% of head-to-root off the wrist where Skyrim's sit at 6.4% and
+// 4.9%, so two grip points 0.12 apart in the clip end up 0.43 apart here, and the retarget cannot
+// correct it because handslot.l and handslot.r receive rotation only.
+//
+// Fixing THAT means moving every weapon and every shield on every clip. This does not do that. It
+// closes the gap where it shows, by asking the off arm to reach the weapon's own second grip node,
+// and it is deliberately the smaller of the two changes: two bones, no equipment moved, nothing the
+// guard gates measure.
+//
+// OWNERSHIP, which is the part that needs stating rather than discovering. src/combat/
+// shield-arm-hold.js already owns this exact chain - upperarm.l, lowerarm.l, wrist.l, hand.l,
+// handslot.l - whenever a shield is up. Two writers on one arm is not a merge, it is a bug, so the
+// rule here is a refusal: if anything is socketed on HAND_L, the off hand is busy and this does
+// nothing. A fighter holds a greatsword with two hands or a sword and a shield. Not both.
+const { solveTwoBoneIk } = __actionStudioModule19;
+
+const OFF_HAND_GRIP_STAGE = 'the-off-hand-goes-on-the-hilt';
+
+const OFF_HAND_GRIP_SCOPE = Object.freeze({
+  stage: OFF_HAND_GRIP_STAGE,
+  // Written. Everything past the elbow rides along rigid, which is what makes it correct to aim the
+  // SOCKET rather than a bone.
+  bones: Object.freeze(['upperarm.l', 'lowerarm.l']),
+  effectorSocket: 'HAND_L',
+  targetSocket: 'SECONDARY_GRIP',
+  // Never written, and each for its own reason: the right arm and the torso carry the swing, the
+  // legs and root carry the stance, and the off hand's own wrist keeps the animator's hand angle -
+  // a palm turned by an IK solver reads as a broken wrist long before the position looks wrong.
+  forbiddenBones: Object.freeze([
+    'root', 'hips', 'spine', 'chest',
+    'wrist.l', 'hand.l', 'handslot.l',
+    'upperarm.r', 'lowerarm.r', 'wrist.r', 'hand.r', 'handslot.r',
+    'upperleg.l', 'upperleg.r', 'lowerleg.l', 'lowerleg.r', 'foot.l', 'foot.r', 'toes.l', 'toes.r',
+  ]),
+  // The budget, measured rather than guessed - the first value here was 45 and it refused all 31
+  // frames of 2hm_idle. That clip needs 47.7 degrees at the shoulder and 20.1 at the elbow, most of
+  // which is absorbing the socket offset above rather than anything about the animation. 60 leaves
+  // room for a hold carried a little differently without letting an arm be thrown anywhere.
+  maxCorrectionDegrees: 60,
+  conflictsWith: 'SHIELD_ARM_HOLD_BONES',
+  policy: 'refuse when the off hand is holding something; never stretch; never write past the elbow',
+});
+
+/**
+ * Put the off hand on the mounted weapon's second grip, for one frame.
+ *
+ * The caller samples the animation and updates world matrices first; this runs after, on the posed
+ * rig, and updates the matrices again itself.
+ */
+function applyOffHandGripIk(THREE, options = {}) {
+  const { character, weapon } = options;
+  if (!character?.rig?.bones || !character?.sockets) throw new Error('applyOffHandGripIk requires a procedural character');
+  if (!weapon?.sockets?.SECONDARY_GRIP) throw new Error('applyOffHandGripIk requires a weapon with a SECONDARY_GRIP');
+
+  const effector = character.sockets[OFF_HAND_GRIP_SCOPE.effectorSocket];
+  // The ownership rule, checked rather than documented: a shield or buckler is socketed here.
+  const occupied = (effector.children || []).filter((child) => child !== weapon.object3d);
+  if (occupied.length > 0) {
+    return { applied: false, reason: 'off-hand-occupied', occupants: occupied.map((child) => child.name || 'unnamed') };
+  }
+
+  const target = weapon.sockets[OFF_HAND_GRIP_SCOPE.targetSocket].getWorldPosition(new THREE.Vector3());
+  const budget = Number.isFinite(options.maxCorrectionDegrees)
+    ? options.maxCorrectionDegrees
+    : OFF_HAND_GRIP_SCOPE.maxCorrectionDegrees;
+
+  return solveTwoBoneIk(THREE, {
+    root: character.rig.bones['upperarm.l'],
+    mid: character.rig.bones['lowerarm.l'],
+    effector,
+    target,
+    maxCorrectionDegrees: budget,
+    updateRoot: character.object3d,
+  });
+}
+return Object.freeze({ OFF_HAND_GRIP_STAGE, OFF_HAND_GRIP_SCOPE, applyOffHandGripIk });
+})();
+
+// tools/action-studio/studio-off-hand-grip-controls.js
 const __actionStudioModule17 = (() => {
+// The studio's off-hand grip toggle: two hands on one haft, on the stage figure.
+//
+// The solving is src/animation/off-hand-grip-ik.js; this is only the page's half - the checkbox,
+// when it defaults on, and saying in one line what happened. It lives here rather than in
+// action-studio.js because that entry is held to a line budget as a composition root, and this is
+// a control with its own state and its own vocabulary of refusals.
+const { OFF_HAND_GRIP_SCOPE, applyOffHandGripIk } = __actionStudioModule18;
+
+// Said in the terms an author can act on. "out-of-reach" is the honest answer for the authored
+// poses this page opens with - the seven-key chop leaves gaps up to 1.26 (handoff/44) - and it is
+// not a fault to fix, it is a pose the off hand cannot hold.
+const REFUSALS = Object.freeze({
+  'out-of-reach': 'the hilt is beyond the off arm in this pose · play a two-handed clip',
+  'off-hand-occupied': 'the off hand is holding something · a shield keeps the arm',
+  'over-budget': `the reach needs more than ${OFF_HAND_GRIP_SCOPE.maxCorrectionDegrees}° at a joint`,
+});
+
+// Defaulted per weapon rather than remembered, because it is a property of what is being held: a
+// longsword's off hand is free, a greatsword's is not. The checkbox is still there to argue with.
+function defaultOffHandGrip(weaponId) {
+  return weaponId === 'greatsword';
+}
+
+function createStudioOffHandGripController(THREE, { getCharacter, getWeapon, stageWeaponId }) {
+  const toggle = document.getElementById('offHandGrip');
+  const status = document.getElementById('offHandGripStatus');
+  if (toggle) {
+    toggle.checked = defaultOffHandGrip(stageWeaponId);
+    toggle.addEventListener('change', () => {
+      if (!toggle.checked && status) {
+        status.textContent = 'off-hand grip · off · the arm plays as the clip retargeted it';
+      }
+    });
+  }
+
+  return {
+    // Called on the posed rig, after the weapon has followed the right hand: the target is the
+    // weapon's own SECONDARY_GRIP, so it has to be where it will be drawn before the arm is solved.
+    update() {
+      if (!toggle?.checked) return null;
+      const result = applyOffHandGripIk(THREE, { character: getCharacter(), weapon: getWeapon() });
+      if (status) {
+        status.textContent = result.applied
+          ? `off-hand grip · reached · shoulder ${result.rootDegrees.toFixed(1)}° `
+            + `elbow ${result.midDegrees.toFixed(1)}° · closed ${result.gapBefore.toFixed(3)} `
+            + `(budget ${OFF_HAND_GRIP_SCOPE.maxCorrectionDegrees}°)`
+          : `off-hand grip · not applied · ${REFUSALS[result.reason] || result.reason}`;
+      }
+      return result;
+    },
+    syncToWeapon(weaponId) {
+      if (toggle) toggle.checked = defaultOffHandGrip(weaponId);
+    },
+  };
+}
+return Object.freeze({ defaultOffHandGrip, createStudioOffHandGripController });
+})();
+
+// src/character/default-character-mount.js
+const __actionStudioModule20 = (() => {
 const DEFAULT_KAYKIT_SWORD_MOUNT = Object.freeze({
   position: Object.freeze({ x: 0, y: 0, z: 0 }),
   rotation: Object.freeze({ x: 0, y: 0, z: Math.PI }),
@@ -8738,7 +9007,7 @@ return Object.freeze({ DEFAULT_KAYKIT_SWORD_MOUNT });
 })();
 
 // src/animation/animation-clip.js
-const __actionStudioModule18 = (() => {
+const __actionStudioModule21 = (() => {
 const { normalizePose, evaluateEase, interpolatePose } = __actionStudioModule9;
 
 const SUPPORTED_EASES = Object.freeze(['lin', 'in', 'out', 'in-out']);
@@ -8889,8 +9158,8 @@ return Object.freeze({ SUPPORTED_EASES, normalizeTimeline, createAnimationClip, 
 })();
 
 // src/animation/clip-player.js
-const __actionStudioModule20 = (() => {
-const { evaluateClip } = __actionStudioModule18;
+const __actionStudioModule23 = (() => {
+const { evaluateClip } = __actionStudioModule21;
 
 class ClipPlayer {
   constructor(clip = null) {
@@ -8946,7 +9215,7 @@ return Object.freeze({ ClipPlayer });
 })();
 
 // src/animation/animation-binding.js
-const __actionStudioModule21 = (() => {
+const __actionStudioModule24 = (() => {
 const ACTION_MOTION_SOURCES = Object.freeze(['authored', 'kaykit', 'ual2', 'ual1', 'skyrim']);
 
 function finiteNumber(value, fallback) {
@@ -9001,9 +9270,9 @@ return Object.freeze({ ACTION_MOTION_SOURCES, normalizeAnimationBinding, createF
 })();
 
 // src/animation/action-motion-player.js
-const __actionStudioModule19 = (() => {
-const { ClipPlayer } = __actionStudioModule20;
-const { animationTimeAtFrame, normalizeAnimationBinding } = __actionStudioModule21;
+const __actionStudioModule22 = (() => {
+const { ClipPlayer } = __actionStudioModule23;
+const { animationTimeAtFrame, normalizeAnimationBinding } = __actionStudioModule24;
 
 class ActionMotionPlayer {
   constructor(options = {}) {
@@ -9087,7 +9356,7 @@ return Object.freeze({ ActionMotionPlayer });
 })();
 
 // src/animation/motion-guide-schema.js
-const __actionStudioModule23 = (() => {
+const __actionStudioModule26 = (() => {
 const MOTION_GUIDE_PRESETS = Object.freeze(['advancing_vertical_chop']);
 const MOTION_GUIDE_LEAD_FEET = Object.freeze(['L', 'R']);
 
@@ -9180,7 +9449,7 @@ return Object.freeze({ MOTION_GUIDE_PRESETS, MOTION_GUIDE_LEAD_FEET, DEFAULT_ADV
 })();
 
 // src/animation/two-hand-grip.js
-const __actionStudioModule25 = (() => {
+const __actionStudioModule28 = (() => {
 // @ts-check
 // The off hand on the hilt, as seven authored arm poses.
 //
@@ -9371,11 +9640,11 @@ return Object.freeze({ TWO_HAND_LEFT_ARM, TWO_HAND_GRIP_PHASES, AUTHORED_PHASE_F
 })();
 
 // src/animation/whole-body-motion-solver.js
-const __actionStudioModule24 = (() => {
-const { createAnimationClip } = __actionStudioModule18;
-const { normalizeMotionGuide } = __actionStudioModule23;
+const __actionStudioModule27 = (() => {
+const { createAnimationClip } = __actionStudioModule21;
+const { normalizeMotionGuide } = __actionStudioModule26;
 const { normalizePose } = __actionStudioModule9;
-const { TWO_HAND_LEFT_ARM, applyTwoHandGrip } = __actionStudioModule25;
+const { TWO_HAND_LEFT_ARM, applyTwoHandGrip } = __actionStudioModule28;
 
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
@@ -9632,8 +9901,8 @@ return Object.freeze({ advancingVerticalChopFrames, bakeAdvancingVerticalChopCli
 })();
 
 // src/combat/action-definition.js
-const __actionStudioModule26 = (() => {
-const { normalizeAnimationBinding } = __actionStudioModule21;
+const __actionStudioModule29 = (() => {
+const { normalizeAnimationBinding } = __actionStudioModule24;
 
 const ACTION_WINDOW_TYPES = Object.freeze([
   'active',
@@ -9687,12 +9956,12 @@ return Object.freeze({ ACTION_WINDOW_TYPES, ACTION_AUTHORITY_NOTE, normalizeFram
 })();
 
 // src/animation/action-templates.js
-const __actionStudioModule22 = (() => {
-const { createAnimationClip } = __actionStudioModule18;
-const { createAdvancingVerticalChopGuide } = __actionStudioModule23;
+const __actionStudioModule25 = (() => {
+const { createAnimationClip } = __actionStudioModule21;
+const { createAdvancingVerticalChopGuide } = __actionStudioModule26;
 const { normalizePose } = __actionStudioModule9;
-const { advancingVerticalChopFrames, bakeAdvancingVerticalChopClip } = __actionStudioModule24;
-const { createActionDefinition } = __actionStudioModule26;
+const { advancingVerticalChopFrames, bakeAdvancingVerticalChopClip } = __actionStudioModule27;
+const { createActionDefinition } = __actionStudioModule29;
 
 const T_POSE = Object.freeze(normalizePose({ aL_sz: 90, aR_sz: 90 }));
 
@@ -9862,7 +10131,7 @@ return Object.freeze({ T_POSE, IDLE_POSE, createTPoseTemplate, createIdleTemplat
 })();
 
 // tools/action-studio/studio-preview-runtime.js
-const __actionStudioModule27 = (() => {
+const __actionStudioModule30 = (() => {
 function createPreviewDummy(THREE) {
   const group = new THREE.Group();
   group.name = 'PREVIEW_DUMMY';
@@ -10289,7 +10558,7 @@ return Object.freeze({ createStudioPreviewRuntime });
 })();
 
 // tools/action-studio/studio-combat-feel-controller.js
-const __actionStudioModule28 = (() => {
+const __actionStudioModule31 = (() => {
 function updateSlider(id, value, digits = 2, suffix = '') {
   const input = document.getElementById(id);
   const output = document.getElementById(`${id}Value`);
@@ -10354,8 +10623,8 @@ return Object.freeze({ createStudioCombatFeelController });
 })();
 
 // tools/action-studio/studio-motion-guide-overlay.js
-const __actionStudioModule29 = (() => {
-const { normalizeMotionGuide } = __actionStudioModule23;
+const __actionStudioModule32 = (() => {
+const { normalizeMotionGuide } = __actionStudioModule26;
 
 const GUIDE_COLORS = Object.freeze({
   hand: 0xffc857,
@@ -10650,9 +10919,9 @@ return Object.freeze({ createWholeBodyMotionGuideOverlay });
 })();
 
 // tools/action-studio/studio-motion-guide-editor.js
-const __actionStudioModule30 = (() => {
-const { createAdvancingVerticalChopTemplate } = __actionStudioModule22;
-const { createAdvancingVerticalChopGuide, isWholeBodyMotionGuide, normalizeMotionGuide } = __actionStudioModule23;
+const __actionStudioModule33 = (() => {
+const { createAdvancingVerticalChopTemplate } = __actionStudioModule25;
+const { createAdvancingVerticalChopGuide, isWholeBodyMotionGuide, normalizeMotionGuide } = __actionStudioModule26;
 
 const CONTROL_DEFINITIONS = Object.freeze([
   { key: 'stepDistance', label: 'Step distance', min: 0, max: 1.2, step: 0.01, suffix: 'm' },
@@ -10834,9 +11103,9 @@ return Object.freeze({ createStudioMotionGuideEditor });
 })();
 
 // tools/action-studio/studio-motion-constraint-baker.js
-const __actionStudioModule31 = (() => {
-const { createAnimationClip } = __actionStudioModule18;
-const { normalizeMotionGuide } = __actionStudioModule23;
+const __actionStudioModule34 = (() => {
+const { createAnimationClip } = __actionStudioModule21;
+const { normalizeMotionGuide } = __actionStudioModule26;
 const { normalizePose } = __actionStudioModule9;
 
 const WINDUP_HAND_POSE_KEYS = Object.freeze([
@@ -11038,7 +11307,7 @@ return Object.freeze({ WINDUP_HAND_POSE_KEYS, SECONDARY_GRIP_POSE_KEYS, bakeStud
 })();
 
 // src/animation/whole-body-drag-solver.js
-const __actionStudioModule33 = (() => {
+const __actionStudioModule36 = (() => {
 const { normalizePose } = __actionStudioModule9;
 
 const WHOLE_BODY_DRAG_EFFECTORS = Object.freeze([
@@ -11338,7 +11607,7 @@ return Object.freeze({ WHOLE_BODY_DRAG_EFFECTORS, WHOLE_BODY_JOINT_EFFECTORS, so
 })();
 
 // tools/action-studio/studio-axis-gizmo.js
-const __actionStudioModule34 = (() => {
+const __actionStudioModule37 = (() => {
 const DIRECT_POSE_AXES = Object.freeze({
   x: Object.freeze({ color: 0xff4d5e, vector: Object.freeze({ x: 1, y: 0, z: 0 }) }),
   y: Object.freeze({ color: 0x62df76, vector: Object.freeze({ x: 0, y: 1, z: 0 }) }),
@@ -11465,11 +11734,11 @@ return Object.freeze({ DIRECT_POSE_AXES, snapAxisDragDistance, axisConstrainedTa
 })();
 
 // tools/action-studio/studio-pose-drag-controller.js
-const __actionStudioModule32 = (() => {
+const __actionStudioModule35 = (() => {
 const { normalizePose } = __actionStudioModule9;
-const { solveWholeBodyDragPose } = __actionStudioModule33;
+const { solveWholeBodyDragPose } = __actionStudioModule36;
 const { applyPoseToProceduralKayKitRig } = __actionStudioModule8;
-const { axisConstrainedTarget, createStudioAxisGizmo } = __actionStudioModule34;
+const { axisConstrainedTarget, createStudioAxisGizmo } = __actionStudioModule37;
 
 const EFFECTORS = Object.freeze({
   handL: Object.freeze({ bone: 'handslot.l', label: 'LEFT HAND', color: 0xb99aff, radius: 0.065 }),
@@ -11970,8 +12239,8 @@ return Object.freeze({ createStudioPoseDragController });
 })();
 
 // tools/action-studio/studio-blocking-workflow.js
-const __actionStudioModule35 = (() => {
-const { evaluateClip } = __actionStudioModule18;
+const __actionStudioModule38 = (() => {
+const { evaluateClip } = __actionStudioModule21;
 const { normalizePose } = __actionStudioModule9;
 const { createDefaultCharacter } = __actionStudioModule1;
 const { createDebugSword, mountDebugSword } = __actionStudioModule12;
@@ -12285,9 +12554,9 @@ return Object.freeze({ captureNextBlockingKey, createStudioBlockingWorkflow });
 })();
 
 // src/animation/legacy-punch-import.js
-const __actionStudioModule37 = (() => {
+const __actionStudioModule40 = (() => {
 const { LEGACY_NON_HUMANOID_POSE_KEYS, POSE_KEYS } = __actionStudioModule10;
-const { createAnimationClip } = __actionStudioModule18;
+const { createAnimationClip } = __actionStudioModule21;
 
 function importLegacyPunchSnapshot(snapshot = {}) {
   const phases = snapshot.phases || snapshot.PHASES || {};
@@ -12318,9 +12587,9 @@ return Object.freeze({ importLegacyPunchSnapshot });
 })();
 
 // tools/action-studio/studio-project.js
-const __actionStudioModule38 = (() => {
-const { createAnimationClip } = __actionStudioModule18;
-const { ACTION_WINDOW_TYPES, createActionDefinition } = __actionStudioModule26;
+const __actionStudioModule41 = (() => {
+const { createAnimationClip } = __actionStudioModule21;
+const { ACTION_WINDOW_TYPES, createActionDefinition } = __actionStudioModule29;
 
 const ACTION_STUDIO_PROJECT_FORMAT = 'action-studio-project';
 
@@ -12420,9 +12689,9 @@ return Object.freeze({ ACTION_STUDIO_PROJECT_FORMAT, cloneSerializable, createSt
 })();
 
 // tools/action-studio/studio-project-io-controller.js
-const __actionStudioModule36 = (() => {
-const { importLegacyPunchSnapshot } = __actionStudioModule37;
-const { createStudioAutosave, readStoredJson, serializeStudioProject, studioProjectFilename, writeStoredJson } = __actionStudioModule38;
+const __actionStudioModule39 = (() => {
+const { importLegacyPunchSnapshot } = __actionStudioModule40;
+const { createStudioAutosave, readStoredJson, serializeStudioProject, studioProjectFilename, writeStoredJson } = __actionStudioModule41;
 
 const ACTION_STUDIO_AUTOSAVE_KEY = 'ACTION_STUDIO_AUTOSAVE_V1';
 
@@ -12551,7 +12820,7 @@ return Object.freeze({ ACTION_STUDIO_AUTOSAVE_KEY, createStudioProjectIoControll
 })();
 
 // src/animation/quaternius-animation-retarget.js
-const __actionStudioModule41 = (() => {
+const __actionStudioModule44 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
 
 const QUATERNIUS_BONE_RETARGETS = Object.freeze([
@@ -12765,8 +13034,8 @@ return Object.freeze({ QUATERNIUS_BONE_RETARGETS, retargetQuaterniusClip, loadQu
 })();
 
 // src/animation/ual1-animation-library.js
-const __actionStudioModule40 = (() => {
-const { QUATERNIUS_BONE_RETARGETS, loadQuaterniusAnimationLibrary, retargetQuaterniusClip } = __actionStudioModule41;
+const __actionStudioModule43 = (() => {
+const { QUATERNIUS_BONE_RETARGETS, loadQuaterniusAnimationLibrary, retargetQuaterniusClip } = __actionStudioModule44;
 
 const UAL1_ANIMATION_FILES = Object.freeze([
   Object.freeze({ id: 'Sword_Attack', file: 'Sword_Attack.glb' }),
@@ -12796,7 +13065,7 @@ return Object.freeze({ UAL1_ANIMATION_FILES, UAL1_BONE_RETARGETS, retargetUal1Cl
 })();
 
 // src/animation/ual2-animation-library.js
-const __actionStudioModule42 = (() => {
+const __actionStudioModule45 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
 
 const UAL2_ANIMATION_FILES = Object.freeze([
@@ -13031,7 +13300,7 @@ return Object.freeze({ UAL2_ANIMATION_FILES, UAL2_BONE_RETARGETS, retargetUal2Cl
 })();
 
 // src/animation/skyrim-animation-retarget.js
-const __actionStudioModule44 = (() => {
+const __actionStudioModule47 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
 
 function aliases(...names) {
@@ -13705,8 +13974,8 @@ return Object.freeze({ SKYRIM_BONE_RETARGETS, resolveSkyrimSourceNodes, validate
 })();
 
 // src/animation/skyrim-weapon-bind-calibration.js
-const __actionStudioModule45 = (() => {
-const { resolveSkyrimSourceNodes } = __actionStudioModule44;
+const __actionStudioModule48 = (() => {
+const { resolveSkyrimSourceNodes } = __actionStudioModule47;
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -13856,7 +14125,7 @@ return Object.freeze({ multiplyQuaternionArrays, invertQuaternionArray, quaterni
 })();
 
 // src/animation/parry-contact-deflect-runtime-clip.js
-const __actionStudioModule46 = (() => {
+const __actionStudioModule49 = (() => {
 const PRODUCTION_PARRY_DEFLECT_STAGE = 'G3.6.3';
 
 const PRODUCTION_PARRY_DEFLECT_VARIANTS = Object.freeze({
@@ -14245,7 +14514,7 @@ return Object.freeze({ PRODUCTION_PARRY_DEFLECT_STAGE, PRODUCTION_PARRY_DEFLECT_
 })();
 
 // src/animation/parry-rotation-continuity.js
-const __actionStudioModule47 = (() => {
+const __actionStudioModule50 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
 
 const PARRY_ROTATION_CONTINUITY_STAGE = 'G3.5.1P-T3.2';
@@ -14367,9 +14636,9 @@ return Object.freeze({ PARRY_ROTATION_CONTINUITY_STAGE, PARRY_ROTATION_CONTINUIT
 })();
 
 // src/animation/parry-upper-body-continuity.js
-const __actionStudioModule48 = (() => {
+const __actionStudioModule51 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
-const { G36_POWER_PARRY_TORSO_SAFETY_LIMITS_DEGREES, PRODUCTION_PARRY_DEFLECT_PHASES, sampleProductionParryDeflectTimeline } = __actionStudioModule46;
+const { G36_POWER_PARRY_TORSO_SAFETY_LIMITS_DEGREES, PRODUCTION_PARRY_DEFLECT_PHASES, sampleProductionParryDeflectTimeline } = __actionStudioModule49;
 
 const PARRY_UPPER_BODY_CONTINUITY_STAGE = 'G3.6';
 
@@ -14556,12 +14825,12 @@ return Object.freeze({ PARRY_UPPER_BODY_CONTINUITY_STAGE, PARRY_UPPER_BODY_CONTI
 })();
 
 // src/animation/skyrim-converted-animation-library.js
-const __actionStudioModule43 = (() => {
-const { retargetSkyrimClip } = __actionStudioModule44;
-const { computeSkyrimWeaponBindCalibration } = __actionStudioModule45;
-const { canCreateProductionParryDeflectClips, createProductionParryDeflectClips } = __actionStudioModule46;
-const { stabilizeProductionParryDeflectClips } = __actionStudioModule47;
-const { stabilizeProductionParryUpperBodyClips } = __actionStudioModule48;
+const __actionStudioModule46 = (() => {
+const { retargetSkyrimClip } = __actionStudioModule47;
+const { computeSkyrimWeaponBindCalibration } = __actionStudioModule48;
+const { canCreateProductionParryDeflectClips, createProductionParryDeflectClips } = __actionStudioModule49;
+const { stabilizeProductionParryDeflectClips } = __actionStudioModule50;
+const { stabilizeProductionParryUpperBodyClips } = __actionStudioModule51;
 
 const SKYRIM_GUARD_HOLD_CONVERTED_FILE = Object.freeze({
   id: 'shd_blockidle',
@@ -14603,10 +14872,11 @@ const SKYRIM_GUARD_CONVERTED_FILES = Object.freeze([
 // because these are not Guard clips: nothing in the Guard state machine plays them, and the
 // production parry-deflect clips this module derives are built from the shd_* family by name.
 //
-// The bake is this repository's own (handoff/46) rather than the 2025 Blender ones, and it is not
-// a two-handed grip yet - the source clip holds the hilt with both hands and the rotation-only
-// retarget loses that reach. tests/the-clip-holds-the-sword-the-retarget-does-not.test.js has the
-// numbers. It is loadable so it can be looked at while that is fixed.
+// The bake is this repository's own (handoff/46) rather than the 2025 Blender ones. The retarget
+// alone leaves the off hand 0.39 short of the hilt, because this rig hangs its equipment sockets
+// more than twice as far off the wrist as Skyrim does; src/animation/off-hand-grip-ik.js closes
+// that where it shows. tests/the-clip-holds-the-sword-the-retarget-does-not.test.js has the before,
+// tests/the-off-hand-goes-on-the-hilt.test.js has the after.
 const SKYRIM_GREATSWORD_CONVERTED_FILES = Object.freeze([
   Object.freeze({
     id: '2hm_idle',
@@ -14775,7 +15045,7 @@ return Object.freeze({ SKYRIM_GUARD_HOLD_CONVERTED_FILE, SKYRIM_GUARD_REACTION_C
 })();
 
 // src/combat/longsword-directional-metadata.js
-const __actionStudioModule49 = (() => {
+const __actionStudioModule52 = (() => {
 // @ts-check
 const LONGSWORD_DIRECTIONAL_ATTACKS = Object.freeze({
   top: Object.freeze({
@@ -14817,11 +15087,11 @@ return Object.freeze({ LONGSWORD_DIRECTIONAL_ATTACKS, LONGSWORD_MOTION_METADATA,
 })();
 
 // tools/action-studio/studio-editor-view.js
-const __actionStudioModule50 = (() => {
+const __actionStudioModule53 = (() => {
 const { POSE_KEYS } = __actionStudioModule10;
-const { normalizeAnimationBinding } = __actionStudioModule21;
-const { clipMarkerSummary } = __actionStudioModule18;
-const { ACTION_WINDOW_TYPES } = __actionStudioModule26;
+const { normalizeAnimationBinding } = __actionStudioModule24;
+const { clipMarkerSummary } = __actionStudioModule21;
+const { ACTION_WINDOW_TYPES } = __actionStudioModule29;
 
 const RAD_TO_DEG = 180 / Math.PI;
 
@@ -15043,7 +15313,7 @@ return Object.freeze({ renderTimelineView, updateTimelineReadoutView, renderKeyE
 })();
 
 // tools/action-studio/studio-skyrim-bridge-controls.js
-const __actionStudioModule51 = (() => {
+const __actionStudioModule54 = (() => {
 // The Skyrim packs the page can load. Added here rather than written into index.template.html so
 // the option list cannot drift from the sources the controller actually knows how to fetch.
 const SKYRIM_PACK_OPTIONS = Object.freeze([
@@ -15087,7 +15357,7 @@ return Object.freeze({ installStudioSkyrimBridgeControls });
 })();
 
 // src/combat/guard-states.js
-const __actionStudioModule54 = (() => {
+const __actionStudioModule57 = (() => {
 // @ts-check
 
 // S1.C2, step 3 of four — the guard's vocabulary, and the graph over it.
@@ -15182,7 +15452,7 @@ return Object.freeze({ GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, GUARD_
 })();
 
 // src/combat/guard-action-semantics.js
-const __actionStudioModule56 = (() => {
+const __actionStudioModule59 = (() => {
 const GUARD_ACTION_SEMANTIC_FIT = Object.freeze({
   MATCH: 'match',
   PROVISIONAL: 'provisional',
@@ -15243,7 +15513,7 @@ return Object.freeze({ GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, G
 })();
 
 // src/combat/parry-advantage.js
-const __actionStudioModule57 = (() => {
+const __actionStudioModule60 = (() => {
 const PARRY_ADVANTAGE_STAGE = 'G3.5.1';
 const PARRY_ADVANTAGE_FOLLOWUP_MODE = 'normal-directional-attack';
 const PARRY_ADVANTAGE_ENEMY_RESPONSE = 'authoritative-stagger';
@@ -15284,11 +15554,11 @@ return Object.freeze({ PARRY_ADVANTAGE_STAGE, PARRY_ADVANTAGE_FOLLOWUP_MODE, PAR
 })();
 
 // src/combat/guard-reaction-presentation.js
-const __actionStudioModule55 = (() => {
+const __actionStudioModule58 = (() => {
 // @ts-check
-const { GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, guardActionSemanticAssessment } = __actionStudioModule56;
-const { createParryAdvantageContract, isFreeAttackFollowupOpen } = __actionStudioModule57;
-const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE, getProductionParryDeflectProfile } = __actionStudioModule46;
+const { GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, guardActionSemanticAssessment } = __actionStudioModule59;
+const { createParryAdvantageContract, isFreeAttackFollowupOpen } = __actionStudioModule60;
+const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE, getProductionParryDeflectProfile } = __actionStudioModule49;
 
 const GUARD_REACTION_VARIANTS = Object.freeze({
   BLOCK_HIT: 'block-hit',
@@ -15529,9 +15799,9 @@ return Object.freeze({ GUARD_REACTION_VARIANTS, GUARD_REACTION_PROFILE_IDS, LONG
 })();
 
 // src/combat/guard-presentation-table.js
-const __actionStudioModule59 = (() => {
+const __actionStudioModule62 = (() => {
 // @ts-check
-const { GUARD_STATES } = __actionStudioModule54;
+const { GUARD_STATES } = __actionStudioModule57;
 
 // S1.C2, step 4 of four — how a weapon's guard states are presented, as a function of that weapon.
 //
@@ -15676,7 +15946,7 @@ return Object.freeze({ createGuardPresentationTable });
 })();
 
 // src/combat/longsword-guard-metadata.js
-const __actionStudioModule60 = (() => {
+const __actionStudioModule63 = (() => {
 // @ts-check
 const freezeRange = (range) => Object.freeze({ ...range });
 const freezeEuler = (value) => Object.freeze({ x:value.x, y:value.y, z:value.z });
@@ -15783,8 +16053,8 @@ return Object.freeze({ LONGSWORD_GUARD_BASE, LONGSWORD_TRIANGLE_GUARD_TARGETS, L
 })();
 
 // src/combat/guard-transition-presentation.js
-const __actionStudioModule61 = (() => {
-const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule60;
+const __actionStudioModule64 = (() => {
+const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule63;
 
 const GUARD_TRANSITION_PROFILE_IDS = Object.freeze({
   ENTER: 'longsword_guard_enter_v1',
@@ -15898,9 +16168,9 @@ return Object.freeze({ GUARD_TRANSITION_PROFILE_IDS, LONGSWORD_GUARD_TRANSITION_
 })();
 
 // src/combat/guard-counter-presentation.js
-const __actionStudioModule62 = (() => {
+const __actionStudioModule65 = (() => {
 // @ts-check
-const { GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, guardActionSemanticAssessment } = __actionStudioModule56;
+const { GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, guardActionSemanticAssessment } = __actionStudioModule59;
 
 const GUARD_COUNTER_PROFILE_IDS = Object.freeze({
   LONGSWORD: 'longsword_guard_counter_melee_block_attack_v1',
@@ -16002,13 +16272,13 @@ return Object.freeze({ GUARD_COUNTER_PROFILE_IDS, GUARD_WEAPON_MOUNT_PROFILE_IDS
 })();
 
 // src/combat/longsword-guard-presentation.js
-const __actionStudioModule58 = (() => {
+const __actionStudioModule61 = (() => {
 // @ts-check
-const { createGuardPresentationTable } = __actionStudioModule59;
-const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule60;
-const { GUARD_TRANSITION_PROFILE_IDS } = __actionStudioModule61;
-const { GUARD_REACTION_VARIANTS, LONGSWORD_GUARD_REACTION_PROFILES } = __actionStudioModule55;
-const { GUARD_WEAPON_MOUNT_PROFILE_IDS, LONGSWORD_GUARD_COUNTER_PROFILE } = __actionStudioModule62;
+const { createGuardPresentationTable } = __actionStudioModule62;
+const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule63;
+const { GUARD_TRANSITION_PROFILE_IDS } = __actionStudioModule64;
+const { GUARD_REACTION_VARIANTS, LONGSWORD_GUARD_REACTION_PROFILES } = __actionStudioModule58;
+const { GUARD_WEAPON_MOUNT_PROFILE_IDS, LONGSWORD_GUARD_COUNTER_PROFILE } = __actionStudioModule65;
 
 // S1.C2, step 4 of four — the longsword's guard presentation, assembled where the longsword lives.
 //
@@ -16041,11 +16311,11 @@ return Object.freeze({ LONGSWORD_GUARD_PRESENTATION });
 })();
 
 // src/combat/guard-state-machine.js
-const __actionStudioModule53 = (() => {
+const __actionStudioModule56 = (() => {
 // @ts-check
-const { GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, GUARD_TRANSITION_GRAPH } = __actionStudioModule54;
-const { getGuardReactionProfile } = __actionStudioModule55;
-const { LONGSWORD_GUARD_PRESENTATION } = __actionStudioModule58;
+const { GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, GUARD_TRANSITION_GRAPH } = __actionStudioModule57;
+const { getGuardReactionProfile } = __actionStudioModule58;
+const { LONGSWORD_GUARD_PRESENTATION } = __actionStudioModule61;
 
 // S1.C2 — what this module used to be, and what it is now.
 //
@@ -16237,7 +16507,7 @@ return Object.freeze({ GUARD_STATE_AUTHORITY_NOTE, getGuardPresentation, createG
 })();
 
 // src/combat/guard-correction-scope.js
-const __actionStudioModule65 = (() => {
+const __actionStudioModule68 = (() => {
 // @ts-check
 // Which bones a guard correction is allowed to touch, and how far it may move each one.
 //
@@ -16305,7 +16575,7 @@ return Object.freeze({ GUARD_CORRECTION_SCOPE, getGuardCorrectionBones });
 })();
 
 // src/combat/guard-quaternion-correction.js
-const __actionStudioModule64 = (() => {
+const __actionStudioModule67 = (() => {
 // @ts-check
 // Generic rig maths for a guard correction: normalise a quaternion, build one from Euler degrees,
 // scale it toward identity by a weight, and write the result onto named bones.
@@ -16315,7 +16585,7 @@ const __actionStudioModule64 = (() => {
 // contact time, or a blade; nothing here can tell a longsword from a greatsword, because nothing
 // here is ever told. It was called longsword-guard-correction.js only because the longsword was
 // the first thing to need it.
-const { GUARD_CORRECTION_SCOPE, getGuardCorrectionBones } = __actionStudioModule65;
+const { GUARD_CORRECTION_SCOPE, getGuardCorrectionBones } = __actionStudioModule68;
 
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
@@ -16529,7 +16799,7 @@ return Object.freeze({ normalizeQuaternionArray, quaternionAngleDegrees, quatern
 })();
 
 // src/combat/guard-recovery-bridge.js
-const __actionStudioModule66 = (() => {
+const __actionStudioModule69 = (() => {
 const EPSILON = 1e-8;
 const COUNTER_CONTINUITY_HOLD_MS = 1000 / 60;
 
@@ -16819,7 +17089,7 @@ return Object.freeze({ GUARD_RECOVERY_PROFILE_IDS, GUARD_RECOVERY_PROFILES, capt
 })();
 
 // src/combat/guard-world-sword-orientation.js
-const __actionStudioModule67 = (() => {
+const __actionStudioModule70 = (() => {
 const EPSILON = 1e-8;
 
 function clamp01(value) {
@@ -16919,7 +17189,7 @@ return Object.freeze({ quaternionAngleDegrees, slerpShortestQuaternion, sampleWo
 })();
 
 // src/combat/living-guard-idle-runtime.js
-const __actionStudioModule68 = (() => {
+const __actionStudioModule71 = (() => {
 const LIVING_GUARD_PRODUCTION_STAGE = 'G3.6.5';
 const LIVING_GUARD_PRODUCTION_CLIP_ID = 'SKYRIM_GUARD/shd_blockidle';
 const LIVING_GUARD_PRODUCTION_SOURCE_RATE = 1.0;
@@ -16979,16 +17249,16 @@ return Object.freeze({ LIVING_GUARD_PRODUCTION_STAGE, LIVING_GUARD_PRODUCTION_CL
 })();
 
 // src/combat/guard-presentation-runtime.js
-const __actionStudioModule63 = (() => {
-const { GUARD_EVENTS, GUARD_STATES } = __actionStudioModule53;
-const { sampleGuardPresentationWeights, sampleGuardTransitionProfile } = __actionStudioModule61;
-const { sampleGuardReactionProfile } = __actionStudioModule55;
-const { sampleGuardCounterProfile } = __actionStudioModule62;
-const { LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule60;
-const { applyGuardQuaternionOffsetsWeighted } = __actionStudioModule64;
-const { applyObjectTransform, applyRigPose, blendRecoveryTransform, captureObjectTransform, captureRigPose, resolveGuardRecoveryProfile, samplePoseMatchedRecovery } = __actionStudioModule66;
-const { sampleWorldSwordRecoveryOrientation } = __actionStudioModule67;
-const { LIVING_GUARD_PRODUCTION_STAGE, sampleLivingGuardProductionHold } = __actionStudioModule68;
+const __actionStudioModule66 = (() => {
+const { GUARD_EVENTS, GUARD_STATES } = __actionStudioModule56;
+const { sampleGuardPresentationWeights, sampleGuardTransitionProfile } = __actionStudioModule64;
+const { sampleGuardReactionProfile } = __actionStudioModule58;
+const { sampleGuardCounterProfile } = __actionStudioModule65;
+const { LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule63;
+const { applyGuardQuaternionOffsetsWeighted } = __actionStudioModule67;
+const { applyObjectTransform, applyRigPose, blendRecoveryTransform, captureObjectTransform, captureRigPose, resolveGuardRecoveryProfile, samplePoseMatchedRecovery } = __actionStudioModule69;
+const { sampleWorldSwordRecoveryOrientation } = __actionStudioModule70;
+const { LIVING_GUARD_PRODUCTION_STAGE, sampleLivingGuardProductionHold } = __actionStudioModule71;
 
 const GUARD_ROOT_ROTATION_POLICY = 'lock';
 const STABLE_GUARD_HOLD_STAGE = 'G3.5.2';
@@ -17520,7 +17790,7 @@ return Object.freeze({ STABLE_GUARD_HOLD_STAGE, PRODUCTION_GUARD_HOLD_STAGE, can
 })();
 
 // src/combat/guard-weapon-mount-runtime.js
-const __actionStudioModule69 = (() => {
+const __actionStudioModule72 = (() => {
 const { applyMountCalibration } = __actionStudioModule3;
 
 function createGuardWeaponMountRuntime(options = {}) {
@@ -17560,17 +17830,17 @@ return Object.freeze({ createGuardWeaponMountRuntime });
 })();
 
 // tools/action-studio/studio-guard-runtime-controller.js
-const __actionStudioModule52 = (() => {
-const { DEFAULT_KAYKIT_SWORD_MOUNT } = __actionStudioModule17;
+const __actionStudioModule55 = (() => {
+const { DEFAULT_KAYKIT_SWORD_MOUNT } = __actionStudioModule20;
 const { applyMountCalibration } = __actionStudioModule3;
-const { loadSkyrimConvertedAnimationLibrary } = __actionStudioModule43;
-const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE } = __actionStudioModule46;
-const { composeSkyrimWeaponMountCalibration } = __actionStudioModule45;
-const { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } = __actionStudioModule53;
-const { createGuardPresentationRuntime } = __actionStudioModule63;
-const { LIVING_GUARD_PRODUCTION_STAGE } = __actionStudioModule68;
-const { GUARD_WEAPON_MOUNT_PROFILE_IDS } = __actionStudioModule62;
-const { createGuardWeaponMountRuntime } = __actionStudioModule69;
+const { loadSkyrimConvertedAnimationLibrary } = __actionStudioModule46;
+const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE } = __actionStudioModule49;
+const { composeSkyrimWeaponMountCalibration } = __actionStudioModule48;
+const { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } = __actionStudioModule56;
+const { createGuardPresentationRuntime } = __actionStudioModule66;
+const { LIVING_GUARD_PRODUCTION_STAGE } = __actionStudioModule71;
+const { GUARD_WEAPON_MOUNT_PROFILE_IDS } = __actionStudioModule65;
+const { createGuardWeaponMountRuntime } = __actionStudioModule72;
 
 const GUARD_RUNTIME_STAGE = LIVING_GUARD_PRODUCTION_STAGE;
 const MODE_LABELS = Object.freeze({
@@ -17964,16 +18234,16 @@ return Object.freeze({ createStudioGuardRuntimeController });
 })();
 
 // tools/action-studio/studio-external-animation-controller.js
-const __actionStudioModule39 = (() => {
-const { createFittedAnimationBinding } = __actionStudioModule21;
+const __actionStudioModule42 = (() => {
+const { createFittedAnimationBinding } = __actionStudioModule24;
 const { KAYKIT_ANIMATION_PACKS, loadKayKitAnimationLibrary } = __actionStudioModule11;
-const { UAL1_ANIMATION_FILES, loadUal1AnimationLibrary } = __actionStudioModule40;
-const { UAL2_ANIMATION_FILES, loadUal2AnimationLibrary } = __actionStudioModule42;
-const { SKYRIM_GREATSWORD_BASE_URL, SKYRIM_GREATSWORD_CONVERTED_FILES, SKYRIM_GUARD_CONVERTED_FILES, importSkyrimConvertedAnimationFile, loadSkyrimConvertedAnimationLibrary } = __actionStudioModule43;
-const { getCanonicalMotionContactSeconds, getLongswordMotionMetadata } = __actionStudioModule49;
-const { readAnimationBindingView } = __actionStudioModule50;
-const { installStudioSkyrimBridgeControls } = __actionStudioModule51;
-const { createStudioGuardRuntimeController } = __actionStudioModule52;
+const { UAL1_ANIMATION_FILES, loadUal1AnimationLibrary } = __actionStudioModule43;
+const { UAL2_ANIMATION_FILES, loadUal2AnimationLibrary } = __actionStudioModule45;
+const { SKYRIM_GREATSWORD_BASE_URL, SKYRIM_GREATSWORD_CONVERTED_FILES, SKYRIM_GUARD_CONVERTED_FILES, importSkyrimConvertedAnimationFile, loadSkyrimConvertedAnimationLibrary } = __actionStudioModule46;
+const { getCanonicalMotionContactSeconds, getLongswordMotionMetadata } = __actionStudioModule52;
+const { readAnimationBindingView } = __actionStudioModule53;
+const { installStudioSkyrimBridgeControls } = __actionStudioModule54;
+const { createStudioGuardRuntimeController } = __actionStudioModule55;
 
 const SOURCE_INFO = Object.freeze({
   ual2: Object.freeze({ label: 'UAL2 Sword Combat', count: UAL2_ANIMATION_FILES.length, defaultClip: 'UAL2/Sword_Regular_A' }),
@@ -18165,7 +18435,7 @@ function createStudioExternalAnimationController(options) {
       : source === 'skyrim'
         ? `${library.clips.size} converted Guard clip${library.clips.size === 1 ? '' : 's'} retargeted at ${library.retargetFps} fps`
         : source === 'greatsword'
-          ? `${library.clips.size} converted greatsword clip${library.clips.size === 1 ? '' : 's'} retargeted at ${library.retargetFps} fps · the off hand does not reach the hilt yet`
+          ? `${library.clips.size} converted greatsword clip${library.clips.size === 1 ? '' : 's'} retargeted at ${library.retargetFps} fps · off-hand grip closes the rest`
           : `${library.clips.size} sword clips retargeted at ${library.retargetFps} fps`;
     setStatus(`ready · ${info.label} · ${detail} · ${Object.keys(character.rig.bones).length} target bones`);
     renderBinding();
@@ -18430,25 +18700,26 @@ const { createDefaultCharacter } = __actionStudioModule1;
 const { createDebugSword, mountDebugSword } = __actionStudioModule12;
 const { V3_LONGSWORD_DEFINITION } = __actionStudioModule13;
 const { V3_GREATSWORD_DEFINITION } = __actionStudioModule15;
-const { DEFAULT_KAYKIT_SWORD_MOUNT } = __actionStudioModule17;
+const { createStudioOffHandGripController } = __actionStudioModule17;
+const { DEFAULT_KAYKIT_SWORD_MOUNT } = __actionStudioModule20;
 const { applyMountCalibration, normalizeMountCalibration } = __actionStudioModule3;
 const { POSE_KEYS } = __actionStudioModule10;
 const { normalizePose } = __actionStudioModule9;
-const { createAnimationClip } = __actionStudioModule18;
-const { ActionMotionPlayer } = __actionStudioModule19;
-const { ACTION_TEMPLATE_FACTORIES } = __actionStudioModule22;
-const { createActionDefinition, isFrameInWindow } = __actionStudioModule26;
-const { createStudioPreviewRuntime } = __actionStudioModule27;
-const { createStudioCombatFeelController } = __actionStudioModule28;
-const { createWholeBodyMotionGuideOverlay } = __actionStudioModule29;
-const { createStudioMotionGuideEditor } = __actionStudioModule30;
-const { bakeStudioMotionConstraints } = __actionStudioModule31;
-const { createStudioPoseDragController } = __actionStudioModule32;
-const { captureNextBlockingKey, createStudioBlockingWorkflow } = __actionStudioModule35;
-const { createStudioProjectIoController } = __actionStudioModule36;
-const { createStudioExternalAnimationController } = __actionStudioModule39;
-const { renderComboQueueView, renderAnimationBindingView, renderKeyEditorView, renderLibraryView, renderMountEditorView, renderPoseControlsView, renderTimelineView, renderWindowEditorView, updateTimelineReadoutView } = __actionStudioModule50;
-const { buildComboProjectData, cloneSerializable, createStudioProject, readStoredJson, writeStoredJson } = __actionStudioModule38;
+const { createAnimationClip } = __actionStudioModule21;
+const { ActionMotionPlayer } = __actionStudioModule22;
+const { ACTION_TEMPLATE_FACTORIES } = __actionStudioModule25;
+const { createActionDefinition, isFrameInWindow } = __actionStudioModule29;
+const { createStudioPreviewRuntime } = __actionStudioModule30;
+const { createStudioCombatFeelController } = __actionStudioModule31;
+const { createWholeBodyMotionGuideOverlay } = __actionStudioModule32;
+const { createStudioMotionGuideEditor } = __actionStudioModule33;
+const { bakeStudioMotionConstraints } = __actionStudioModule34;
+const { createStudioPoseDragController } = __actionStudioModule35;
+const { captureNextBlockingKey, createStudioBlockingWorkflow } = __actionStudioModule38;
+const { createStudioProjectIoController } = __actionStudioModule39;
+const { createStudioExternalAnimationController } = __actionStudioModule42;
+const { renderComboQueueView, renderAnimationBindingView, renderKeyEditorView, renderLibraryView, renderMountEditorView, renderPoseControlsView, renderTimelineView, renderWindowEditorView, updateTimelineReadoutView } = __actionStudioModule53;
+const { buildComboProjectData, cloneSerializable, createStudioProject, readStoredJson, writeStoredJson } = __actionStudioModule41;
 
 const THREE = window.THREE;
 if (!THREE) throw new Error('Action Studio requires Three.js r128');
@@ -18878,9 +19149,17 @@ function swapStageWeapon(weaponId) {
 }
 
 const stageWeaponSelect = document.getElementById('stageWeapon');
+const offHandGrip = createStudioOffHandGripController(THREE, {
+  getCharacter: () => character,
+  getWeapon: () => sword,
+  stageWeaponId,
+});
 if (stageWeaponSelect) {
   stageWeaponSelect.value = stageWeaponId;
-  stageWeaponSelect.addEventListener('change', () => swapStageWeapon(stageWeaponSelect.value));
+  stageWeaponSelect.addEventListener('change', () => {
+    swapStageWeapon(stageWeaponSelect.value);
+    offHandGrip.syncToWeapon(stageWeaponSelect.value);
+  });
 }
 
 document.getElementById('showTPose').addEventListener('click', () => loadTemplate('t_pose'));
@@ -19039,8 +19318,9 @@ function tick(now) {
   }
   character.update(deltaSeconds, preview.camera);
   poseDragController.update();
-  motionGuideOverlay.update();
   sword.update();
+  offHandGrip.update();
+  motionGuideOverlay.update();
   blockingWorkflow.update();
   preview.update(deltaSeconds);
   preview.advanceShake(deltaSeconds);

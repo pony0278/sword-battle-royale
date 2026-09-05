@@ -191,9 +191,34 @@ try {
     console.log(`greatsword      ${greatsword.loaded ? 'loaded' : 'NOT LOADED'} · clips: ${greatsword.clips.join(', ') || 'none'}`);
     if (greatsword.status) console.log(`                ${greatsword.status}`);
 
-    console.log(`stage weapon    ${weapon.present ? `${weapon.before} -> ${weapon.after}` : 'NO SELECTOR'}`);
+    // And the off-hand grip, which is the thing the greatsword pack exists to be looked at with.
+    // Read off the status line the page writes rather than off an internal, because what an author
+    // is told is the part that can silently stop being true.
+    // Driven as an author would: the pack is loaded and the weapon swapped above, so now play the
+    // clip. Checking the toggle against the studio's opening pose would only ever confirm the
+    // honest refusal - the authored seven-key chop leaves the hilt beyond the off arm.
+    const grip = await page.evaluate(async ({ clipId }) => {
+      const toggle = document.getElementById('offHandGrip');
+      if (!toggle) return { present: false };
+      const clipSelect = document.getElementById('kaykitClip');
+      clipSelect.value = clipId;
+      clipSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      document.getElementById('playKayKitAnimation').click();
+      const status = () => document.getElementById('offHandGripStatus')?.textContent || '';
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline && !/reached/.test(status())) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return { present: true, checked: toggle.checked, status: status() };
+    }, { clipId: GREATSWORD_CLIP });
 
-    if (!weapon.present) failure = 'the stage weapon selector (#stageWeapon) is missing';
+    console.log(`stage weapon    ${weapon.present ? `${weapon.before} -> ${weapon.after}` : 'NO SELECTOR'}`);
+    console.log(`off-hand grip   ${grip.present ? `${grip.checked ? 'on' : 'off'} · ${grip.status}` : 'NO TOGGLE'}`);
+
+    if (!grip.present) failure = 'the off-hand grip toggle (#offHandGrip) is missing';
+    else if (!grip.checked) failure = 'the off-hand grip did not switch on with the greatsword';
+    else if (!/reached/.test(grip.status)) failure = `the off-hand grip never reached: ${grip.status}`;
+    else if (!weapon.present) failure = 'the stage weapon selector (#stageWeapon) is missing';
     else if (weapon.after !== 'v3_procedural_greatsword') failure = `stage weapon is ${weapon.after}, expected v3_procedural_greatsword`;
     else if (!weapon.stillInHand) failure = 'the swapped weapon is not attached to HAND_R';
     else if (!greatsword.options.includes(GREATSWORD_SOURCE)) {

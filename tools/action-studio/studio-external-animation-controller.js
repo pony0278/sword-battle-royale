@@ -216,7 +216,7 @@ export function createStudioExternalAnimationController(options) {
       : source === 'skyrim'
         ? `${library.clips.size} converted Guard clip${library.clips.size === 1 ? '' : 's'} retargeted at ${library.retargetFps} fps`
         : source === 'greatsword'
-          ? `${library.clips.size} converted greatsword clip${library.clips.size === 1 ? '' : 's'} retargeted at ${library.retargetFps} fps · the off hand does not reach the hilt yet`
+          ? `${library.clips.size} converted greatsword clip${library.clips.size === 1 ? '' : 's'} retargeted at ${library.retargetFps} fps · off-hand grip closes the rest`
           : `${library.clips.size} sword clips retargeted at ${library.retargetFps} fps`;
     setStatus(`ready · ${info.label} · ${detail} · ${Object.keys(character.rig.bones).length} target bones`);
     renderBinding();

@@ -24,6 +24,7 @@ import { V3_GREATSWORD_DEFINITION } from '../src/character/v3-greatsword-weapon.
 import { V3_LONGSWORD_DEFINITION } from '../src/character/procedural-v3-weapon.js';
 import { retargetConvertedSkyrimGltf } from '../src/animation/skyrim-converted-animation-library.js';
 import { composeSkyrimWeaponMountCalibration } from '../src/animation/skyrim-weapon-bind-calibration.js';
+import { OFF_HAND_GRIP_SCOPE, applyOffHandGripIk } from '../src/animation/off-hand-grip-ik.js';
 import { TWO_HAND_GRIP_REACH_TOLERANCE } from './grip-reach.mjs';
 import { measureSkyrimGripReach, parseSourceGlb } from './skyrim-grip-reach.mjs';
 
@@ -31,7 +32,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const THREE = { ...ThreeModule, GLTFLoader };
 const WEAPONS = { greatsword: V3_GREATSWORD_DEFINITION, longsword: V3_LONGSWORD_DEFINITION };
 
-const [, , sourceArg, weaponArg] = process.argv;
+// --no-ik measures the gap the retarget leaves on its own, which is the before half of the pair.
+const withoutIk = process.argv.includes('--no-ik');
+const [, , sourceArg, weaponArg] = process.argv.filter((argument) => argument !== '--no-ik');
 const sourcePath = path.resolve(ROOT, sourceArg || 'assets/skyrim/greatsword/converted/2hm_idle.source.glb');
 const weaponId = weaponArg || 'greatsword';
 const definition = WEAPONS[weaponId];
@@ -49,6 +52,7 @@ const report = measureSkyrimGripReach(THREE, {
   mountDebugSword,
   retargetConvertedSkyrimGltf,
   composeSkyrimWeaponMountCalibration,
+  applyOffHandGripIk: withoutIk ? null : applyOffHandGripIk,
 });
 
 console.log(`${path.relative(ROOT, sourcePath)} · ${weaponId}`);
@@ -86,6 +90,15 @@ console.log(`  this rig               ${(report.socketOffset * 100).toFixed(1)}%
 console.log(`\nSECONDARY_GRIP sits ${report.secondaryGripFromMainHand.toFixed(4)} from the main hand; the source's`
   + ` equipment span is ${(report.source.equipmentSpan * report.stature).toFixed(4)}`);
 console.log(`weapon bind correction ${report.bindCorrectionDegrees.toFixed(1)} deg, composed into the mount`);
+if (report.offHandGrip) {
+  const ik = report.offHandGrip;
+  console.log(`\noff-hand grip IK · ${OFF_HAND_GRIP_SCOPE.bones.join(' + ')} · budget ${OFF_HAND_GRIP_SCOPE.maxCorrectionDegrees} deg`);
+  console.log(`  worst gap without it  ${ik.worstBefore.toFixed(4)}`);
+  console.log(`  largest correction    shoulder ${ik.worstShoulderDegrees.toFixed(1)} deg · elbow ${ik.worstElbowDegrees.toFixed(1)} deg`);
+  if (!ik.applied) console.log(`  REFUSED on some frames: ${[...new Set(ik.refused)].join(', ')}`);
+} else {
+  console.log('\noff-hand grip IK · not applied (--no-ik)');
+}
 
 if (report.worst > TWO_HAND_GRIP_REACH_TOLERANCE) {
   console.log(`\nFAIL · the off hand is not on the hilt for the whole clip. Worst gap `
