@@ -343,6 +343,52 @@ One thing the fix had to learn: the library's own tests drive the bridge with a 
 input the thing it guards accepts is worse than no guard, so it now records only nodes that actually
 carry a transform.
 
+## "The left hand is not touching the greatsword"
+
+Reported from the page, and true, and not what any measurement here was measuring.
+
+The off-hand IK aims the HAND_L **socket** at `SECONDARY_GRIP` and lands on it exactly — `0.0000`,
+in every mode the built page offers, bind and preview alike, confirmed by driving the real page
+rather than a harness. But **the socket is not drawn.** `kaykit-v3-line-appearance.js` draws each
+arm out to `hand.l` / `hand.r` and stops; `handslot.l`, where the socket lives and where equipment
+actually hangs, is 0.1120 further on.
+
+```text
+with the IK applied, distance to the grip it is holding
+  HAND_L socket (what the IK aims at)   0.0000
+  handslot.l bone                       0.0000
+  hand.l bone      <- what is drawn     0.1120
+  wrist.l bone     <- what is drawn     0.1794
+```
+
+Both hands have the same gap. The right one reads as fine only because the sword is mounted there
+anyway; the left had an IK visibly reaching for something, which is what made it obvious.
+
+**This is the socket offset wearing its third face.** The same 0.1794 off the wrist that makes the
+grip span 3.66x the source's, and that drops the main hand 16.5 points below where the clip puts it,
+is exactly the gap between the drawn hand and the hilt. One cause, three symptoms — which is the
+argument for doing the rig change rather than three patches.
+
+Pinned in `tests/the-drawn-hand-stops-short-of-the-grip.test.js`, including that `handslot.l` hangs
+directly off the drawn tip — so extending the drawn chain by one bone would close the *visual* gap
+without touching geometry, if a look is all that is wanted.
+
+### A correction to this document
+
+The line above saying the hand problem "did not reproduce" was wrong. It did not reproduce because
+the measurement measured the socket and the report was about the line. The reporter was right and
+the instrument was pointed at the wrong thing.
+
+### Separately: the blade goes through the floor
+
+Not the same problem, and deliberately not fixed — the size is the intended style. Recorded so it is
+not re-diagnosed: the greatsword is 3.1180 total against a 1.4854 character, **2.10x its height**
+(the longsword is 1.13x). The retargeted pose allows a blade of about 0.80x stature before the tip
+reaches the ground; the source pose allows 1.11x. Ours is 2.37x. Scaling alone does not lift it out
+— at 0.50 scale the tip is still at -0.43 — because the retarget also lowers the hands and raises
+the feet: the pelvis sits 24.6 points lower than the source's and the feet 6.2 higher, which is its
+own unexplained finding and not the socket offset.
+
 ## Still not done
 
 Nothing in the fight plays it — the Guard machine does not reach for it, `greatsword-attack-timings.js`

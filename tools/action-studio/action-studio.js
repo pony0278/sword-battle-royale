@@ -658,6 +658,9 @@ window.__actionStudio = {
   get proceduralBoneCount() { return Object.keys(character.rig.bones).length; },
   get weaponRigId() { return sword.definition.id; },
   get weaponMount() { return { applied: stageWeapon.appliedMount, rotation: sword.object3d.rotation.toArray().slice(0, 3) }; },
+  get offHandGrip() { return stageWeapon.lastGripSolve; },
+  get gripGap() { return character.sockets.HAND_L.getWorldPosition(new THREE.Vector3())
+    .distanceTo(sword.sockets.SECONDARY_GRIP.getWorldPosition(new THREE.Vector3())); },
   get weaponBoneCount() { return Object.keys(sword.bones).length; },
   get weaponSockets() { return Object.keys(sword.sockets); },
   get weaponSweepSegment() {
