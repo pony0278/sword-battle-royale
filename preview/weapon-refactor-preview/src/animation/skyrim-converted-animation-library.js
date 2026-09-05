@@ -1,4 +1,4 @@
-import { retargetSkyrimClip } from './skyrim-animation-retarget.js';
+import { captureSkyrimSourceRest, retargetSkyrimClip } from './skyrim-animation-retarget.js';
 import { computeSkyrimWeaponBindCalibration } from './skyrim-weapon-bind-calibration.js';
 import {
   canCreateProductionParryDeflectClips,
@@ -68,12 +68,20 @@ function normalizedBaseUrl(value) {
   return String(value || DEFAULT_BASE_URL).replace(/\/?$/, '/');
 }
 
+// Capture the source's rest pose the moment the file becomes a scene - earlier than any caller can
+// pose it. retargetSkyrimClip restores from this stash, so a page that samples the source hierarchy
+// for a side-by-side review before asking for a retarget still gets the retarget the file describes.
+function captured(gltf) {
+  captureSkyrimSourceRest(gltf?.scene);
+  return gltf;
+}
+
 function loadGlb(loader, url) {
-  return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
+  return new Promise((resolve, reject) => loader.load(url, (gltf) => resolve(captured(gltf)), undefined, reject));
 }
 
 function parseGlb(loader, arrayBuffer) {
-  return new Promise((resolve, reject) => loader.parse(arrayBuffer, '', resolve, reject));
+  return new Promise((resolve, reject) => loader.parse(arrayBuffer, '', (gltf) => resolve(captured(gltf)), reject));
 }
 
 function disposeSourceScene(scene) {

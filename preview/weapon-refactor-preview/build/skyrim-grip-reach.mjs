@@ -24,6 +24,8 @@
 //
 // Everything is injected so this runs headless and so a caller can point it at any pack or weapon.
 
+import { captureSkyrimSourceRest } from '../src/animation/skyrim-animation-retarget.js';
+
 // GLTFLoader sanitizes names on the way in: "NPC L Hand [LHnd]" arrives as NPC_L_Hand_LHnd.
 const SOURCE_NODES = Object.freeze({
   offWrist: 'NPC_L_Hand_LHnd',
@@ -36,7 +38,13 @@ const SOURCE_NODES = Object.freeze({
 
 export function parseSourceGlb(THREE, bytes) {
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  return new Promise((resolve, reject) => new THREE.GLTFLoader().parse(buffer, '', resolve, reject));
+  return new Promise((resolve, reject) => new THREE.GLTFLoader().parse(buffer, '', (gltf) => {
+    // The same capture the library does on load, for the same reason: this helper's callers pose
+    // the source hierarchy to read what the animator authored, and a retarget asked for afterwards
+    // must still describe the file rather than that reading.
+    captureSkyrimSourceRest(gltf?.scene);
+    resolve(gltf);
+  }, reject));
 }
 
 // What the animator authored, read straight out of the source hierarchy at t=0. Every distance is

@@ -390,6 +390,56 @@ function decodedSource(input) {
   return { root, clip };
 }
 
+// The source hierarchy's pose as it was loaded, so a retarget cannot be changed by what someone
+// did to the scene before calling it.
+//
+// MEASURED, and the reason this exists. retargetSkyrimClip reads the source's CURRENT world
+// transforms as `sourceRest` - the name says rest, the code says now. Pose the scene before calling
+// and the whole retarget shifts: 103.4 degrees on wristl, with the G2.4.5 weapon bind moving from
+// 112.1162 to 87.6950 (posed at t=0) or 93.3833 (t=3).
+//
+// It only bites on the way IN. The function already leaves the scene where it found it - after a
+// retarget the source is back to within 0.103 degrees of as-loaded, on an un-animated ragdoll node,
+// and the bind computed afterwards matches the one computed from the as-loaded pose to 0.000000 on
+// all five committed clips. So nothing shipped is wrong today; it is one careless caller away from
+// being wrong, and the wrongness is a plausible-looking animation rather than an error.
+//
+// Capture happens as early as a source GLB can be seen - the library does it on load - so the stash
+// is the pose the file actually carries, not whatever state the scene has reached by the time a
+// retarget is asked for.
+const SOURCE_REST_KEY = 'skyrimSourceRestPose';
+
+// Records only nodes that actually carry a transform. A source hierarchy is Object3Ds, but this is
+// called on whatever a caller hands over - the library's own tests drive the bridge with a stub
+// scene whose traverse yields one bare object - and a guard that throws on input the thing it
+// guards accepts is worse than no guard.
+export function captureSkyrimSourceRest(root) {
+  if (!root || typeof root.traverse !== 'function' || root.userData?.[SOURCE_REST_KEY]) return false;
+  const pose = [];
+  root.traverse((object3d) => {
+    if (typeof object3d?.position?.toArray !== 'function') return;
+    if (typeof object3d?.quaternion?.toArray !== 'function') return;
+    if (typeof object3d?.scale?.toArray !== 'function') return;
+    pose.push([object3d, object3d.position.toArray(), object3d.quaternion.toArray(), object3d.scale.toArray()]);
+  });
+  if (!pose.length) return false;
+  root.userData = root.userData || {};
+  root.userData[SOURCE_REST_KEY] = pose;
+  return true;
+}
+
+export function restoreSkyrimSourceRest(root) {
+  const pose = root?.userData?.[SOURCE_REST_KEY];
+  if (!pose) return false;
+  for (const [object3d, position, quaternion, scale] of pose) {
+    object3d.position.fromArray(position);
+    object3d.quaternion.fromArray(quaternion);
+    object3d.scale.fromArray(scale);
+  }
+  root.updateMatrixWorld?.(true);
+  return true;
+}
+
 export function retargetSkyrimClip(THREE, decoded, rig, options = {}) {
   if (!THREE?.AnimationMixer || !THREE?.AnimationClip) {
     throw new Error('Skyrim retargeting requires the Three.js animation runtime');
@@ -409,6 +459,11 @@ export function retargetSkyrimClip(THREE, decoded, rig, options = {}) {
     throw new Error(`Action Studio rig is missing Skyrim retarget targets: ${targetReport.missing.join(', ')}`);
   }
 
+  // Whatever state the caller left the scene in, this reads the pose the file carries. On a scene
+  // nobody has touched - which is every production path - capture takes that pose and restore puts
+  // back what it just took, so every committed number is unchanged.
+  captureSkyrimSourceRest(sourceRoot);
+  restoreSkyrimSourceRest(sourceRoot);
   sourceRoot.updateMatrixWorld(true);
   const sourceReport = resolveSkyrimSourceNodes(sourceRoot, retargets);
   if (!sourceReport.valid) {
