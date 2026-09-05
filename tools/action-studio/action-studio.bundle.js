@@ -545,9 +545,9 @@ const KAYKIT_RIG_MEDIUM_DEFINITION = deepFreeze({
       "id": "handslot.l",
       "parent": "hand.l",
       "position": [
-        5.138920400327152e-10,
-        0.09612506628036499,
-        -0.05750012397766113
+        2.011321547367183e-11,
+        0.003762238018699191,
+        -0.002250496783822371
       ],
       "quaternion": [
         1.6806123159796016e-9,
@@ -565,9 +565,9 @@ const KAYKIT_RIG_MEDIUM_DEFINITION = deepFreeze({
       "id": "handslot.r",
       "parent": "hand.r",
       "position": [
-        -5.138920400327152e-10,
-        0.09612506628036499,
-        -0.05750012397766113
+        -2.011321547367183e-11,
+        0.003762238018699191,
+        -0.002250496783822371
       ],
       "quaternion": [
         1.6805922209428559e-9,
@@ -9951,6 +9951,10 @@ function defaultOffHandGrip(weaponId) {
 function createStudioOffHandGripController(THREE, { getCharacter, getWeapon, stageWeaponId }) {
   const toggle = document.getElementById('offHandGrip');
   const status = document.getElementById('offHandGripStatus');
+  // The last solve, kept so something outside the page can read whether the hand actually arrived.
+  // The status line is prose for an author; this is the number, and the reason the first version of
+  // the stale-weapon bug was invisible was that no such number existed.
+  let lastSolve = null;
   if (toggle) {
     toggle.checked = defaultOffHandGrip(stageWeaponId);
     toggle.addEventListener('change', () => {
@@ -9961,11 +9965,13 @@ function createStudioOffHandGripController(THREE, { getCharacter, getWeapon, sta
   }
 
   return {
+    get lastSolve() { return lastSolve; },
     // Called on the posed rig, after the weapon has followed the right hand: the target is the
     // weapon's own SECONDARY_GRIP, so it has to be where it will be drawn before the arm is solved.
     update() {
-      if (!toggle?.checked) return null;
+      if (!toggle?.checked) { lastSolve = { applied: false, reason: 'switched-off' }; return null; }
       const result = applyOffHandGripIk(THREE, { character: getCharacter(), weapon: getWeapon() });
+      lastSolve = result;
       if (status) {
         status.textContent = result.applied
           ? `off-hand grip · reached · shoulder ${result.rootDegrees.toFixed(1)}° `
@@ -10005,6 +10011,7 @@ function createStudioStageWeaponOverlays(THREE, context) {
   const offHandGrip = createStudioOffHandGripController(THREE, context);
   return {
     get appliedMount() { return gameMount.applied; },
+    get lastGripSolve() { return offHandGrip.lastSolve; },
     update() {
       gameMount.update();
       offHandGrip.update();
@@ -19557,6 +19564,9 @@ window.__actionStudio = {
   get proceduralBoneCount() { return Object.keys(character.rig.bones).length; },
   get weaponRigId() { return sword.definition.id; },
   get weaponMount() { return { applied: stageWeapon.appliedMount, rotation: sword.object3d.rotation.toArray().slice(0, 3) }; },
+  get offHandGrip() { return stageWeapon.lastGripSolve; },
+  get gripGap() { return character.sockets.HAND_L.getWorldPosition(new THREE.Vector3())
+    .distanceTo(sword.sockets.SECONDARY_GRIP.getWorldPosition(new THREE.Vector3())); },
   get weaponBoneCount() { return Object.keys(sword.bones).length; },
   get weaponSockets() { return Object.keys(sword.sockets); },
   get weaponSweepSegment() {

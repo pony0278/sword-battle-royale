@@ -106,22 +106,30 @@ test('MEASURED: the authored grip does not reach the hilt, on either weapon', ()
 
   // Pinned to four places, because the shape of the failure is the useful part: the arm leans in
   // hardest at plant and then diverges as the sword swings on past it.
-  assert.equal(gap(V3_LONGSWORD_DEFINITION, 'plant').toFixed(4), '0.2912');
-  assert.equal(gap(V3_LONGSWORD_DEFINITION, 'impact').toFixed(4), '0.7920');
-  assert.equal(gap(V3_LONGSWORD_DEFINITION, 'follow_through').toFixed(4), '1.2632');
-  // The greatsword's two moved when SECONDARY_GRIP was re-derived from 2hm_idle.source.glb rather
-  // than from the longsword's proportions - 0.2671 -> 0.2839 at plant, 0.7817 -> 0.7889 at impact.
-  // The grip point moved 0.034 further up the haft; the authored pose did not move at all.
-  assert.equal(gap(V3_GREATSWORD_DEFINITION, 'plant').toFixed(4), '0.2839');
-  assert.equal(gap(V3_GREATSWORD_DEFINITION, 'impact').toFixed(4), '0.7889');
+  //
+  // These have moved twice, and neither time was the POSE. First SECONDARY_GRIP was re-derived from
+  // 2hm_idle.source.glb instead of the longsword's proportions; then the equipment sockets were
+  // pulled to Skyrim's 6.3% of head-to-root, which moved every grip point on both hands:
+  //
+  //   longsword  plant  0.2912 -> 0.1459    impact 0.7920 -> 0.8139
+  //   greatsword plant  0.2671 -> 0.2839 -> 0.1337    impact 0.7817 -> 0.7889 -> 0.8110
+  //
+  // Plant nearly halved - the socket came back to the hand the authored arm was already reaching
+  // toward - and impact drifted the other way, because at impact the sword has swung past the off
+  // hand and pulling the grip inboard moves it further from a hand that is already behind it.
+  assert.equal(gap(V3_LONGSWORD_DEFINITION, 'plant').toFixed(4), '0.1459');
+  assert.equal(gap(V3_LONGSWORD_DEFINITION, 'impact').toFixed(4), '0.8139');
+  assert.equal(gap(V3_LONGSWORD_DEFINITION, 'follow_through').toFixed(4), '1.2001');
+  assert.equal(gap(V3_GREATSWORD_DEFINITION, 'plant').toFixed(4), '0.1337');
+  assert.equal(gap(V3_GREATSWORD_DEFINITION, 'impact').toFixed(4), '0.8110');
 });
 
 test('the greatsword is no worse than the longsword, which is why the mesh was never the problem', () => {
   // Measured because it was the reason A looked promising: a bigger weapon does not make this
   // harder. It does not make it work either.
   //
-  // The two secondary grips sit 0.0130 apart now (longsword 0.1350, greatsword 0.1220) rather than
-  // the 0.047 recorded when the greatsword's was a longsword proportion - re-deriving it from
+  // The two secondary grips sit 0.0130 apart (longsword 0.1350, greatsword 0.1220) rather than the
+  // 0.047 recorded when the greatsword's was a longsword proportion - re-deriving it from
   // 2hm_idle.source.glb moved it toward the longsword's, which is its own small piece of evidence
   // that the longsword's value was never far off.
   const twoHanded = bakeAdvancingVerticalChopClip({ twoHandGrip: true });

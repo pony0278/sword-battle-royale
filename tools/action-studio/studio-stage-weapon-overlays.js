@@ -18,6 +18,7 @@ export function createStudioStageWeaponOverlays(THREE, context) {
   const offHandGrip = createStudioOffHandGripController(THREE, context);
   return {
     get appliedMount() { return gameMount.applied; },
+    get lastGripSolve() { return offHandGrip.lastSolve; },
     update() {
       gameMount.update();
       offHandGrip.update();

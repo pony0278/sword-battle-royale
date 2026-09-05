@@ -343,6 +343,107 @@ One thing the fix had to learn: the library's own tests drive the bridge with a 
 input the thing it guards accepts is worse than no guard, so it now records only nodes that actually
 carry a transform.
 
+## "The left hand is not touching the greatsword"
+
+Reported from the page, and true, and not what any measurement here was measuring.
+
+The off-hand IK aims the HAND_L **socket** at `SECONDARY_GRIP` and lands on it exactly — `0.0000`,
+in every mode the built page offers, bind and preview alike, confirmed by driving the real page
+rather than a harness. But **the socket is not drawn.** `kaykit-v3-line-appearance.js` draws each
+arm out to `hand.l` / `hand.r` and stops; `handslot.l`, where the socket lives and where equipment
+actually hangs, is 0.1120 further on.
+
+```text
+with the IK applied, distance to the grip it is holding
+  HAND_L socket (what the IK aims at)   0.0000
+  handslot.l bone                       0.0000
+  hand.l bone      <- what is drawn     0.1120
+  wrist.l bone     <- what is drawn     0.1794
+```
+
+Both hands have the same gap. The right one reads as fine only because the sword is mounted there
+anyway; the left had an IK visibly reaching for something, which is what made it obvious.
+
+**This is the socket offset wearing its third face.** The same 0.1794 off the wrist that makes the
+grip span 3.66x the source's, and that drops the main hand 16.5 points below where the clip puts it,
+is exactly the gap between the drawn hand and the hilt. One cause, three symptoms — which is the
+argument for doing the rig change rather than three patches.
+
+Pinned in `tests/the-drawn-hand-stops-short-of-the-grip.test.js`, including that `handslot.l` hangs
+directly off the drawn tip — so extending the drawn chain by one bone would close the *visual* gap
+without touching geometry, if a look is all that is wanted.
+
+### A correction to this document
+
+The line above saying the hand problem "did not reproduce" was wrong. It did not reproduce because
+the measurement measured the socket and the report was about the line. The reporter was right and
+the instrument was pointed at the wrong thing.
+
+### Separately: the blade goes through the floor
+
+Not the same problem, and deliberately not fixed — the size is the intended style. Recorded so it is
+not re-diagnosed: the greatsword is 3.1180 total against a 1.4854 character, **2.10x its height**
+(the longsword is 1.13x). The retargeted pose allows a blade of about 0.80x stature before the tip
+reaches the ground; the source pose allows 1.11x. Ours is 2.37x. Scaling alone does not lift it out
+— at 0.50 scale the tip is still at -0.43 — because the retarget also lowers the hands and raises
+the feet: the pelvis sits 24.6 points lower than the source's and the feet 6.2 higher, which is its
+own unexplained finding and not the socket offset.
+
+## A: the equipment sockets come back to the hand
+
+One number, measured on both hands in both committed source packs:
+
+```text
+Skyrim's `Weapon` and `Shield`, off the wrist    6.3% of head-to-root   (both hands, both packs)
+this rig's handslot, before                     14.5%                   0.1794
+this rig's handslot, after                       6.3%                   0.0776
+```
+
+`handslot.l/r` are KayKit's own bones — `build/extract-kaykit-assets.mjs` reads them straight from
+the model's skin — so this is an explicit override in the extractor, direction kept (it still points
+into the palm the way KayKit authored it) and only the distance changed.
+
+**The coincidence worth noticing.** Pulled to 6.3%, the socket lands **0.0044** from `hand.l`. Skyrim's
+authored equipment placement and this rig's own drawn hand agree to within 0.34% of a body height.
+Nothing was tuned to make that happen; it is why one change closed three symptoms.
+
+```text
+                                    before      after
+socket off the wrist            2.3x Skyrim's   1.01x
+drawn hand -> the hilt it holds     0.1120     0.0044
+gap the off-hand IK must close      0.3928     0.2484
+IK correction, shoulder / elbow  47.7 / 20.1   29.4 / 6.4
+```
+
+### What it cost, and what it did not
+
+**Nothing that is a rotation moved.** The G2.4.5 weapon bind is still `112.1162`, the basis
+`179.9999`, the translation scale `0.010315`, the target height `1.241425` — predicted before the
+change and confirmed after, because the bind reads a quaternion and the scale reads only head↔root.
+
+**The three browser gates pass, and two of them are unchanged:**
+
+```text
+golden grid      11 cells reproduced
+defence matrix   all six timings byte-identical
+parry gate       passed, with the three vectors moved
+                 before  top 0.05,0.93,0.36  right -0.76,0.54,0.35  left 0.99,0.12,0.12
+                 after   top 0.02,0.92,0.38  right -0.83,0.35,0.43  left 0.98,0.15,0.15
+```
+
+**The price, stated plainly: the golden grid's tightest margin went from 14.0% of its tolerance to
+32.4%** — `left@1.6 off by 0.006997` became `top@1.8 off by 0.016175`. Still two thirds of the
+tolerance unused, and reproduced identically on a second run, but there is less headroom than
+before and the next change to touch contact geometry starts from there.
+
+**No animation family assumed the old offset.** The UAL1, UAL2 and Quaternius retargets contain
+zero references to `handslot`; it was never animated, only mounted on. That is what made this a
+one-line-of-geometry change rather than a re-authoring.
+
+Seven pinned records went red, and every one of them existed to describe the defect — the socket
+ratio, the reach the IK had to close, the drawn hand's 0.1120, the authored-pose gaps. They are
+rewritten to the new truth with the old numbers kept beside them.
+
 ## Still not done
 
 Nothing in the fight plays it — the Guard machine does not reach for it, `greatsword-attack-timings.js`
