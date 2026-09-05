@@ -47,12 +47,23 @@ function diskLoader(requested) {
 }
 
 test('the greatsword is its own pack, not a fifth Guard entry', () => {
-  assert.deepEqual(SKYRIM_GREATSWORD_CONVERTED_FILES.map((entry) => entry.clipId), ['SKYRIM_GREATSWORD/2hm_idle']);
-  assert.deepEqual(SKYRIM_GREATSWORD_CONVERTED_FILES.map((entry) => entry.file), ['2hm_idle.source.glb']);
+  // Two takes of the same animation name, from different .hkx sources. Only the first is the one
+  // the game should play - tests/the-two-takes-of-the-idle-are-not-interchangeable.test.js measures
+  // why - but both are in the pack so the difference can be seen in Action Studio rather than
+  // argued about.
+  assert.deepEqual(SKYRIM_GREATSWORD_CONVERTED_FILES.map((entry) => entry.clipId), [
+    'SKYRIM_GREATSWORD/2hm_idle',
+    'SKYRIM_GREATSWORD/2hm_idle_alt',
+  ]);
+  assert.deepEqual(SKYRIM_GREATSWORD_CONVERTED_FILES.map((entry) => entry.file), [
+    '2hm_idle.source.glb',
+    '2hm_idle_alt.source.glb',
+  ]);
   // The separation is load-bearing rather than tidy: the Guard state machine plays every entry in
   // its own list, and this clip is not a Guard clip.
   const guardFiles = SKYRIM_GUARD_CONVERTED_FILES.map((entry) => entry.file);
   assert.ok(!guardFiles.includes('2hm_idle.source.glb'));
+  assert.ok(!guardFiles.includes('2hm_idle_alt.source.glb'));
   assert.equal(SKYRIM_GUARD_CONVERTED_FILES.length, 4);
   assert.match(SKYRIM_GREATSWORD_BASE_URL, /assets\/skyrim\/greatsword\/converted\/$/);
 });
@@ -67,8 +78,14 @@ test('the pack loads from its own directory and retargets onto the Blockman rig'
     baseUrl: SKYRIM_GREATSWORD_BASE_URL,
     fps: 30,
   });
-  assert.deepEqual(requested, ['../../assets/skyrim/greatsword/converted/2hm_idle.source.glb']);
-  assert.deepEqual([...library.clips.keys()], ['SKYRIM_GREATSWORD/2hm_idle']);
+  assert.deepEqual(requested, [
+    '../../assets/skyrim/greatsword/converted/2hm_idle.source.glb',
+    '../../assets/skyrim/greatsword/converted/2hm_idle_alt.source.glb',
+  ]);
+  assert.deepEqual([...library.clips.keys()], [
+    'SKYRIM_GREATSWORD/2hm_idle',
+    'SKYRIM_GREATSWORD/2hm_idle_alt',
+  ]);
   // No derived parry clips. Those are built from the shd_* family by name, and a pack that quietly
   // grew a virtual Guard clip would put a greatsword pose inside the Guard state machine.
   assert.deepEqual(library.virtualClips, []);

@@ -39,6 +39,10 @@ const SOURCE_MS_MAX = 830;
 // built page at all, which is the thing a person opening the studio would try first.
 const GREATSWORD_SOURCE = 'greatsword';
 const GREATSWORD_CLIP = 'SKYRIM_GREATSWORD/2hm_idle';
+// Every clip the pack ships, checked by name. The pack carries two takes of the idle and the second
+// exists to be SELECTED in this page, so "the pack loaded" is not the same claim as "both takes are
+// there".
+const GREATSWORD_CLIPS = Object.freeze(['SKYRIM_GREATSWORD/2hm_idle', 'SKYRIM_GREATSWORD/2hm_idle_alt']);
 
 const CANDIDATES = [
   process.env.CHROME_PATH,
@@ -249,6 +253,9 @@ try {
       failure = `the pack selector offers no "${GREATSWORD_SOURCE}" source: ${greatsword.options.join(', ')}`;
     } else if (!greatsword.loaded) {
       failure = `${GREATSWORD_CLIP} never reached the clip list: ${greatsword.clips.join(', ') || 'the list stayed empty'}`;
+    } else if (GREATSWORD_CLIPS.some((clipId) => !greatsword.clips.includes(clipId))) {
+      const missing = GREATSWORD_CLIPS.filter((clipId) => !greatsword.clips.includes(clipId));
+      failure = `the greatsword pack is short ${missing.join(', ')}; the page listed ${greatsword.clips.join(', ')}`;
     } else if (errors.length > 0) {
       failure = `${errors.length} console errors while loading the greatsword pack: ${errors[0]}`;
     } else if (notFound.length > 0) {

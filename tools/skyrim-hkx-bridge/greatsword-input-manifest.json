@@ -41,5 +41,43 @@
   "assetPolicy": {
     "commitRawHkx": false,
     "commitExperimentalSourceGlb": false
+  },
+  "alternateTake": {
+    "note": "A second .hkx carrying the same animation name, supplied later. Converted through the same bridge and committed as 2hm_idle_alt.source.glb so it can be viewed in Action Studio beside the first. NOT the adopted idle - see the measurements below for why that is a decision and not a formality.",
+    "file": "2hm_idle.HKX",
+    "byteLength": 46880,
+    "sha256": "8a8f4de85c09bcbe0a739b43e192bd2ddc67fc50dda0ee4cd506851f14bf1ddf",
+    "havokVersion": "hk_2010.2.0-r1",
+    "animationClass": "hkaSplineCompressedAnimation",
+    "bindingClass": "hkaAnimationBinding",
+    "foreignTracksPruned": 3,
+    "output": {
+      "file": "assets/skyrim/greatsword/converted/2hm_idle_alt.source.glb",
+      "byteLength": 137672,
+      "sha256": "affa4082d035815e9d3dd54db0c65b6cf6cf3affd6b2c43db1cece40de369b83"
+    },
+    "measuredAgainstTheAdoptedTake": {
+      "durationSeconds": {
+        "adopted": 6.667,
+        "alternate": 2.5
+      },
+      "gripReachSamplesWithinTolerance": {
+        "adopted": "31/31",
+        "alternate": "0/31"
+      },
+      "equipmentSpanAfterRetarget": {
+        "adopted": "1.04x the source",
+        "alternate": "2.84x the source"
+      },
+      "wristSpanAfterRetarget": {
+        "adopted": "1.20x the source",
+        "alternate": "0.99x the source"
+      },
+      "offHandGripIk": {
+        "adopted": "shoulder 29.4 deg, elbow 6.4 deg",
+        "alternate": "refused, out-of-reach"
+      },
+      "reading": "Wrist-to-wrist is carried faithfully and the equipment points still spread to 2.84x, so the hands land where the clip puts them and the sockets are what diverge. That points at hand ORIENTATION rather than at scale, and it is unexplained."
+    }
   }
 }

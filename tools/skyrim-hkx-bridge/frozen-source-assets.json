@@ -25,6 +25,11 @@
       "file": "assets/skyrim/greatsword/converted/2hm_idle.source.glb",
       "bytes": 154728,
       "sha256": "5167f9e2a6a06f5a9f596e4d01c529d6e9ea85528fcc00e0bb72078a65f50f93"
+    },
+    {
+      "file": "assets/skyrim/greatsword/converted/2hm_idle_alt.source.glb",
+      "bytes": 137672,
+      "sha256": "affa4082d035815e9d3dd54db0c65b6cf6cf3affd6b2c43db1cece40de369b83"
     }
   ]
 }
