@@ -24,6 +24,10 @@ export function defaultOffHandGrip(weaponId) {
 export function createStudioOffHandGripController(THREE, { getCharacter, getWeapon, stageWeaponId }) {
   const toggle = document.getElementById('offHandGrip');
   const status = document.getElementById('offHandGripStatus');
+  // The last solve, kept so something outside the page can read whether the hand actually arrived.
+  // The status line is prose for an author; this is the number, and the reason the first version of
+  // the stale-weapon bug was invisible was that no such number existed.
+  let lastSolve = null;
   if (toggle) {
     toggle.checked = defaultOffHandGrip(stageWeaponId);
     toggle.addEventListener('change', () => {
@@ -34,11 +38,13 @@ export function createStudioOffHandGripController(THREE, { getCharacter, getWeap
   }
 
   return {
+    get lastSolve() { return lastSolve; },
     // Called on the posed rig, after the weapon has followed the right hand: the target is the
     // weapon's own SECONDARY_GRIP, so it has to be where it will be drawn before the arm is solved.
     update() {
-      if (!toggle?.checked) return null;
+      if (!toggle?.checked) { lastSolve = { applied: false, reason: 'switched-off' }; return null; }
       const result = applyOffHandGripIk(THREE, { character: getCharacter(), weapon: getWeapon() });
+      lastSolve = result;
       if (status) {
         status.textContent = result.applied
           ? `off-hand grip · reached · shoulder ${result.rootDegrees.toFixed(1)}° `
