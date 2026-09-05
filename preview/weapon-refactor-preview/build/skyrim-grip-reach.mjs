@@ -76,7 +76,7 @@ export function measureSourceProportions(THREE, gltf) {
 export function measureSkyrimGripReach(THREE, {
   gltf, definition, mount, entry, samples = 30,
   createDefaultCharacter, createDebugSword, mountDebugSword, retargetConvertedSkyrimGltf,
-  composeSkyrimWeaponMountCalibration,
+  composeSkyrimWeaponMountCalibration, applyOffHandGripIk,
 }) {
   const character = createDefaultCharacter(THREE);
   const clip = retargetConvertedSkyrimGltf(THREE, gltf, character.rig, entry, { fps: 30 });
@@ -98,10 +98,15 @@ export function measureSkyrimGripReach(THREE, {
   const mainWrist = new THREE.Vector3();
   const head = new THREE.Vector3();
   const root = new THREE.Vector3();
+  // The IK runs where the runtime would run it: after the animation has posed the rig, before
+  // anything reads a hand position. Passing it in is optional so the gap can still be measured
+  // without it, which is what makes the before/after pair meaningful.
+  const solves = [];
   const sampleAt = (seconds) => {
     character.sampleAnimation(clip.name, seconds);
     character.object3d.updateMatrixWorld(true);
     weapon.update();
+    if (applyOffHandGripIk) solves.push(applyOffHandGripIk(THREE, { character, weapon }));
     character.sockets.HAND_L.getWorldPosition(hand);
     character.sockets.HAND_R.getWorldPosition(mainHand);
     weapon.sockets.SECONDARY_GRIP.getWorldPosition(grip);
@@ -148,6 +153,15 @@ export function measureSkyrimGripReach(THREE, {
     socketOffset,
     source: measureSourceProportions(THREE, gltf),
     gaps,
+    offHandGrip: applyOffHandGripIk ? Object.freeze({
+      // Only the solves from the sampling loop; the two calibration samples above are dropped so a
+      // frame is not counted twice.
+      applied: solves.slice(-samples - 1).every((solve) => solve.applied),
+      refused: solves.slice(-samples - 1).filter((solve) => !solve.applied).map((solve) => solve.reason),
+      worstBefore: Math.max(...solves.slice(-samples - 1).map((solve) => solve.gapBefore)),
+      worstShoulderDegrees: Math.max(...solves.slice(-samples - 1).map((solve) => solve.rootDegrees || 0)),
+      worstElbowDegrees: Math.max(...solves.slice(-samples - 1).map((solve) => solve.midDegrees || 0)),
+    }) : null,
     best: Math.min(...gaps.map((entryGap) => entryGap.gap)),
     worst: Math.max(...gaps.map((entryGap) => entryGap.gap)),
     wristSpan: gaps[0].wristSpan,

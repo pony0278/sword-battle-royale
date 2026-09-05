@@ -2,6 +2,7 @@ import { createDefaultCharacter } from '../../src/character/default-character.js
 import { createDebugSword, mountDebugSword } from '../../src/character/debug-sword.js';
 import { V3_LONGSWORD_DEFINITION } from '../../src/character/procedural-v3-weapon.js';
 import { V3_GREATSWORD_DEFINITION } from '../../src/character/v3-greatsword-weapon.js';
+import { createStudioOffHandGripController } from './studio-off-hand-grip-controls.js';
 import { DEFAULT_KAYKIT_SWORD_MOUNT } from '../../src/character/default-character-mount.js';
 import { applyMountCalibration, normalizeMountCalibration } from '../../src/character/character-sockets.js';
 import { POSE_KEYS } from '../../src/animation/pose-schema.js';
@@ -466,9 +467,17 @@ function swapStageWeapon(weaponId) {
 }
 
 const stageWeaponSelect = document.getElementById('stageWeapon');
+const offHandGrip = createStudioOffHandGripController(THREE, {
+  getCharacter: () => character,
+  getWeapon: () => sword,
+  stageWeaponId,
+});
 if (stageWeaponSelect) {
   stageWeaponSelect.value = stageWeaponId;
-  stageWeaponSelect.addEventListener('change', () => swapStageWeapon(stageWeaponSelect.value));
+  stageWeaponSelect.addEventListener('change', () => {
+    swapStageWeapon(stageWeaponSelect.value);
+    offHandGrip.syncToWeapon(stageWeaponSelect.value);
+  });
 }
 
 document.getElementById('showTPose').addEventListener('click', () => loadTemplate('t_pose'));
@@ -627,8 +636,9 @@ function tick(now) {
   }
   character.update(deltaSeconds, preview.camera);
   poseDragController.update();
-  motionGuideOverlay.update();
   sword.update();
+  offHandGrip.update();
+  motionGuideOverlay.update();
   blockingWorkflow.update();
   preview.update(deltaSeconds);
   preview.advanceShake(deltaSeconds);

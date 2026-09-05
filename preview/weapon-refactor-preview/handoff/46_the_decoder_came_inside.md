@@ -231,8 +231,47 @@ Three decisions worth keeping:
 The status line says what the measurement found, where an author will read it: *"1 converted
 greatsword clip retargeted at 30 fps · the off hand does not reach the hilt yet"*.
 
+## The off hand goes on the hilt
+
+```text
+worst gap  0.3928 -> 0.000000   on every one of 31 frames
+largest correction   shoulder 47.7 deg   elbow 20.1 deg   budget 60
+equipment span       9.8% source -> 10.3% here, 1.04x
+```
+
+`src/animation/two-bone-ik.js` is the solver and `src/animation/off-hand-grip-ik.js` aims it at the
+weapon's own `SECONDARY_GRIP`. Two bones — `upperarm.l` and `lowerarm.l` — and everything past the
+elbow rides along rigid, which is what makes it correct to target a *socket* rather than a bone.
+
+It is the smaller of the two fixes on purpose. The socket offset above is still 2.3x Skyrim's; this
+closes the gap where it shows without moving a single piece of equipment.
+
+Four decisions worth keeping:
+
+- **The elbow keeps the plane the animation put it in.** A two-bone chain has one degree of freedom
+  left once the hand is fixed, and this solver spends it by keeping the arm's existing plane rather
+  than inventing a pole vector it has no evidence for. Tested: two arms bent in different planes
+  toward the same target keep their own elbows.
+- **It refuses rather than doing its best.** Out of reach, or over budget at either joint, and the
+  pose is restored exactly. A solver that half-reaches is how a limb ends up somewhere nobody chose.
+- **The budget was measured, not guessed.** It was written as 45 and refused all 31 frames; the clip
+  needs 47.7 at the shoulder. 60 now, with the first value and its failure recorded next to it.
+- **A shield refuses it.** `shield-arm-hold.js` already owns this exact chain whenever a shield is
+  up, and two writers on one arm is a bug rather than a merge. The rule is checked, not documented:
+  anything socketed on `HAND_L` and the grip does nothing.
+
+The grip span coming out 1.04x the source's is the evidence that it closed for the right reason —
+both hands sit on the haft the way the animator put them, rather than the hand merely arriving at a
+point.
+
+In Action Studio it is **V3 Rig Line Only → Off-hand grip (IK)**, defaulted on for the greatsword
+and off for the longsword, because whether the off hand is free is a property of what is held. The
+status line says what happened, including the refusals in terms an author can act on — the studio's
+own authored poses honestly report *"the hilt is beyond the off arm in this pose"*, since the
+seven-key chop leaves gaps up to 1.26.
+
 ## Still not done
 
-Nothing in the fight plays it — the Guard machine does not reach for it and
-`greatsword-attack-timings.js` is still ten `null`s — and the off-hand IK does not exist, which is
-what the grip measurement above says is now required.
+Nothing in the fight plays it — the Guard machine does not reach for it, `greatsword-attack-timings.js`
+is still ten `null`s, and `bootstrap.js` does not run the off-hand grip; it is wired into the
+authoring page only. The socket offset is still there, and every future Skyrim clip will inherit it.
