@@ -270,8 +270,61 @@ status line says what happened, including the refusals in terms an author can ac
 own authored poses honestly report *"the hilt is beyond the off arm in this pose"*, since the
 seven-key chop leaves gaps up to 1.26.
 
+## The blade at the angle the game holds it
+
+Measured before changing anything, against the haft direction 2hm_idle itself carries (both hands
+are on the haft in the source, so R hand → L hand IS the haft; ours is the weapon's own +Y; both in
+an anatomical frame so neither file's axis convention is trusted):
+
+```text
+mount            haft vs clip   gap before IK   IK shoulder   IK elbow
+studio's own        40.8 deg          0.4164          49.8         22.5
+game's              22.9 deg          0.3928          47.7         20.1
+```
+
+The two differ by 112.1°. `src/game/bootstrap.js` composes the mount with the clip's G2.4.5 weapon
+bind; the studio mounted once at startup and never composed. It shows the game's angle now — and it
+also makes the IK's job smaller, which is the second-order evidence that it is the better mount.
+
+**It is an overlay, not a swap, and that was not the original plan.** A survey of the mount surface
+found the literal change unsafe: `mountCalibration` in the entry is the *author's* base — the Weapon
+Mount dial renders it, Save writes it, project JSON carries it, `setProject` writes it back on every
+project load, autosave restore and combo build, and **Bake Pose Keys solves poses against the
+sword's world grip and writes the answer into `clip.poses`**, which is authored data that ships and
+replays in the game. A composed mount living in that variable would make the dial lie, compose a
+second time on the first nudge of any axis, and silently bake poses against a blade the author never
+chose.
+
+So the base stays where it is, the overlay writes only the `Object3D`, it is idempotent, and
+`withBaseMount()` hands the author's blade back to anything that reads real geometry. Bake runs in
+there.
+
+Two bugs came out of the same survey:
+
+- **The Guard Runtime held a stale weapon pointer.** It resolved `HAND_R.children[0]` once at
+  construction, so after the stage weapon swap added last round it wrote the mount onto a detached,
+  disposed blade while the visible one kept the author's — silently, because it also restores.
+  Resolved on every use now. That one is mine, introduced with the weapon selector.
+- **Nothing could see the mount.** No test grepped for it and `window.__actionStudio` exposed none,
+  so a stage sword silently reverting would have looked identical from outside. There is a
+  `weaponMount` getter now and `verify-built-studio.mjs` asserts both it and a Guard Runtime sample
+  taken *after* a weapon swap.
+
+### A landmine found while measuring, not tripped
+
+`retargetSkyrimClip` reads the source hierarchy's **current** world transforms as `sourceRest`. Pose
+the source scene before retargeting and the whole retarget shifts — measured at **103.4° on
+`wristl`** — while `weaponBindCalibration.sourceConvertedRestFrame`, which its own name calls a rest
+frame, moves with it (112.1162° untouched, 87.6950° posed at t=0, 93.3833° at t=3).
+
+Nothing committed trips it: production loads and retargets immediately, and both review tools parse
+their own separate source copy. My first measurement of this round did trip it, which is how it was
+found. Worth making deterministic — the fix would be a no-op for every shipped number, which is also
+what makes it safe to do.
+
 ## Still not done
 
 Nothing in the fight plays it — the Guard machine does not reach for it, `greatsword-attack-timings.js`
 is still ten `null`s, and `bootstrap.js` does not run the off-hand grip; it is wired into the
 authoring page only. The socket offset is still there, and every future Skyrim clip will inherit it.
+`retargetSkyrimClip`'s dependence on the source scene's pose is recorded above and not yet fixed.

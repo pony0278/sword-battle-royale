@@ -158,7 +158,9 @@
         </div>
         <div class="pose-drag-toggles">
           <label class="check"><input id="offHandGrip" type="checkbox"> Off-hand grip (IK)</label>
+          <label class="check"><input id="gameMount" type="checkbox" checked> Game weapon mount</label>
         </div>
+        <div id="gameMountStatus" class="status-line">遊戲掛載角度：Skyrim clip 的 weapon bind 疊在 mount dial 上，只影響畫面，不動你調的基準。</div>
         <div id="offHandGripStatus" class="status-line">兩手持：左手用 IK 貼到武器的第二握把。拿盾時自動讓位。</div>
         <div id="characterStyleStatus" class="status-line">avatar 18 nodes · weapon 10 nodes · exact v3 sword outline</div>
       </section>
@@ -267,7 +269,7 @@
 
   <script>
     window.__ACTION_STUDIO_RUNTIME_STAGE = 'G2.5.2';
-    window.__ACTION_STUDIO_BUNDLE_VERSION = 'abff65a214db';
+    window.__ACTION_STUDIO_BUNDLE_VERSION = 'be434d853062';
     const actionStudioParams = new URLSearchParams(location.search);
     if (location.protocol === 'file:') {
       window.__ACTION_STUDIO_ENTRY_MODE = 'bundle-file';
@@ -285,7 +287,7 @@
       window.__ACTION_STUDIO_ENTRY_MODE = 'bundle-http';
       document.documentElement.dataset.actionStudioEntry = 'bundle-http';
       const script = document.createElement('script');
-      script.src = './action-studio.bundle.js?v=abff65a214db';
+      script.src = './action-studio.bundle.js?v=be434d853062';
       script.dataset.actionStudioVersion = window.__ACTION_STUDIO_BUNDLE_VERSION;
       script.onload = async () => {
         document.documentElement.dataset.actionStudioBoot = 'pass';

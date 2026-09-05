@@ -209,13 +209,37 @@ try {
       while (Date.now() < deadline && !/reached/.test(status())) {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      return { present: true, checked: toggle.checked, status: status() };
+      // The mount the blade is actually wearing, read off the debug facade. Nothing could see this
+      // before: no test grepped for it and window.__actionStudio exposed no mount, so a stage sword
+      // silently reverting to the author's calibration would have looked identical from outside.
+      const mount = globalThis.__actionStudio?.weaponMount || null;
+      return { present: true, checked: toggle.checked, status: status(), mount };
     }, { clipId: GREATSWORD_CLIP });
 
     console.log(`stage weapon    ${weapon.present ? `${weapon.before} -> ${weapon.after}` : 'NO SELECTOR'}`);
     console.log(`off-hand grip   ${grip.present ? `${grip.checked ? 'on' : 'off'} · ${grip.status}` : 'NO TOGGLE'}`);
+    console.log(`weapon mount    ${grip.mount ? `${grip.mount.applied} · rotation ${grip.mount.rotation.map((n) => n.toFixed(3)).join(', ')}` : 'NOT EXPOSED'}`);
 
-    if (!grip.present) failure = 'the off-hand grip toggle (#offHandGrip) is missing';
+    // The Guard Runtime AFTER the stage weapon has been swapped. It resolved the weapon object once
+    // at construction until this gate existed, so a swap left it writing the mount onto a detached,
+    // disposed blade while the visible one kept the author's - silently, since it also restores.
+    const afterSwap = await page.evaluate(async ({ mode, ms }) => {
+      const runtime = globalThis.__ACTION_STUDIO_GUARD_RUNTIME__;
+      try {
+        const result = await runtime.sampleAt(mode, ms);
+        const report = result?.report || runtime.report || {};
+        return { ok: true, clipId: String(report.clipId || ''), mount: globalThis.__actionStudio?.weaponMount?.applied || null };
+      } catch (error) {
+        return { ok: false, message: String(error?.message || error) };
+      }
+    }, { mode: SAMPLE_MODE, ms: SAMPLE_MS });
+    console.log(`guard after swap ${afterSwap.ok ? `${afterSwap.clipId} · mount ${afterSwap.mount}` : `THREW: ${afterSwap.message}`}`);
+
+    if (!afterSwap.ok) failure = `the Guard Runtime threw after a stage weapon swap: ${afterSwap.message}`;
+    else if (afterSwap.clipId !== EXPECTED_CLIP) failure = `after the swap the Guard Runtime sampled ${afterSwap.clipId}, expected ${EXPECTED_CLIP}`;
+    else if (!grip.mount) failure = 'window.__actionStudio exposes no weaponMount, so nothing can see which mount the blade wears';
+    else if (grip.mount.applied !== 'game') failure = `the blade wears the ${grip.mount.applied} mount while a Skyrim clip plays, expected the game one`;
+    else if (!grip.present) failure = 'the off-hand grip toggle (#offHandGrip) is missing';
     else if (!grip.checked) failure = 'the off-hand grip did not switch on with the greatsword';
     else if (!/reached/.test(grip.status)) failure = `the off-hand grip never reached: ${grip.status}`;
     else if (!weapon.present) failure = 'the stage weapon selector (#stageWeapon) is missing';
