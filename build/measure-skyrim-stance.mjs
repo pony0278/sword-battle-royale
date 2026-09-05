@@ -63,28 +63,35 @@ const sourceNodes = {
   footL: resolved.nodes['foot.l'], footR: resolved.nodes['foot.r'],
 };
 
-function sourceHeights() {
+// The normalizing stature is fixed at REST and passed in, never recomputed from the live pose.
+// Recomputing it per sample was this file's own first defect: it divides each sample by a
+// denominator that shrinks as the clip crouches, which converts the constant rest gap into fake
+// per-sample DELTA disagreement. It is invisible on an idle - the head barely moves - and reaches
+// 5.5 points on shd_blockbash, which is how it survived a first reading.
+function sourceHeights(frame = null) {
   sourceRoot.updateMatrixWorld(true);
   const at = (node) => node.getWorldPosition(new THREE.Vector3());
   const p = Object.fromEntries(Object.entries(sourceNodes).map(([k, n]) => [k, at(n)]));
-  // Skyrim is Z-up in its own file; the converted GLB is Y-up. Height is read off the axis the
-  // head actually separates from the root on, rather than assumed, so a convention change is loud.
-  const axisDelta = p.head.clone().sub(p.root);
-  const axis = ['x', 'y', 'z'].reduce((a, b) => (Math.abs(axisDelta[b]) > Math.abs(axisDelta[a]) ? b : a), 'x');
-  const stature = Math.abs(axisDelta[axis]);
-  const up = Math.sign(axisDelta[axis]) || 1;
-  const h = (v) => (up * (v[axis] - p.root[axis])) / stature;
-  return { axis, stature, pelvis: h(p.pelvis), footL: h(p.footL), footR: h(p.footR) };
+  // Skyrim is Z-up in its own file; the converted GLB is Y-up. The axis is read off the REST
+  // head-to-root delta once, rather than re-derived from a pose that could be crouched enough to
+  // change which component dominates.
+  const f = frame || (() => {
+    const d = p.head.clone().sub(p.root);
+    const axis = ['x', 'y', 'z'].reduce((a, b) => (Math.abs(d[b]) > Math.abs(d[a]) ? b : a), 'x');
+    return { axis, up: Math.sign(d[axis]) || 1, stature: Math.abs(d[axis]) };
+  })();
+  const h = (v) => (f.up * (v[f.axis] - p.root[f.axis])) / f.stature;
+  return { ...f, pelvis: h(p.pelvis), footL: h(p.footL), footR: h(p.footR) };
 }
 
-function targetHeights() {
+function targetHeights(frame = null) {
   character.object3d.updateMatrixWorld(true);
   const bones = character.rig.bones;
   const at = (name) => bones[name].getWorldPosition(new THREE.Vector3());
   const p = Object.fromEntries(Object.entries(TARGET_BONES).map(([k, n]) => [k, at(n)]));
-  const stature = p.head.y - p.root.y;
-  const h = (v) => (v.y - p.root.y) / stature;
-  return { stature, pelvis: h(p.pelvis), footL: h(p.footL), footR: h(p.footR) };
+  const f = frame || { stature: p.head.y - p.root.y };
+  const h = (v) => (v.y - p.root.y) / f.stature;
+  return { ...f, pelvis: h(p.pelvis), footL: h(p.footL), footR: h(p.footR) };
 }
 
 // REST. The source's rest is the pose captured at load; the target's is the rig before any clip.
@@ -95,16 +102,22 @@ const targetRest = targetHeights();
 // are compared at the same points in their cycle rather than at the same wall-clock seconds.
 const duration = character.getAnimationDuration(clip.name);
 const mixer = new THREE.AnimationMixer(sourceRoot);
-mixer.clipAction(gltf.animations[0]).play();
+const action = mixer.clipAction(gltf.animations[0]);
+// LoopOnce + clamp, because a LoopRepeat mixer asked for exactly `duration` wraps to time 0 - so
+// the t/dur = 1.0 row compared the source's FIRST frame against the target's LAST. Harmless on a
+// looping idle, wrong on a 0.8 s bash.
+action.setLoop(THREE.LoopOnce, 1);
+action.clampWhenFinished = true;
+action.play();
 const sourceDuration = gltf.animations[0].duration;
 
 const rows = [];
 for (let step = 0; step <= 10; step += 1) {
   const f = step / 10;
   mixer.setTime(sourceDuration * f);
-  const s = sourceHeights();
+  const s = sourceHeights(sourceRest);
   character.sampleAnimation(clip.name, duration * f);
-  const t = targetHeights();
+  const t = targetHeights(targetRest);
   rows.push({ f, s, t });
 }
 
