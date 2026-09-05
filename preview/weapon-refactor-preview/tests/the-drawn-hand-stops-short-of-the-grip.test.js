@@ -15,21 +15,17 @@ import { applyMountCalibration } from '../src/character/character-sockets.js';
 import { applyOffHandGripIk } from '../src/animation/off-hand-grip-ik.js';
 import { parseSourceGlb } from '../build/skyrim-grip-reach.mjs';
 
-// "The left hand is not touching the greatsword" - reported from the page, and true, and not what
-// any measurement here was measuring.
+// "The left hand is not touching the greatsword" - reported from the page, and true.
 //
-// The off-hand IK aims the HAND_L SOCKET at the weapon's SECONDARY_GRIP and lands on it exactly:
-// 0.0000, in every mode the built page offers, bind and preview alike. But the socket is not drawn.
-// kaykit-v3-line-appearance.js draws the arm out to `hand.l` and stops, and `handslot.l` - which is
-// where the socket lives, and where equipment actually hangs - is 0.1120 further on.
+// The off-hand IK aimed the HAND_L SOCKET at the weapon's SECONDARY_GRIP and landed on it exactly,
+// 0.0000, in every mode the built page offers. But the socket was not drawn:
+// kaykit-v3-line-appearance.js draws each arm out to `hand.l` / `hand.r` and stops, and
+// `handslot.l` - where the socket lives and where equipment hangs - sat 0.1120 further on. The line
+// ended 0.1120 short of a hilt the hand was holding, on BOTH hands, on every clip.
 //
-// So the line ends 0.1120 short of a hilt the hand is holding. The RIGHT hand has the same gap, and
-// reads as fine only because the sword is mounted there anyway; the left one had an IK visibly
-// reaching for something, which is what made it obvious.
-//
-// This is the socket offset (handoff/46) wearing its third face: the same 0.1794 off the wrist that
-// makes the grip span 3.66x the source's and drops the main hand 16.5 points below where the clip
-// puts it. Pinned rather than fixed, because closing it moves every weapon and shield on every clip.
+// That was the socket offset wearing its third face, and it is fixed at the root now: the equipment
+// sockets are pulled to Skyrim's own 6.3% of head-to-root, which puts them 0.0044 from the drawn
+// hand. The blade is in the drawn fist, and this file is what keeps it there.
 
 const dir = new URL('./', import.meta.url);
 const THREE = { ...ThreeModule, GLTFLoader };
@@ -71,26 +67,40 @@ test('the socket the IK aims at really is on the hilt', async () => {
   assert.ok(at(character.sockets.HAND_R).distanceTo(at(weapon.sockets.PRIMARY_GRIP)) < 1e-6);
 });
 
-test('MEASURED: the drawn arm stops 0.1120 short of it, on BOTH hands', async () => {
-  // The record. Not a rendering bug to chase in the appearance code - the line is drawn correctly
-  // to the bone it is told to draw to. The bone is not where the hand holds things.
+test('MEASURED: the drawn arm now ends on the grip, on BOTH hands', async () => {
+  // Was 0.1120. Never a rendering bug - the line was drawn correctly to the bone it was told to
+  // draw to; the bone was not where the hand holds things. Now it very nearly is.
   const { character, weapon, at } = await heldGreatsword();
   const left = at(character.rig.bones[DRAWN_ARM_TIP.left]).distanceTo(at(weapon.sockets.SECONDARY_GRIP));
   const right = at(character.rig.bones[DRAWN_ARM_TIP.right]).distanceTo(at(weapon.sockets.PRIMARY_GRIP));
-  assert.equal(left.toFixed(4), '0.1120');
-  assert.equal(right.toFixed(4), '0.1120');
+  assert.equal(left.toFixed(4), '0.0044');
+  assert.equal(right.toFixed(4), '0.0044');
   // Both hands, the same gap: it is the rig's, not the greatsword's and not the IK's.
   assert.equal(left.toFixed(4), right.toFixed(4));
 });
 
-test('and the gap is exactly the handslot offset, which is what names the cause', async () => {
+test('and the socket sits where Skyrim puts equipment, which is what closed it', async () => {
+  // 0.1794 off the wrist before - 2.3x Skyrim's. Skyrim's `Weapon` and `Shield` both sit at 6.3% of
+  // head-to-root, the same on both hands in both committed packs, and 6.3% of this rig is 0.0776.
   const { character, at } = await heldGreatsword();
+  const b = character.rig.bones;
   for (const side of ['l', 'r']) {
-    const drawn = at(character.rig.bones[`hand.${side}`]);
-    const socket = at(character.rig.bones[`handslot.${side}`]);
-    assert.equal(drawn.distanceTo(socket).toFixed(4), '0.1120');
-    // And the whole offset off the wrist, the number handoff/46 measured at 2.3x Skyrim's.
-    assert.equal(at(character.rig.bones[`wrist.${side}`]).distanceTo(socket).toFixed(4), '0.1794');
+    const socket = at(b[`handslot.${side}`]);
+    assert.equal(at(b[`hand.${side}`]).distanceTo(socket).toFixed(4), '0.0044');
+    assert.equal(at(b[`wrist.${side}`]).distanceTo(socket).toFixed(4), '0.0776');
+  }
+
+  // The fraction is a property of the RIG, so it is read off a rest pose. A posed figure has a
+  // different head-to-root - 1.1893 in this clip against 1.2414 at rest - and measuring the
+  // fraction against the posed one reports 6.5% for a socket that is exactly 6.3%.
+  const rest = createDefaultCharacter(THREE);
+  rest.object3d.updateMatrixWorld(true);
+  const restAt = (object3d) => object3d.getWorldPosition(new THREE.Vector3());
+  const stature = restAt(rest.rig.bones.head).distanceTo(restAt(rest.rig.bones.root));
+  for (const side of ['l', 'r']) {
+    const fraction = restAt(rest.rig.bones[`wrist.${side}`])
+      .distanceTo(restAt(rest.rig.bones[`handslot.${side}`])) / stature;
+    assert.ok(Math.abs(fraction - 0.063) < 0.001, `${(fraction * 100).toFixed(2)}% of stature, wanted 6.3%`);
   }
 });
 
@@ -101,5 +111,5 @@ test('the line body draws to hand.l, and handslot.l is not in it', async () => {
   assert.ok(character.rig.bones[DRAWN_ARM_TIP.left], 'the drawn tip bone must exist');
   assert.ok(character.rig.bones['handslot.l'], 'the socket bone must exist');
   assert.equal(character.rig.bones['handslot.l'].parent.name, character.rig.bones[DRAWN_ARM_TIP.left].name,
-    'handslot.l hangs off the drawn tip, so extending the drawn chain by one would close the gap');
+    'handslot.l hangs off the drawn tip - which is why pulling it in put the blade in the drawn fist');
 });
