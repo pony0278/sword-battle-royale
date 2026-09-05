@@ -32,9 +32,14 @@ import { measureSkyrimGripReach, measureSourceProportions, parseSourceGlb } from
 //                                                `Shield` node, which is what handslot.l is - it
 //                                                was at 72%.
 //
-// What survives all three corrections is the finding: this rig hangs its equipment sockets 2.3x
-// further off the wrist than Skyrim does, on both hands, and the retarget cannot correct it because
-// handslot.l and handslot.r receive rotation only. That is where the reach goes.
+// What survived all three corrections was the finding: this rig hung its equipment sockets 2.3x
+// further off the wrist than Skyrim does, on both hands, and the retarget could not correct it
+// because handslot.l and handslot.r receive rotation only.
+//
+// THAT IS FIXED NOW. build/extract-kaykit-assets.mjs pulls the sockets to Skyrim's own 6.3% of
+// head-to-root, and this file records what is left: the sockets agree with the source to 1.01x, the
+// gap the IK still has to close fell 0.3928 -> 0.2484, and the pose error that remains is the
+// retarget's own - the wrists still come out 1.32x the source's span.
 
 const dir = new URL('./', import.meta.url);
 const THREE = { ...ThreeModule, GLTFLoader };
@@ -76,17 +81,23 @@ test('the retarget keeps the pose - the wrists come out where the clip puts them
     `the wrist span came out ${(report.wristSpan / report.source.wristSpan).toFixed(2)}x the source's`);
 });
 
-test('the reach is lost in the sockets, not in the arms', async () => {
-  // The finding, and the number a fix has to move. Both equipment sockets sit far further off the
-  // wrist on this rig than on Skyrim's, so the two grip points end up nearly four times as far
-  // apart as the clip holds them - while the wrists themselves are close to right.
+test('the sockets now sit where Skyrim puts them', async () => {
+  // Was 2.3x. The extractor pulls them to Skyrim's own 6.3% of head-to-root, which is the same
+  // fraction on both hands in both committed packs - a constant to aim at, not a number to pick.
   const report = await measure(GREATSWORD_IDLE, '2hm_idle', V3_GREATSWORD_DEFINITION);
-  assert.ok(report.socketOffset / report.source.offHandSocketOffset > 2,
-    `this rig's socket sits ${(report.socketOffset / report.source.offHandSocketOffset).toFixed(1)}x off the wrist`);
-  assert.ok(report.equipmentSpan / report.source.equipmentSpan > 3,
-    `the equipment span came out ${(report.equipmentSpan / report.source.equipmentSpan).toFixed(2)}x the source's`);
-  // And it is far worse than the pose error, which is what says which one to fix.
-  assert.ok(report.equipmentSpan / report.source.equipmentSpan > 2 * (report.wristSpan / report.source.wristSpan));
+  const ratio = report.socketOffset / report.source.offHandSocketOffset;
+  assert.ok(ratio > 0.95 && ratio < 1.10, `this rig's socket sits ${ratio.toFixed(3)}x off the wrist`);
+});
+
+test('what is left is the retarget\'s own pose error, not the rig\'s', async () => {
+  // The equipment span is still wider than the source's, and now it is because the arms come out
+  // wider - the wrists at 1.32x - rather than because the sockets are flung out. The off-hand IK
+  // closes the remainder; this asserts what it is closing.
+  const report = await measure(GREATSWORD_IDLE, '2hm_idle', V3_GREATSWORD_DEFINITION);
+  assert.ok(report.wristSpan / report.source.wristSpan > 1.2,
+    `wrist span ${(report.wristSpan / report.source.wristSpan).toFixed(2)}x`);
+  // No longer the dominant term: before the fix the equipment span was 3.66x against a 1.32x pose.
+  assert.ok(report.equipmentSpan / report.source.equipmentSpan < 3);
 });
 
 test('and so the off hand does not reach the hilt - the record a fix has to beat', async () => {
@@ -95,7 +106,9 @@ test('and so the off hand does not reach the hilt - the record a fix has to beat
   // Steady across the whole 6.667 s: the gap varies by under 0.01, which is what says this is a
   // fixed offset rather than a pose that swings past the hilt and misses.
   assert.ok(report.worst - report.best < 0.01, `gap varied by ${(report.worst - report.best).toFixed(4)}`);
-  assert.ok(report.worst > 0.37 && report.worst < 0.42, `worst gap ${report.worst.toFixed(4)}`);
+  // 0.3928 before the sockets were pulled in; 0.2484 after. Still outside the 0.10 tolerance, which
+  // is why the off-hand IK stays.
+  assert.ok(report.worst > 0.23 && report.worst < 0.27, `worst gap ${report.worst.toFixed(4)}`);
   // Better than the authored pose's 1.26 all the same, and worse than its best of 0.27.
   assert.ok(report.worst < 1.26);
 });
@@ -141,5 +154,5 @@ test('SECONDARY_GRIP is now placed from the clip rather than from the longsword'
 test('the one-handed guard hold measures as one-handed, which is the control', async () => {
   const report = await measure(GUARD_HOLD, 'shd_blockidle', V3_LONGSWORD_DEFINITION);
   assert.ok(report.source.equipmentSpan > 0.45);
-  assert.ok(report.worst > 1.0, `worst gap ${report.worst.toFixed(4)}`);
+  assert.ok(report.worst > 0.9, `worst gap ${report.worst.toFixed(4)}`);
 });

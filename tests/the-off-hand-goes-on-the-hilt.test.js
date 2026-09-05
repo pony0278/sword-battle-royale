@@ -74,12 +74,15 @@ test('MEASURED: the off hand reaches the hilt, on every frame of the clip', asyn
 test('what it had to overcome, and what it cost', async () => {
   const report = await measure({ applyOffHandGripIk });
   // The before, kept next to the after so the pair cannot drift apart.
-  assert.ok(report.offHandGrip.worstBefore > 0.37 && report.offHandGrip.worstBefore < 0.42,
+  // 0.3928 when this was written, 0.2484 once the equipment sockets were pulled to Skyrim's 6.3%.
+  assert.ok(report.offHandGrip.worstBefore > 0.23 && report.offHandGrip.worstBefore < 0.27,
     `without the IK the gap is ${report.offHandGrip.worstBefore.toFixed(4)}`);
-  // The cost, and why the budget is 60 rather than the 45 it was first written with.
-  assert.ok(report.offHandGrip.worstShoulderDegrees > 45, 'a 45 degree budget would refuse this clip');
+  // The cost, and how much the socket fix bought: the shoulder went 47.7 -> 29.4, the elbow
+  // 20.1 -> 6.4. The 60 degree budget stays - it was measured against the worse case and a clip
+  // held a little differently should not be refused for the sake of a tighter number.
+  assert.ok(report.offHandGrip.worstShoulderDegrees < 35, 'the socket fix should have shrunk this');
   assert.ok(report.offHandGrip.worstShoulderDegrees < OFF_HAND_GRIP_SCOPE.maxCorrectionDegrees);
-  assert.ok(report.offHandGrip.worstElbowDegrees < 25);
+  assert.ok(report.offHandGrip.worstElbowDegrees < 10);
 });
 
 test('and the grip span comes out the width the clip holds it', async () => {

@@ -67,6 +67,67 @@ function nearestJointParent(index, parents, jointIndexes) {
   return parent == null ? null : parent;
 }
 
+// Where a held weapon sits, relative to the hand that holds it.
+//
+// KayKit's own handslot bones sit 0.1794 from the wrist - 14.5% of this rig's head-to-root height.
+// Skyrim's equipment nodes, `Weapon` on the right hand and `Shield` on the left, sit at 6.3%, and
+// that 6.3% is the same on both hands in both committed source packs, which is what makes it a
+// constant to aim at rather than a number to pick.
+//
+// Leaving KayKit's meant every weapon and every shield floated past the hand holding it, in two
+// ways that took three rounds to connect (handoff/46):
+//
+//   the drawn hand   the V3 line body draws each arm out to `hand.l` / `hand.r` and stops, so the
+//                    blade hung 0.1120 beyond the visible hand - on BOTH fighters, every clip
+//   the retarget     a Skyrim clip places the hands where the animator put them and the equipment
+//                    2.3x too far out, so a two-handed grip 0.12 wide came out 0.43 wide
+//
+// The correction is small and lands in a place worth noticing: pulled to 6.3%, the socket sits
+// 0.0042 from `hand.l` - it very nearly IS the drawn hand. Skyrim's authored equipment placement
+// and this rig's own drawn hand agree to within 0.34% of a body height. That agreement is the
+// argument; the number is not tuned to make anything look right.
+//
+// Direction is KayKit's own - the socket keeps pointing into the palm the way the model authored
+// it - and only the distance changes.
+const SKYRIM_EQUIPMENT_OFFSET_FRACTION = 0.063;
+
+function pullEquipmentSocketsToTheHand(bones) {
+  const byId = new Map(bones.map((bone) => [bone.id, bone]));
+  const worldOffsetFromParent = (id) => {
+    const bone = byId.get(id);
+    return bone ? Math.hypot(...bone.position) : null;
+  };
+  // head-to-root, measured off the rest chain rather than assumed, so the fraction above is applied
+  // against the rig this run actually extracted.
+  const stature = chainLength(byId, 'head');
+  if (!stature) throw new Error('Cannot measure the rig stature: no head chain');
+
+  for (const side of ['l', 'r']) {
+    const slot = byId.get(`handslot.${side}`);
+    const hand = byId.get(`hand.${side}`);
+    if (!slot || !hand) continue;
+    const wristToHand = Math.hypot(...hand.position);
+    const handToSlot = worldOffsetFromParent(`handslot.${side}`);
+    const target = SKYRIM_EQUIPMENT_OFFSET_FRACTION * stature;
+    // The two segments are near-collinear (0.0738 + 0.1120 = 0.1858 against a measured 0.1794), so
+    // scaling the second one to hit the target distance is accurate to a thousandth. Solved rather
+    // than assumed: the scale is what makes |wristToHand + s * handToSlot| land on the target.
+    const scale = Math.max(0, (target - wristToHand) / handToSlot);
+    slot.position = slot.position.map((value) => value * scale);
+  }
+}
+
+// Sum of the rest offsets from the root down to a bone - this rig's own height, in its own units.
+function chainLength(byId, id) {
+  let total = 0;
+  let bone = byId.get(id);
+  while (bone && bone.parent) {
+    total += Math.hypot(...bone.position);
+    bone = byId.get(bone.parent);
+  }
+  return total;
+}
+
 function buildRigDefinition(glb) {
   const skin = [...(glb.skins || [])].sort((a, b) => b.joints.length - a.joints.length)[0];
   if (!skin) throw new Error('KayKit source GLB has no skin');
@@ -107,6 +168,8 @@ function buildRigDefinition(glb) {
   for (const [socketId, socket] of Object.entries(sockets)) {
     if (!socket.parent) throw new Error(`Cannot resolve ${socketId} parent bone`);
   }
+
+  pullEquipmentSocketsToTheHand(bones);
 
   return {
     format: 'procedural-humanoid-rig',

@@ -389,6 +389,61 @@ reaches the ground; the source pose allows 1.11x. Ours is 2.37x. Scaling alone d
 the feet: the pelvis sits 24.6 points lower than the source's and the feet 6.2 higher, which is its
 own unexplained finding and not the socket offset.
 
+## A: the equipment sockets come back to the hand
+
+One number, measured on both hands in both committed source packs:
+
+```text
+Skyrim's `Weapon` and `Shield`, off the wrist    6.3% of head-to-root   (both hands, both packs)
+this rig's handslot, before                     14.5%                   0.1794
+this rig's handslot, after                       6.3%                   0.0776
+```
+
+`handslot.l/r` are KayKit's own bones — `build/extract-kaykit-assets.mjs` reads them straight from
+the model's skin — so this is an explicit override in the extractor, direction kept (it still points
+into the palm the way KayKit authored it) and only the distance changed.
+
+**The coincidence worth noticing.** Pulled to 6.3%, the socket lands **0.0044** from `hand.l`. Skyrim's
+authored equipment placement and this rig's own drawn hand agree to within 0.34% of a body height.
+Nothing was tuned to make that happen; it is why one change closed three symptoms.
+
+```text
+                                    before      after
+socket off the wrist            2.3x Skyrim's   1.01x
+drawn hand -> the hilt it holds     0.1120     0.0044
+gap the off-hand IK must close      0.3928     0.2484
+IK correction, shoulder / elbow  47.7 / 20.1   29.4 / 6.4
+```
+
+### What it cost, and what it did not
+
+**Nothing that is a rotation moved.** The G2.4.5 weapon bind is still `112.1162`, the basis
+`179.9999`, the translation scale `0.010315`, the target height `1.241425` — predicted before the
+change and confirmed after, because the bind reads a quaternion and the scale reads only head↔root.
+
+**The three browser gates pass, and two of them are unchanged:**
+
+```text
+golden grid      11 cells reproduced
+defence matrix   all six timings byte-identical
+parry gate       passed, with the three vectors moved
+                 before  top 0.05,0.93,0.36  right -0.76,0.54,0.35  left 0.99,0.12,0.12
+                 after   top 0.02,0.92,0.38  right -0.83,0.35,0.43  left 0.98,0.15,0.15
+```
+
+**The price, stated plainly: the golden grid's tightest margin went from 14.0% of its tolerance to
+32.4%** — `left@1.6 off by 0.006997` became `top@1.8 off by 0.016175`. Still two thirds of the
+tolerance unused, and reproduced identically on a second run, but there is less headroom than
+before and the next change to touch contact geometry starts from there.
+
+**No animation family assumed the old offset.** The UAL1, UAL2 and Quaternius retargets contain
+zero references to `handslot`; it was never animated, only mounted on. That is what made this a
+one-line-of-geometry change rather than a re-authoring.
+
+Seven pinned records went red, and every one of them existed to describe the defect — the socket
+ratio, the reach the IK had to close, the drawn hand's 0.1120, the authored-pose gaps. They are
+rewritten to the new truth with the old numbers kept beside them.
+
 ## Still not done
 
 Nothing in the fight plays it — the Guard machine does not reach for it, `greatsword-attack-timings.js`
