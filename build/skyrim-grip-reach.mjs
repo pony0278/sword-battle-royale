@@ -95,6 +95,15 @@ export function measureSkyrimGripReach(THREE, {
   if (!bind?.correctionQuaternion) throw new Error(`${entry.clipId} carries no weapon bind calibration`);
   const calibratedMount = composeSkyrimWeaponMountCalibration(THREE, mount, bind);
 
+  // The character's own height, taken while the character IS still only the character. The comment
+  // that used to sit beside the box downstream said exactly this and the code did the opposite -
+  // the box was taken after mountDebugSword, so it was the sword's box, and every gap reported as a
+  // percentage of it came out 1.9293x too small on the greatsword.
+  character.sampleAnimation(clip.name, 0);
+  character.object3d.updateMatrixWorld(true);
+  const unarmedBox = new THREE.Box3().setFromObject(character.object3d);
+  const height = unarmedBox.max.y - unarmedBox.min.y;
+
   const weapon = createDebugSword(THREE, { definition });
   mountDebugSword(character, weapon, calibratedMount);
 
@@ -121,14 +130,6 @@ export function measureSkyrimGripReach(THREE, {
     bones['wrist.l'].getWorldPosition(offWrist);
     bones['wrist.r'].getWorldPosition(mainWrist);
   };
-
-  // The character's own height, measured BEFORE the weapon is mounted. A greatsword is longer than
-  // the fighter is tall, so a bounding box taken afterwards is the sword's box, and every gap read
-  // as a percentage of it comes out flatteringly small.
-  character.sampleAnimation(clip.name, 0);
-  character.object3d.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(character.object3d);
-  const height = box.max.y - box.min.y;
 
   sampleAt(0);
   bones.head.getWorldPosition(head);

@@ -1,0 +1,14 @@
+import * as ThreeModule from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { createDefaultCharacter } from '../src/character/default-character.js';
+const THREE = { ...ThreeModule, GLTFLoader };
+const ch = createDefaultCharacter(THREE);
+ch.object3d.updateMatrixWorld(true);
+const box = new THREE.Box3();
+const list = [];
+ch.object3d.traverse((o)=>{ if(!o.isMesh||!o.geometry) return; box.setFromObject(o);
+  list.push([o.name||'(unnamed)', o.visible, box.min.y, box.max.y, o.type]); });
+list.sort((a,b)=>a[2]-b[2]);
+for (const [n,v,lo,hi,t] of list.slice(0,8)) console.log(`${String(n).padEnd(26)} vis=${v} type=${t} y ${lo.toFixed(4)} .. ${hi.toFixed(4)}`);
+console.log(`total meshes ${list.length}`);
+console.log('jointRadius =', ch.rig.lineAppearance?.style?.jointRadius);
