@@ -1,5 +1,8 @@
 import { createDefaultCharacter } from '../../src/character/default-character.js';
 import { createDebugSword, mountDebugSword } from '../../src/character/debug-sword.js';
+import { V3_LONGSWORD_DEFINITION } from '../../src/character/procedural-v3-weapon.js';
+import { V3_GREATSWORD_DEFINITION } from '../../src/character/v3-greatsword-weapon.js';
+import { createStudioStageWeaponOverlays } from './studio-stage-weapon-overlays.js';
 import { DEFAULT_KAYKIT_SWORD_MOUNT } from '../../src/character/default-character-mount.js';
 import { applyMountCalibration, normalizeMountCalibration } from '../../src/character/character-sockets.js';
 import { POSE_KEYS } from '../../src/animation/pose-schema.js';
@@ -41,13 +44,33 @@ if (!THREE) throw new Error('Action Studio requires Three.js r128');
 
 const LIBRARY_KEY = 'ACTION_STUDIO_CLIP_LIBRARY_V1';
 const MOUNT_KEY = 'ACTION_STUDIO_KAYKIT_SWORD_MOUNT_V2';
+const STAGE_WEAPON_KEY = 'ACTION_STUDIO_STAGE_WEAPON_V1';
+
+// Which weapon the stage figure holds. Not a combat property - the fight's weapon is decided by
+// the game - but the studio previews Skyrim source packs, and a two-handed idle read while the
+// figure holds a longsword tells you very little about the pose.
+//
+// The mount is the same for both: HAND_R lands exactly on PRIMARY_GRIP either way, measured in
+// build/measure-skyrim-grip-reach.mjs, so swapping the blade needs no recalibration.
+const STAGE_WEAPONS = Object.freeze({
+  longsword: V3_LONGSWORD_DEFINITION,
+  greatsword: V3_GREATSWORD_DEFINITION,
+});
 const DEG_TO_RAD = Math.PI / 180;
 
 const canvas = document.getElementById('stageCanvas');
 const character = createDefaultCharacter(THREE);
-const sword = createDebugSword(THREE);
+let stageWeaponId = loadStageWeaponId();
+let sword = createDebugSword(THREE, { definition: STAGE_WEAPONS[stageWeaponId] });
 let mountCalibration = loadMountCalibration();
 mountDebugSword(character, sword, mountCalibration);
+const stageWeapon = createStudioStageWeaponOverlays(THREE, {
+  getCharacter: () => character,
+  getWeapon: () => sword,
+  getBaseMount: () => mountCalibration,
+  getBoundClip: () => character.animation.clips.get(character.animation.currentClipName),
+  stageWeaponId,
+});
 const preview = createStudioPreviewRuntime(THREE, {
   canvas,
   character,
@@ -80,7 +103,8 @@ let blockingWorkflow = null, projectIo = null;
 const motionGuideOverlay = createWholeBodyMotionGuideOverlay(THREE, { scene: preview.scene, camera: preview.camera, canvas, character, sword });
 const motionGuideEditor = createStudioMotionGuideEditor({
   overlay: motionGuideOverlay, applyProject: (project, options) => { setProject(project, options); projectIo?.saveAutosave('motion guide bake'); },
-  bakeProject: (project, guide) => bakeStudioMotionConstraints(project, { character, sword, guide }),
+  bakeProject: (project, guide) => stageWeapon.withBaseMount(
+    () => bakeStudioMotionConstraints(project, { character, sword, guide })),
   getFrame: () => player.frame, onStatus: (message, error) => setIoStatus(message, error),
 });
 
@@ -137,6 +161,11 @@ blockingWorkflow = createStudioBlockingWorkflow(THREE, {
     blockingWorkflow.setStatus(`Captured ${captured.name} at ${captured.frame}f · ready to drag the next pose.`);
   },
 });
+function loadStageWeaponId() {
+  const stored = String(localStorage.getItem(STAGE_WEAPON_KEY) || '');
+  return Object.prototype.hasOwnProperty.call(STAGE_WEAPONS, stored) ? stored : 'longsword';
+}
+
 function loadMountCalibration() {
   return normalizeMountCalibration(readStoredJson(localStorage, MOUNT_KEY, DEFAULT_KAYKIT_SWORD_MOUNT));
 }
@@ -425,6 +454,33 @@ bindV3AppearanceToggle('toggleRigGlow', (visible) => {
   sword.setGlowVisible(visible);
 });
 
+function swapStageWeapon(weaponId) {
+  const definition = STAGE_WEAPONS[weaponId];
+  if (!definition || weaponId === stageWeaponId) return;
+  const previous = sword;
+  stageWeaponId = weaponId;
+  localStorage.setItem(STAGE_WEAPON_KEY, weaponId);
+  sword = createDebugSword(THREE, { definition });
+  mountDebugSword(character, sword, mountCalibration);
+  stageWeapon.syncToWeapon(stageWeaponId);
+  // Both of these captured the old weapon; neither would draw the new one otherwise - the trail
+  // reads the tip and the off-hand guide reads the secondary grip.
+  preview.setSword(sword);
+  motionGuideOverlay.setSword(sword);
+  // Whatever the appearance toggles are showing now, the new blade has to match.
+  sword.setNodesVisible(document.getElementById('toggleRigNodes').classList.contains('on'));
+  sword.setGlowVisible(document.getElementById('toggleRigGlow').classList.contains('on'));
+  previous.object3d.parent?.remove(previous.object3d);
+  previous.dispose?.();
+}
+
+const stageWeaponSelect = document.getElementById('stageWeapon');
+if (stageWeaponSelect) {
+  stageWeaponSelect.value = stageWeaponId;
+  // swapStageWeapon syncs the overlays itself - it is also reachable without the select.
+  stageWeaponSelect.addEventListener('change', () => swapStageWeapon(stageWeaponSelect.value));
+}
+
 document.getElementById('showTPose').addEventListener('click', () => loadTemplate('t_pose'));
 document.getElementById('showIdle').addEventListener('click', () => loadTemplate('idle'));
 document.getElementById('playSlash').addEventListener('click', () => loadTemplate('slash_test', true));
@@ -581,8 +637,9 @@ function tick(now) {
   }
   character.update(deltaSeconds, preview.camera);
   poseDragController.update();
-  motionGuideOverlay.update();
   sword.update();
+  stageWeapon.update();
+  motionGuideOverlay.update();
   blockingWorkflow.update();
   preview.update(deltaSeconds);
   preview.advanceShake(deltaSeconds);
@@ -600,6 +657,7 @@ window.__actionStudio = {
   get characterRigId() { return character.rig.definition.id; },
   get proceduralBoneCount() { return Object.keys(character.rig.bones).length; },
   get weaponRigId() { return sword.definition.id; },
+  get weaponMount() { return { applied: stageWeapon.appliedMount, rotation: sword.object3d.rotation.toArray().slice(0, 3) }; },
   get weaponBoneCount() { return Object.keys(sword.bones).length; },
   get weaponSockets() { return Object.keys(sword.sockets); },
   get weaponSweepSegment() {

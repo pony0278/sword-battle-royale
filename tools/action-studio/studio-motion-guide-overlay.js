@@ -57,8 +57,11 @@ export function createWholeBodyMotionGuideOverlay(THREE, {
   camera,
   canvas,
   character,
-  sword,
+  sword: initialSword,
 }) {
+  // Held rather than captured, for the same reason as the preview runtime: the stage weapon can be
+  // swapped, and the off-hand guide reads the weapon's own secondary grip.
+  let sword = initialSword;
   const group = new THREE.Group();
   group.name = 'WHOLE_BODY_MOTION_GUIDES';
   group.visible = false;
@@ -281,6 +284,7 @@ export function createWholeBodyMotionGuideOverlay(THREE, {
     setGuide,
     update,
     setGuideChangeHandler(handler) { onGuideChange = typeof handler === 'function' ? handler : null; },
+    setSword(next) { sword = next; },
     get guide() { return guide ? { ...guide } : null; },
     get diagnostics() { return { ...diagnostics }; },
   };

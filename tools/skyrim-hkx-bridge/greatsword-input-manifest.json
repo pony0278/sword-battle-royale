@@ -1,0 +1,45 @@
+{
+  "stage": "Greatsword source bake",
+  "purpose": "Two-handed idle, decoded in-repository rather than in Blender",
+  "capturedFromUserSuppliedFiles": true,
+  "skeleton": {
+    "file": "skeleton.hkx",
+    "byteLength": 74048,
+    "sha256": "16a91abddbdcf4760e922a30f62ac5b1ee053e8ff904fc13470f7b5d52e5b04d",
+    "havokVersion": "hk_2010.2.0-r1",
+    "requiredClass": "hkaSkeleton",
+    "semanticBonesFound": 19,
+    "semanticBonesRequired": 19,
+    "animationBones": 99,
+    "note": "The same file g2-3-1-input-manifest.json froze. The greatsword idle and the guard pack were baked against one skeleton, which is why their bone offsets are identical."
+  },
+  "animation": {
+    "file": "2hm_idle.hkx",
+    "byteLength": 53552,
+    "sha256": "40011c2b4a4a2bbd456a2ec890452c2d1171928186ccc08d120c6c9ac9205fc9",
+    "havokVersion": "hk_2010.2.0-r1",
+    "animationClass": "hkaSplineCompressedAnimation",
+    "bindingClass": "hkaAnimationBinding",
+    "transformTracks": 210
+  },
+  "pairValidation": {
+    "sameHavokGeneration": true,
+    "acceptedForRealBake": true,
+    "trackCountExceedsSkeletonBones": true,
+    "foreignTracksPruned": 223,
+    "evidenceTheSharedTracksAreCorrect": "All 23 SKYRIM_BONE_RETARGETS bind offsets match shd_blockidle's to every printed decimal, except handslot.r (the WEAPON node), which a two-handed clip is expected to place differently. Bind offsets are the skeleton's own bone lengths and would scramble under any shift in track numbering."
+  },
+  "output": {
+    "sourceGlb": "2hm_idle.source.glb",
+    "canonicalClipId": "SKYRIM_GREATSWORD/2hm_idle",
+    "fps": 30,
+    "seconds": 6.6667,
+    "channels": 198,
+    "preserveSkyrimSourceHierarchy": true,
+    "retargetInBlender": false
+  },
+  "assetPolicy": {
+    "commitRawHkx": false,
+    "commitExperimentalSourceGlb": false
+  }
+}

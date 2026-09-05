@@ -149,6 +149,19 @@
           <button id="toggleRigNodes" class="on">Joint Nodes</button>
           <button id="toggleRigGlow" class="on">Glow Layer</button>
         </div>
+        <div class="kaykit-runtime-controls">
+          <label for="stageWeapon">Stage weapon</label>
+          <select id="stageWeapon" aria-label="Stage weapon">
+            <option value="longsword">Longsword</option>
+            <option value="greatsword">Greatsword</option>
+          </select>
+        </div>
+        <div class="pose-drag-toggles">
+          <label class="check"><input id="offHandGrip" type="checkbox"> Off-hand grip (IK)</label>
+          <label class="check"><input id="gameMount" type="checkbox" checked> Game weapon mount</label>
+        </div>
+        <div id="gameMountStatus" class="status-line">遊戲掛載角度：Skyrim clip 的 weapon bind 疊在 mount dial 上，只影響畫面，不動你調的基準。</div>
+        <div id="offHandGripStatus" class="status-line">兩手持：左手用 IK 貼到武器的第二握把。拿盾時自動讓位。</div>
         <div id="characterStyleStatus" class="status-line">avatar 18 nodes · weapon 10 nodes · exact v3 sword outline</div>
       </section>
 

@@ -1,4 +1,4 @@
-import { retargetSkyrimClip } from './skyrim-animation-retarget.js';
+import { captureSkyrimSourceRest, retargetSkyrimClip } from './skyrim-animation-retarget.js';
 import { computeSkyrimWeaponBindCalibration } from './skyrim-weapon-bind-calibration.js';
 import {
   canCreateProductionParryDeflectClips,
@@ -43,18 +43,45 @@ export const SKYRIM_GUARD_CONVERTED_FILES = Object.freeze([
   ...SKYRIM_GUARD_REACTION_CONVERTED_FILES,
 ]);
 
+// The greatsword pack. A separate list and a separate directory rather than a fifth guard entry,
+// because these are not Guard clips: nothing in the Guard state machine plays them, and the
+// production parry-deflect clips this module derives are built from the shd_* family by name.
+//
+// The bake is this repository's own (handoff/46) rather than the 2025 Blender ones. The retarget
+// alone leaves the off hand 0.39 short of the hilt, because this rig hangs its equipment sockets
+// more than twice as far off the wrist as Skyrim does; src/animation/off-hand-grip-ik.js closes
+// that where it shows. tests/the-clip-holds-the-sword-the-retarget-does-not.test.js has the before,
+// tests/the-off-hand-goes-on-the-hilt.test.js has the after.
+export const SKYRIM_GREATSWORD_CONVERTED_FILES = Object.freeze([
+  Object.freeze({
+    id: '2hm_idle',
+    file: '2hm_idle.source.glb',
+    clipId: 'SKYRIM_GREATSWORD/2hm_idle',
+    role: 'Two-Handed Idle',
+  }),
+]);
+
 const DEFAULT_BASE_URL = '../../assets/skyrim/guard/converted/';
+export const SKYRIM_GREATSWORD_BASE_URL = '../../assets/skyrim/greatsword/converted/';
 
 function normalizedBaseUrl(value) {
   return String(value || DEFAULT_BASE_URL).replace(/\/?$/, '/');
 }
 
+// Capture the source's rest pose the moment the file becomes a scene - earlier than any caller can
+// pose it. retargetSkyrimClip restores from this stash, so a page that samples the source hierarchy
+// for a side-by-side review before asking for a retarget still gets the retarget the file describes.
+function captured(gltf) {
+  captureSkyrimSourceRest(gltf?.scene);
+  return gltf;
+}
+
 function loadGlb(loader, url) {
-  return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
+  return new Promise((resolve, reject) => loader.load(url, (gltf) => resolve(captured(gltf)), undefined, reject));
 }
 
 function parseGlb(loader, arrayBuffer) {
-  return new Promise((resolve, reject) => loader.parse(arrayBuffer, '', resolve, reject));
+  return new Promise((resolve, reject) => loader.parse(arrayBuffer, '', (gltf) => resolve(captured(gltf)), reject));
 }
 
 function disposeSourceScene(scene) {

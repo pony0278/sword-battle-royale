@@ -33,6 +33,13 @@ const EXPECTED_CLIP = 'SKYRIM_GUARD/power_parry_g363';
 const SOURCE_MS_MIN = 810;
 const SOURCE_MS_MAX = 830;
 
+// The greatsword pack, which is loaded through the page's own External Motion Library controls
+// rather than a sampler. There is no in-page gate for it and no committed numbers to reproduce -
+// the question is only whether the clip the bake produced can be selected and retargeted by the
+// built page at all, which is the thing a person opening the studio would try first.
+const GREATSWORD_SOURCE = 'greatsword';
+const GREATSWORD_CLIP = 'SKYRIM_GREATSWORD/2hm_idle';
+
 const CANDIDATES = [
   process.env.CHROME_PATH,
   '/opt/pw-browsers/chromium',
@@ -139,6 +146,115 @@ try {
       }
     }
   }
+  if (!failure) {
+    const greatsword = await page.evaluate(async ({ source, clipId }) => {
+      const pack = document.getElementById('animationPackSource');
+      const options = [...pack.options].map((option) => option.value);
+      if (!options.includes(source)) return { options, loaded: false, clips: [] };
+      pack.value = source;
+      pack.dispatchEvent(new Event('change', { bubbles: true }));
+      document.getElementById('loadKayKitAnimations').click();
+      const clipSelect = document.getElementById('kaykitClip');
+      // The load fetches and retargets; polled rather than slept on, and given up on loudly.
+      const deadline = Date.now() + 60000;
+      while (Date.now() < deadline) {
+        if ([...clipSelect.options].some((option) => option.value === clipId)) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      return {
+        options,
+        loaded: [...clipSelect.options].some((option) => option.value === clipId),
+        clips: [...clipSelect.options].map((option) => option.value).filter(Boolean),
+        status: document.getElementById('kaykitStatus')?.textContent || '',
+      };
+    }, { source: GREATSWORD_SOURCE, clipId: GREATSWORD_CLIP });
+
+    // And the stage weapon, which is the other half of "see the two-handed idle": the pose read
+    // while the figure holds a longsword says very little. Driven through the page's own select
+    // rather than the swap function, because the wiring between them is what could break.
+    const weapon = await page.evaluate(async () => {
+      const select = document.getElementById('stageWeapon');
+      if (!select) return { present: false };
+      const before = globalThis.__actionStudio?.weaponRigId;
+      select.value = 'greatsword';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return {
+        present: true,
+        before,
+        after: globalThis.__actionStudio?.weaponRigId,
+        stillInHand: globalThis.__actionStudio?.handRWeaponAttached,
+      };
+    });
+
+    console.log(`pack options    ${greatsword.options.join(', ')}`);
+    console.log(`greatsword      ${greatsword.loaded ? 'loaded' : 'NOT LOADED'} · clips: ${greatsword.clips.join(', ') || 'none'}`);
+    if (greatsword.status) console.log(`                ${greatsword.status}`);
+
+    // And the off-hand grip, which is the thing the greatsword pack exists to be looked at with.
+    // Read off the status line the page writes rather than off an internal, because what an author
+    // is told is the part that can silently stop being true.
+    // Driven as an author would: the pack is loaded and the weapon swapped above, so now play the
+    // clip. Checking the toggle against the studio's opening pose would only ever confirm the
+    // honest refusal - the authored seven-key chop leaves the hilt beyond the off arm.
+    const grip = await page.evaluate(async ({ clipId }) => {
+      const toggle = document.getElementById('offHandGrip');
+      if (!toggle) return { present: false };
+      const clipSelect = document.getElementById('kaykitClip');
+      clipSelect.value = clipId;
+      clipSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      document.getElementById('playKayKitAnimation').click();
+      const status = () => document.getElementById('offHandGripStatus')?.textContent || '';
+      const deadline = Date.now() + 20000;
+      while (Date.now() < deadline && !/reached/.test(status())) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      // The mount the blade is actually wearing, read off the debug facade. Nothing could see this
+      // before: no test grepped for it and window.__actionStudio exposed no mount, so a stage sword
+      // silently reverting to the author's calibration would have looked identical from outside.
+      const mount = globalThis.__actionStudio?.weaponMount || null;
+      return { present: true, checked: toggle.checked, status: status(), mount };
+    }, { clipId: GREATSWORD_CLIP });
+
+    console.log(`stage weapon    ${weapon.present ? `${weapon.before} -> ${weapon.after}` : 'NO SELECTOR'}`);
+    console.log(`off-hand grip   ${grip.present ? `${grip.checked ? 'on' : 'off'} · ${grip.status}` : 'NO TOGGLE'}`);
+    console.log(`weapon mount    ${grip.mount ? `${grip.mount.applied} · rotation ${grip.mount.rotation.map((n) => n.toFixed(3)).join(', ')}` : 'NOT EXPOSED'}`);
+
+    // The Guard Runtime AFTER the stage weapon has been swapped. It resolved the weapon object once
+    // at construction until this gate existed, so a swap left it writing the mount onto a detached,
+    // disposed blade while the visible one kept the author's - silently, since it also restores.
+    const afterSwap = await page.evaluate(async ({ mode, ms }) => {
+      const runtime = globalThis.__ACTION_STUDIO_GUARD_RUNTIME__;
+      try {
+        const result = await runtime.sampleAt(mode, ms);
+        const report = result?.report || runtime.report || {};
+        return { ok: true, clipId: String(report.clipId || ''), mount: globalThis.__actionStudio?.weaponMount?.applied || null };
+      } catch (error) {
+        return { ok: false, message: String(error?.message || error) };
+      }
+    }, { mode: SAMPLE_MODE, ms: SAMPLE_MS });
+    console.log(`guard after swap ${afterSwap.ok ? `${afterSwap.clipId} · mount ${afterSwap.mount}` : `THREW: ${afterSwap.message}`}`);
+
+    if (!afterSwap.ok) failure = `the Guard Runtime threw after a stage weapon swap: ${afterSwap.message}`;
+    else if (afterSwap.clipId !== EXPECTED_CLIP) failure = `after the swap the Guard Runtime sampled ${afterSwap.clipId}, expected ${EXPECTED_CLIP}`;
+    else if (!grip.mount) failure = 'window.__actionStudio exposes no weaponMount, so nothing can see which mount the blade wears';
+    else if (grip.mount.applied !== 'game') failure = `the blade wears the ${grip.mount.applied} mount while a Skyrim clip plays, expected the game one`;
+    else if (!grip.present) failure = 'the off-hand grip toggle (#offHandGrip) is missing';
+    else if (!grip.checked) failure = 'the off-hand grip did not switch on with the greatsword';
+    else if (!/reached/.test(grip.status)) failure = `the off-hand grip never reached: ${grip.status}`;
+    else if (!weapon.present) failure = 'the stage weapon selector (#stageWeapon) is missing';
+    else if (weapon.after !== 'v3_procedural_greatsword') failure = `stage weapon is ${weapon.after}, expected v3_procedural_greatsword`;
+    else if (!weapon.stillInHand) failure = 'the swapped weapon is not attached to HAND_R';
+    else if (!greatsword.options.includes(GREATSWORD_SOURCE)) {
+      failure = `the pack selector offers no "${GREATSWORD_SOURCE}" source: ${greatsword.options.join(', ')}`;
+    } else if (!greatsword.loaded) {
+      failure = `${GREATSWORD_CLIP} never reached the clip list: ${greatsword.clips.join(', ') || 'the list stayed empty'}`;
+    } else if (errors.length > 0) {
+      failure = `${errors.length} console errors while loading the greatsword pack: ${errors[0]}`;
+    } else if (notFound.length > 0) {
+      failure = `the built site could not answer ${notFound[0]}`;
+    }
+  }
 } finally {
   await browser.close();
   await server.close();
@@ -148,4 +264,4 @@ if (failure) {
   console.error(`\nFAIL · ${failure}`);
   process.exit(1);
 }
-console.log('\nPASS · the bundled Action Studio boots on one origin and its Guard Runtime reproduces the record');
+console.log('\nPASS · the bundled Action Studio boots on one origin, its Guard Runtime reproduces the record, and the greatsword pack loads');

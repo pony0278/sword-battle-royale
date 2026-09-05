@@ -121,7 +121,11 @@ export function createStudioGuardRuntimeController(THREE, options = {}) {
   const panel = resolveGuardPanel();
   const status = document.getElementById('guardRuntimeStatus');
   const detail = document.getElementById('guardRuntimeDetail');
-  const weaponObject3d = character.sockets?.HAND_R?.children?.[0] || null;
+  // Resolved on every use, not once. The stage weapon can be replaced while this controller lives -
+  // the stage weapon selector builds a new sword, mounts it and disposes the old one - and a
+  // pointer captured at construction would go on writing the mount onto a detached, disposed blade
+  // while the visible one kept the author's.
+  const weaponObject3d = () => character.sockets?.HAND_R?.children?.[0] || null;
   let machine = null;
   let runtime = null;
   let mountRuntime = null;
@@ -185,7 +189,7 @@ export function createStudioGuardRuntimeController(THREE, options = {}) {
     if (loadPromise) return loadPromise;
     if (!THREE?.GLTFLoader) throw new Error('Action Studio Guard Runtime requires Three.js GLTFLoader');
     if (location.protocol === 'file:') throw new Error('Guard Runtime assets require Action Studio over HTTP / GitHub Pages');
-    if (!weaponObject3d) throw new Error('Guard Runtime could not resolve the HAND_R weapon object');
+    if (!weaponObject3d()) throw new Error('Guard Runtime could not resolve the HAND_R weapon object');
 
     setStatus(`${GUARD_RUNTIME_STAGE} · loading Skyrim Full Source Living Guard + D Power Parry…`);
     loadPromise = (async () => {
@@ -212,7 +216,7 @@ export function createStudioGuardRuntimeController(THREE, options = {}) {
         bind,
       );
       mountRuntime = createGuardWeaponMountRuntime({
-        weaponObject3d,
+        weaponObject3d: weaponObject3d(),
         profiles: {
           [GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD]: skyrimMount,
         },
@@ -221,10 +225,10 @@ export function createStudioGuardRuntimeController(THREE, options = {}) {
       runtime = createGuardPresentationRuntime(THREE, {
         machine,
         character,
-        weaponObject3d,
+        weaponObject3d: weaponObject3d(),
         applyWeaponMountProfile(profileId) {
           const result = mountRuntime.apply(profileId);
-          if (result.applied) weaponObject3d.updateMatrixWorld?.(true);
+          if (result.applied) weaponObject3d()?.updateMatrixWorld?.(true);
         },
       });
       loaded = true;
@@ -297,7 +301,7 @@ export function createStudioGuardRuntimeController(THREE, options = {}) {
     pausePlayer();
     clearWeaponTrail();
     character.stopAnimation?.();
-    restoreMountCalibration = captureMountCalibration(weaponObject3d);
+    restoreMountCalibration = captureMountCalibration(weaponObject3d());
     active = true;
     activeMode = mode;
     lastFrameAt = performance.now();
@@ -316,7 +320,7 @@ export function createStudioGuardRuntimeController(THREE, options = {}) {
     pausePlayer();
     clearWeaponTrail();
     character.stopAnimation?.();
-    if (!restoreMountCalibration) restoreMountCalibration = captureMountCalibration(weaponObject3d);
+    if (!restoreMountCalibration) restoreMountCalibration = captureMountCalibration(weaponObject3d());
     active = false;
     activeMode = mode;
     setAnimationSource('guard-runtime');
@@ -337,9 +341,10 @@ export function createStudioGuardRuntimeController(THREE, options = {}) {
     setActiveButton(null);
     if (machine && runtime) resetMachine();
     character.stopAnimation?.();
-    if (restoreMountCalibration && weaponObject3d) {
-      applyMountCalibration(weaponObject3d, restoreMountCalibration);
-      weaponObject3d.updateMatrixWorld?.(true);
+    const weapon = weaponObject3d();
+    if (restoreMountCalibration && weapon) {
+      applyMountCalibration(weapon, restoreMountCalibration);
+      weapon.updateMatrixWorld?.(true);
     }
     restoreMountCalibration = null;
     if (options.restoreEvaluation !== false) applyCurrentEvaluation();

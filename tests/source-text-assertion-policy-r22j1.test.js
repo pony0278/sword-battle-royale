@@ -159,7 +159,15 @@ function census() {
 // weapon nobody has equipped. Reads codeOnly() so the header explaining the split cannot satisfy it.
 // The staleness of the extraction itself deliberately did NOT join this pile: it is a generated
 // artifact, so it is checked in CI as a diff, next to the Action Studio bundle's.
-const BASELINE = Object.freeze({ total: 1218, srcText: 375, toolsText: 674, html: 161, absence: 151 });
+// The frozen source assets raised total by 6 and absence by 3, and this one is not a KEEP argued
+// from principle - it is a raise made after the failure it prevents had already happened. Three
+// workflows each hashed the same three GLBs inline; strip-presentation-meshes.mjs rewrote those
+// files and updated none of the three, and all three stayed red on main for days because the only
+// thing checking those bytes was a workflow nobody runs locally. The hashes live in one record now,
+// and these six assertions say each workflow reads it and carries no hash of its own. There is no
+// behavioural version: a gate that quietly stops checking has nothing to observe from here, which
+// is the exact case the KEEP rule above names.
+const BASELINE = Object.freeze({ total: 1224, srcText: 375, toolsText: 674, html: 161, absence: 154 });
 
 test('R22J.1 the source-text pile does not grow', () => {
   const now = census();

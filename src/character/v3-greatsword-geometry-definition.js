@@ -35,7 +35,10 @@ export const V3_GREATSWORD_GEOMETRY_DEFINITION = deepFreeze({
     "bladeSpan": 2.4184161743947437,
     "gripSpan": 0.8332704582384655,
     "handFractionUpGrip": 0.48636235090796576,
-    "longswordHandFractionUpGrip": 0.35350323155147556
+    "longswordHandFractionUpGrip": 0.35350323155147556,
+    "secondaryGripY": 0.122,
+    "secondaryGripSource": "assets/skyrim/greatsword/converted/2hm_idle.source.glb Weapon -> Shield, 0.0983 of head-to-root",
+    "secondaryGripLongswordProportional": 0.08812298555964004
   },
   "positions": [
     -0.03244588151574135,
@@ -4376,7 +4379,7 @@ export const V3_GREATSWORD_GEOMETRY_DEFINITION = deepFreeze({
       "parent": "grip",
       "position": [
         0,
-        0.11782551989747059,
+        0.15170253433783054,
         0
       ]
     },
