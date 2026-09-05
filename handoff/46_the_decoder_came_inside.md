@@ -132,12 +132,77 @@ the same place. Two things rule out the cheaper explanations — the gap varies 
 exactly on PRIMARY_GRIP, so the mount is not it.
 
 So **option C, the off-hand IK, is needed after all**. handoff/44 hoped a real clip would make it
-unnecessary. It does not, and now there is a measurement saying why rather than a look.
+unnecessary. It does not, and now there is a measurement saying why rather than a look. (What the
+measurement says changed once it was corrected — see below.)
 
 A second, smaller finding fell out of the same run, independent of the retarget: the greatsword's
 `SECONDARY_GRIP` sits **0.0881** from the main hand, against the **0.192** the source clip
 authors — 46% of it. The node was placed proportionally from the longsword's, and the clip is the
 first thing to say where a two-handed grip actually goes.
+
+## Three of the numbers above were wrong, and the corrections are the finding
+
+Asked to tell apart "the left arm points wrong" from "the sword sits wrong", all three of the
+measurements this stage had produced turned out to be answering the wrong question. Each is worth
+recording, because each was a plausible-looking number produced by a real tool.
+
+**The mount.** `build/skyrim-grip-reach.mjs` mounted the sword with the raw
+`DEFAULT_KAYKIT_SWORD_MOUNT`. `src/game/bootstrap.js` does not: a Skyrim-driven fighter gets
+`composeSkyrimWeaponMountCalibration(THREE, DEFAULT_KAYKIT_SWORD_MOUNT, bind)`, the mount composed
+with that clip's own G2.4.5 weapon bind. The two differ by **112°**. Every gap the tool had reported
+described a configuration that does not ship, and the 112° is what made the haft look 73° off when
+it is **20.6°**.
+
+**The reference points, twice.** Skyrim's `Weapon` and `Shield` nodes are the two hands' EQUIPMENT
+points — exactly what `handslot.r` and `handslot.l` are here, and what `PRIMARY_GRIP` and
+`SECONDARY_GRIP` have to line up with. `NPC L Hand [LHnd]` is the *wrist*, one palm short of the
+grip. Comparing source wrists against target sockets is comparing two different things:
+
+```text
+                        source   this rig   ratio
+wrist to wrist            13.6%     17.9%    1.32x     the POSE - the retarget's job
+equipment to equipment     9.8%     36.0%    3.66x     the GRIP - what has to reach
+```
+
+The "2.21x hand separation" this document reported was the first row measured against the second.
+Measured like for like, **the retarget largely keeps the pose.**
+
+## Where the reach actually goes
+
+```text
+how far each equipment point sits off its own wrist, per head-to-root height
+  Skyrim   off hand 6.4%   main hand 4.9%
+  this rig          15.1%  on both sides      2.3x
+```
+
+`handslot.l` and `handslot.r` hang more than twice as far off the wrist as Skyrim's equipment nodes
+do. Two points each flung 0.10 further out, in the directions two differently-angled hands point,
+is how a 0.12 grip span becomes 0.43. And the retarget cannot correct it: `SKYRIM_BONE_RETARGETS`
+gives those two bones **rotation only**, so the rest-pose offset is never touched.
+
+That is a change to `procedural-kaykit-rig.js` that would move every weapon and every shield on
+every clip, and the G2.4.5 calibration and all six defence-matrix timings sit on top of it. Not a
+change to make while answering a greatsword question.
+
+## What was fixed: the grip node
+
+`SECONDARY_GRIP` is derived from the clip now instead of from the longsword's proportions.
+`build/extract-greatsword-geometry.mjs` carries the derivation:
+
+```text
+2hm_idle.source.glb, at rest:  Weapon -> Shield  11.540 source units
+                               head-to-root     117.39
+                            =  0.0983 of a body, 166.8 deg off the source weapon's +Y
+                               (along the haft; 2.64 units off-axis is the wrist's own offset)
+this rig's rest head-to-root   1.2414        ->  0.1220
+```
+
+0.0881 → **0.1220**. It moves the worst gap from 0.4018 to **0.3912** — real, correct, and small,
+which is the point: it had to be settled before an IK solver could be written, because the solver
+would have aimed at it.
+
+The authored-pose record in `tests/two-hand-grip.test.js` moved with it (greatsword plant
+0.2671 → 0.2839, impact 0.7817 → 0.7889) — the pose did not change, the target did.
 
 `tests/the-clip-holds-the-sword-the-retarget-does-not.test.js` pins all of it, the control included,
 in the same spirit as handoff/44's record of failure: numbers for a fix to beat.

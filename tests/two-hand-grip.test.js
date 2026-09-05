@@ -109,13 +109,21 @@ test('MEASURED: the authored grip does not reach the hilt, on either weapon', ()
   assert.equal(gap(V3_LONGSWORD_DEFINITION, 'plant').toFixed(4), '0.2912');
   assert.equal(gap(V3_LONGSWORD_DEFINITION, 'impact').toFixed(4), '0.7920');
   assert.equal(gap(V3_LONGSWORD_DEFINITION, 'follow_through').toFixed(4), '1.2632');
-  assert.equal(gap(V3_GREATSWORD_DEFINITION, 'plant').toFixed(4), '0.2671');
-  assert.equal(gap(V3_GREATSWORD_DEFINITION, 'impact').toFixed(4), '0.7817');
+  // The greatsword's two moved when SECONDARY_GRIP was re-derived from 2hm_idle.source.glb rather
+  // than from the longsword's proportions - 0.2671 -> 0.2839 at plant, 0.7817 -> 0.7889 at impact.
+  // The grip point moved 0.034 further up the haft; the authored pose did not move at all.
+  assert.equal(gap(V3_GREATSWORD_DEFINITION, 'plant').toFixed(4), '0.2839');
+  assert.equal(gap(V3_GREATSWORD_DEFINITION, 'impact').toFixed(4), '0.7889');
 });
 
 test('the greatsword is no worse than the longsword, which is why the mesh was never the problem', () => {
-  // Measured because it was the reason A looked promising: the two secondary grips sit 0.047 apart,
-  // so a bigger weapon does not make this harder. It does not make it work either.
+  // Measured because it was the reason A looked promising: a bigger weapon does not make this
+  // harder. It does not make it work either.
+  //
+  // The two secondary grips sit 0.0130 apart now (longsword 0.1350, greatsword 0.1220) rather than
+  // the 0.047 recorded when the greatsword's was a longsword proportion - re-deriving it from
+  // 2hm_idle.source.glb moved it toward the longsword's, which is its own small piece of evidence
+  // that the longsword's value was never far off.
   const twoHanded = bakeAdvancingVerticalChopClip({ twoHandGrip: true });
   for (const phase of ['ready', 'plant', 'impact']) {
     const options = { pose: twoHanded.poses[phase], mount: DEFAULT_KAYKIT_SWORD_MOUNT, createDefaultCharacter, createDebugSword, mountDebugSword };
