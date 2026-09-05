@@ -9121,6 +9121,56 @@ function decodedSource(input) {
   return { root, clip };
 }
 
+// The source hierarchy's pose as it was loaded, so a retarget cannot be changed by what someone
+// did to the scene before calling it.
+//
+// MEASURED, and the reason this exists. retargetSkyrimClip reads the source's CURRENT world
+// transforms as `sourceRest` - the name says rest, the code says now. Pose the scene before calling
+// and the whole retarget shifts: 103.4 degrees on wristl, with the G2.4.5 weapon bind moving from
+// 112.1162 to 87.6950 (posed at t=0) or 93.3833 (t=3).
+//
+// It only bites on the way IN. The function already leaves the scene where it found it - after a
+// retarget the source is back to within 0.103 degrees of as-loaded, on an un-animated ragdoll node,
+// and the bind computed afterwards matches the one computed from the as-loaded pose to 0.000000 on
+// all five committed clips. So nothing shipped is wrong today; it is one careless caller away from
+// being wrong, and the wrongness is a plausible-looking animation rather than an error.
+//
+// Capture happens as early as a source GLB can be seen - the library does it on load - so the stash
+// is the pose the file actually carries, not whatever state the scene has reached by the time a
+// retarget is asked for.
+const SOURCE_REST_KEY = 'skyrimSourceRestPose';
+
+// Records only nodes that actually carry a transform. A source hierarchy is Object3Ds, but this is
+// called on whatever a caller hands over - the library's own tests drive the bridge with a stub
+// scene whose traverse yields one bare object - and a guard that throws on input the thing it
+// guards accepts is worse than no guard.
+function captureSkyrimSourceRest(root) {
+  if (!root || typeof root.traverse !== 'function' || root.userData?.[SOURCE_REST_KEY]) return false;
+  const pose = [];
+  root.traverse((object3d) => {
+    if (typeof object3d?.position?.toArray !== 'function') return;
+    if (typeof object3d?.quaternion?.toArray !== 'function') return;
+    if (typeof object3d?.scale?.toArray !== 'function') return;
+    pose.push([object3d, object3d.position.toArray(), object3d.quaternion.toArray(), object3d.scale.toArray()]);
+  });
+  if (!pose.length) return false;
+  root.userData = root.userData || {};
+  root.userData[SOURCE_REST_KEY] = pose;
+  return true;
+}
+
+function restoreSkyrimSourceRest(root) {
+  const pose = root?.userData?.[SOURCE_REST_KEY];
+  if (!pose) return false;
+  for (const [object3d, position, quaternion, scale] of pose) {
+    object3d.position.fromArray(position);
+    object3d.quaternion.fromArray(quaternion);
+    object3d.scale.fromArray(scale);
+  }
+  root.updateMatrixWorld?.(true);
+  return true;
+}
+
 function retargetSkyrimClip(THREE, decoded, rig, options = {}) {
   if (!THREE?.AnimationMixer || !THREE?.AnimationClip) {
     throw new Error('Skyrim retargeting requires the Three.js animation runtime');
@@ -9140,6 +9190,11 @@ function retargetSkyrimClip(THREE, decoded, rig, options = {}) {
     throw new Error(`Action Studio rig is missing Skyrim retarget targets: ${targetReport.missing.join(', ')}`);
   }
 
+  // Whatever state the caller left the scene in, this reads the pose the file carries. On a scene
+  // nobody has touched - which is every production path - capture takes that pose and restore puts
+  // back what it just took, so every committed number is unchanged.
+  captureSkyrimSourceRest(sourceRoot);
+  restoreSkyrimSourceRest(sourceRoot);
   sourceRoot.updateMatrixWorld(true);
   const sourceReport = resolveSkyrimSourceNodes(sourceRoot, retargets);
   if (!sourceReport.valid) {
@@ -9398,12 +9453,12 @@ function createSkyrimRetargetLibrary(THREE, decodedEntries, rig, options = {}) {
     duplicates: [],
   };
 }
-return Object.freeze({ SKYRIM_BONE_RETARGETS, resolveSkyrimSourceNodes, validateSkyrimTargetRig, computeSkyrimTranslationScale, computeSkyrimBasisCalibration, measureVectorSampleExcursion, classifySkyrimTranslationSafety, retargetSkyrimClip, createSkyrimRetargetLibrary });
+return Object.freeze({ SKYRIM_BONE_RETARGETS, resolveSkyrimSourceNodes, validateSkyrimTargetRig, computeSkyrimTranslationScale, computeSkyrimBasisCalibration, measureVectorSampleExcursion, classifySkyrimTranslationSafety, captureSkyrimSourceRest, restoreSkyrimSourceRest, retargetSkyrimClip, createSkyrimRetargetLibrary });
 })();
 
 // src/animation/skyrim-weapon-bind-calibration.js
 const __actionStudioModule19 = (() => {
-const { resolveSkyrimSourceNodes } = __actionStudioModule20;
+const { resolveSkyrimSourceNodes, restoreSkyrimSourceRest } = __actionStudioModule20;
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -9479,6 +9534,11 @@ function computeSkyrimWeaponBindCalibration(THREE, sourceRoot, rig, retargetedCl
     throw new Error('G2.4.5 weapon bind calibration requires source hierarchy and target rig');
   }
 
+  // The same guard as the retarget's, for the same reason: sourceConvertedRestFrame below is named
+  // for a rest pose and reads whatever pose the scene is in. This runs after retargetSkyrimClip,
+  // which leaves the source where it found it, so restoring changes nothing on every committed clip
+  // - measured at 0.000000 difference on all five - and stops the value depending on call order.
+  restoreSkyrimSourceRest(sourceRoot);
   sourceRoot.updateMatrixWorld(true);
   const sourceReport = resolveSkyrimSourceNodes(sourceRoot);
   const sourceWeapon = sourceReport.nodes?.['handslot.r'];
@@ -14970,7 +15030,7 @@ return Object.freeze({ PARRY_UPPER_BODY_CONTINUITY_STAGE, PARRY_UPPER_BODY_CONTI
 
 // src/animation/skyrim-converted-animation-library.js
 const __actionStudioModule50 = (() => {
-const { retargetSkyrimClip } = __actionStudioModule20;
+const { captureSkyrimSourceRest, retargetSkyrimClip } = __actionStudioModule20;
 const { computeSkyrimWeaponBindCalibration } = __actionStudioModule19;
 const { canCreateProductionParryDeflectClips, createProductionParryDeflectClips } = __actionStudioModule51;
 const { stabilizeProductionParryDeflectClips } = __actionStudioModule52;
@@ -15037,12 +15097,20 @@ function normalizedBaseUrl(value) {
   return String(value || DEFAULT_BASE_URL).replace(/\/?$/, '/');
 }
 
+// Capture the source's rest pose the moment the file becomes a scene - earlier than any caller can
+// pose it. retargetSkyrimClip restores from this stash, so a page that samples the source hierarchy
+// for a side-by-side review before asking for a retarget still gets the retarget the file describes.
+function captured(gltf) {
+  captureSkyrimSourceRest(gltf?.scene);
+  return gltf;
+}
+
 function loadGlb(loader, url) {
-  return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
+  return new Promise((resolve, reject) => loader.load(url, (gltf) => resolve(captured(gltf)), undefined, reject));
 }
 
 function parseGlb(loader, arrayBuffer) {
-  return new Promise((resolve, reject) => loader.parse(arrayBuffer, '', resolve, reject));
+  return new Promise((resolve, reject) => loader.parse(arrayBuffer, '', (gltf) => resolve(captured(gltf)), reject));
 }
 
 function disposeSourceScene(scene) {

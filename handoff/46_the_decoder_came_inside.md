@@ -319,12 +319,33 @@ frame, moves with it (112.1162° untouched, 87.6950° posed at t=0, 93.3833° at
 
 Nothing committed trips it: production loads and retargets immediately, and both review tools parse
 their own separate source copy. My first measurement of this round did trip it, which is how it was
-found. Worth making deterministic — the fix would be a no-op for every shipped number, which is also
-what makes it safe to do.
+found.
+
+**Fixed.** `captureSkyrimSourceRest` stashes the source's local TRS the moment the file becomes a
+scene — in the library's own `loadGlb`/`parseGlb`, earlier than any caller can pose it — and
+`retargetSkyrimClip` and `computeSkyrimWeaponBindCalibration` restore from that stash on entry. The
+capture keeps the first pose it saw and refuses to be overwritten by a later one, because a second
+capture on a posed scene would be the same bug wearing a helper's name.
+
+The hazard was only ever on the way *in*: the retarget already left the scene where it found it,
+within 0.103° of as-loaded on an un-animated ragdoll node, and the bind computed afterwards matched
+the one computed from the as-loaded pose to `0.000000` on all five committed clips. That is what
+made the fix safe, and the gates say so — golden grid's tightest margin still `off by 0.006997`, the
+same three parry vectors, the same six defence-matrix timings.
+
+Pinned in `tests/the-retarget-reads-the-file-not-the-scene.test.js`, which **reproduces the bug
+first**: an unguarded parse posed at t=0 still comes out 2.0 off in track values with a bind of
+87.6950, and the guarded one is bit-identical to untouched at every pose tried. A test that cannot
+reproduce the bug cannot prove the fix.
+
+One thing the fix had to learn: the library's own tests drive the bridge with a stub scene whose
+`traverse` yields one bare object with no TRS. The first capture threw on it. A guard that throws on
+input the thing it guards accepts is worse than no guard, so it now records only nodes that actually
+carry a transform.
 
 ## Still not done
 
 Nothing in the fight plays it — the Guard machine does not reach for it, `greatsword-attack-timings.js`
 is still ten `null`s, and `bootstrap.js` does not run the off-hand grip; it is wired into the
 authoring page only. The socket offset is still there, and every future Skyrim clip will inherit it.
-`retargetSkyrimClip`'s dependence on the source scene's pose is recorded above and not yet fixed.
+(`retargetSkyrimClip`'s dependence on the source scene's pose is fixed, above.)

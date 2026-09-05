@@ -1,4 +1,4 @@
-import { resolveSkyrimSourceNodes } from './skyrim-animation-retarget.js';
+import { resolveSkyrimSourceNodes, restoreSkyrimSourceRest } from './skyrim-animation-retarget.js';
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -74,6 +74,11 @@ export function computeSkyrimWeaponBindCalibration(THREE, sourceRoot, rig, retar
     throw new Error('G2.4.5 weapon bind calibration requires source hierarchy and target rig');
   }
 
+  // The same guard as the retarget's, for the same reason: sourceConvertedRestFrame below is named
+  // for a rest pose and reads whatever pose the scene is in. This runs after retargetSkyrimClip,
+  // which leaves the source where it found it, so restoring changes nothing on every committed clip
+  // - measured at 0.000000 difference on all five - and stops the value depending on call order.
+  restoreSkyrimSourceRest(sourceRoot);
   sourceRoot.updateMatrixWorld(true);
   const sourceReport = resolveSkyrimSourceNodes(sourceRoot);
   const sourceWeapon = sourceReport.nodes?.['handslot.r'];
