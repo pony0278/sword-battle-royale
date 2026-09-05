@@ -386,8 +386,59 @@ not re-diagnosed: the greatsword is 3.1180 total against a 1.4854 character, **2
 (the longsword is 1.13x). The retargeted pose allows a blade of about 0.80x stature before the tip
 reaches the ground; the source pose allows 1.11x. Ours is 2.37x. Scaling alone does not lift it out
 — at 0.50 scale the tip is still at -0.43 — because the retarget also lowers the hands and raises
-the feet: the pelvis sits 24.6 points lower than the source's and the feet 6.2 higher, which is its
-own unexplained finding and not the socket offset.
+the feet: the pelvis sits 24.6 points lower than the source's and the feet 6.2 higher.
+
+**That was recorded here as an unexplained finding. It is explained, and it is not a defect.**
+`build/measure-skyrim-stance.mjs` is the instrument; the answer needed the question asked in two
+parts, because the obvious framing is a trap.
+
+Only `root` and `pelvis` carry position through `SKYRIM_BONE_RETARGETS`. Every other bone is
+rotation-only, so a foot's height is never transferred — it is whatever the target's own leg
+lengths produce under the source's joint rotations. And the pelvis is anchored at the TARGET's rest
+position plus the source's delta FROM ITS OWN REST, so absolute proportions are deliberately not
+carried. Comparing the two rigs' posed heights therefore measures the RIGS, not the retarget.
+
+Split that way:
+
+```text
+REST vs REST - a property of the rigs, identical across all six committed clips
+  pelvis / hips BONE      source 57.3%   target 32.7%    -24.6 pts
+  HIP JOINT (thigh)       source 57.3%   target 41.8%    -15.4 pts   <- like for like
+  ankle                   source  5.0%   target 11.7%     +6.6 pts
+  TOE (ground contact)    source  0.0%   target  2.1%     +2.0 pts   <- like for like
+
+DELTA FROM OWN REST - the only thing the retarget claims to carry
+  worst pelvis disagreement, all six clips: 0.0 / 0.1 / 0.2 / 0.4 / 0.6 / 0.0 points
+  (shd_blockbash's own pelvis moves 11.8 points, so 0.4 is 3% of the signal)
+```
+
+THE HEADLINE NUMBERS WERE INFLATED BY COMPARING BONES THAT DO NOT MEAN THE SAME THING. Skyrim's
+`NPC Pelvis` IS the hip joint — 0.00 points from its own thigh. KayKit's `hips` sits 9.15 points
+ABOVE its own thigh. So -24.6 is -15.4 of real proportion difference plus 9.15 of naming. The feet
+are the same story: ankle to ankle is +6.6, but toe to toe — what actually touches the ground — is
++2.0. The rigs differ, by less than half of what was written here.
+
+AND THE RESIDUAL IS ACCOUNTED FOR. The basis is built from pelvis-to-head on both rigs. The
+source's rest pelvis-to-head sits 1.7234 degrees off that file's own world vertical; the target's
+sits exactly on its own. A 1.7234 degree tilt puts 0.361 points of cross-axis leak on a 12-point
+pelvis delta, which is the size of the 0.1-0.6 residual measured above. Arguably correct rather
+than broken — an anatomical basis SHOULD map spine axis to spine axis — but it is now a known
+quantity rather than noise.
+
+TWO DEFECTS IN THE INSTRUMENT, found by review and fixed before any of the above was believed: the
+stance tool recomputed its normalizing stature from the POSED head at every sample, which converts
+the constant rest gap into fake per-sample disagreement (invisible on an idle, 5.5 points on
+shd_blockbash); and its source mixer ran at LoopRepeat, so the last row compared the source's first
+frame against the target's last. The first reading of "the delta tracks within 0.2 points" was
+taken only on idles and was not a general result.
+
+WHAT IS STILL OPEN, and is a real defect rather than this one: the target's toes go BELOW the
+ground plane on all four shipping guard clips — blockidle -0.0207, blockhit -0.0556, blockbash
+-0.0542, blockbashpower -0.0895, against fighters placed at y=0 by
+`planEngagementStance`. `classifySkyrimTranslationSafety` reports safe on every one of them; its
+budget is 3x head-to-root, which is roughly 14x this rig's whole leg. handoff/24 formally adopted
+all four clips with a production rule that says to KEEP the source lower-body weight response, and
+nothing in that review mentions feet leaving the floor.
 
 ## A: the equipment sockets come back to the hand
 
