@@ -108,6 +108,34 @@ for (let index = 0; index < sourcePositions.length; index += 3) {
 }
 const indices = readAccessor(gltf, buffers, primitive.indices);
 
+// Where the off hand goes on a greatsword, measured rather than assumed.
+//
+// Every other grip landmark here keeps the longsword's proportions, which is the right default for
+// a weapon nobody has been filmed holding. This one is different: assets/skyrim/greatsword/converted
+// /2hm_idle.source.glb IS a two-handed hold, so it can be asked.
+//
+// THE REFERENCE POINTS ARE THE WHOLE TRICK, and getting them wrong is what made three earlier
+// answers disagree. Skyrim's `Weapon` and `Shield` nodes are the two hands' EQUIPMENT points -
+// exactly what handslot.r and handslot.l are here, and what PRIMARY_GRIP and SECONDARY_GRIP have to
+// line up with. `NPC L Hand [LHnd]` is the wrist, one palm short of the grip, and measuring from it
+// gives 0.179 instead. In 2hm_idle at rest:
+//
+//   Weapon -> Shield     11.540 source units
+//   head-to-root        117.39  source units
+//                    =    0.0983 of a body, 166.8 degrees off the source weapon's +Y - so along
+//                         the haft, 2.64 units off-axis, which is the wrist's own offset
+//
+// This rig's REST head-to-root is 1.2414, so 0.0983 x 1.2414 = 0.1220. The rest pose rather than
+// the clip's own, because a weapon's geometry cannot depend on which frame you look at; measured
+// against the animated stature the same fraction gives 0.1169, and the test allows that 4%.
+//
+// The node sits on the haft axis like every other node in this file. The off-axis part of the
+// source offset - 2.64 of 11.54 units, the wrist's own displacement - is left out rather than
+// fitted to one clip.
+//
+// The longsword-proportional value this replaces was 0.0881 - 72% of it.
+const TWO_HAND_SECONDARY_GRIP_Y = 0.1220;
+
 const measured = measureLandmarks(positions);
 const reference = longswordFractions();
 const bladeSpan = measured.guardY - measured.tipY;
@@ -119,7 +147,9 @@ const absolute = {
   'weapon.root': 0,
   pommel: upGrip('pommel'),
   grip: upGrip('grip'),
-  secondary_grip: upGrip('secondary_grip'),
+  // NOT the longsword's proportion. This one is measured off the clip that actually holds the
+  // weapon with two hands - see the constant above.
+  secondary_grip: TWO_HAND_SECONDARY_GRIP_Y,
   guard: measured.guardY,
   'blade.root': downBlade('blade.root'),
   'blade.mid': downBlade('blade.mid'),
@@ -149,6 +179,10 @@ const definition = {
     // lab, recorded here rather than silently corrected.
     handFractionUpGrip: (0 - measured.guardY) / gripSpan,
     longswordHandFractionUpGrip: (0 - reference.guardY) / reference.gripSpan,
+    // The one landmark that is not proportional, and where it came from.
+    secondaryGripY: TWO_HAND_SECONDARY_GRIP_Y,
+    secondaryGripSource: 'assets/skyrim/greatsword/converted/2hm_idle.source.glb Weapon -> Shield, 0.0983 of head-to-root',
+    secondaryGripLongswordProportional: upGrip('secondary_grip'),
   },
   positions,
   indices,

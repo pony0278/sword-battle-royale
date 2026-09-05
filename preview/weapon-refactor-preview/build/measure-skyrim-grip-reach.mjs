@@ -23,6 +23,7 @@ import { DEFAULT_KAYKIT_SWORD_MOUNT } from '../src/character/default-character-m
 import { V3_GREATSWORD_DEFINITION } from '../src/character/v3-greatsword-weapon.js';
 import { V3_LONGSWORD_DEFINITION } from '../src/character/procedural-v3-weapon.js';
 import { retargetConvertedSkyrimGltf } from '../src/animation/skyrim-converted-animation-library.js';
+import { composeSkyrimWeaponMountCalibration } from '../src/animation/skyrim-weapon-bind-calibration.js';
 import { TWO_HAND_GRIP_REACH_TOLERANCE } from './grip-reach.mjs';
 import { measureSkyrimGripReach, parseSourceGlb } from './skyrim-grip-reach.mjs';
 
@@ -47,6 +48,7 @@ const report = measureSkyrimGripReach(THREE, {
   createDebugSword,
   mountDebugSword,
   retargetConvertedSkyrimGltf,
+  composeSkyrimWeaponMountCalibration,
 });
 
 console.log(`${path.relative(ROOT, sourcePath)} · ${weaponId}`);
@@ -66,18 +68,24 @@ report.gaps.forEach(({ seconds, gap }, step) => {
 console.log(`\nbest ${report.best.toFixed(4)} · worst ${report.worst.toFixed(4)} `
   + `· ${reachedSamples}/${report.gaps.length} samples within tolerance`);
 
-// Where the reach went, if it went. Fractions of each rig's own head-to-root height, which is the
-// only way two skeletons at different scales can be compared at all.
-console.log('\nhands apart, as a fraction of head-to-root height');
-console.log(`  in the source clip     ${(report.source.handsApart * 100).toFixed(1)}%`);
-console.log(`  after retargeting      ${(report.handsApart * 100).toFixed(1)}%`
-  + `   (${(report.handsApart / report.source.handsApart).toFixed(2)}x the source)`);
-console.log('\nwhere the source puts each hand, relative to its WEAPON node');
-console.log(`  off hand               ${(report.source.offHandToWeapon * 100).toFixed(1)}% `
-  + `= ${(report.source.offHandToWeapon * report.stature).toFixed(4)} rig units`);
-console.log(`  main hand              ${(report.source.mainHandToWeapon * 100).toFixed(1)}% `
-  + `= ${(report.source.mainHandToWeapon * report.stature).toFixed(4)} rig units`);
-console.log(`  this weapon's SECONDARY_GRIP sits ${report.secondaryGripFromMainHand.toFixed(4)} from the main hand`);
+// Where the reach went, if it went. Two spans, because they answer different questions and mixing
+// them is what made the first version of this report wrong.
+console.log('\nwrist to wrist - a property of the POSE, which a rotation retarget should preserve');
+console.log(`  in the source clip     ${(report.source.wristSpan * 100).toFixed(1)}%  of head-to-root`);
+console.log(`  after retargeting      ${(report.wristSpan * 100).toFixed(1)}%`
+  + `   (${(report.wristSpan / report.source.wristSpan).toFixed(2)}x the source)`);
+console.log('\nequipment point to equipment point - a property of the GRIP, and what has to reach');
+console.log(`  in the source clip     ${(report.source.equipmentSpan * 100).toFixed(1)}%  (Weapon -> Shield)`);
+console.log(`  on this rig            ${(report.equipmentSpan * 100).toFixed(1)}%  (HAND_R -> HAND_L)`
+  + `   (${(report.equipmentSpan / report.source.equipmentSpan).toFixed(2)}x the source)`);
+console.log('\nhow far each equipment point sits off its own wrist');
+console.log(`  source off hand        ${(report.source.offHandSocketOffset * 100).toFixed(1)}%`
+  + `   main hand ${(report.source.mainHandSocketOffset * 100).toFixed(1)}%`);
+console.log(`  this rig               ${(report.socketOffset * 100).toFixed(1)}%  on both sides`
+  + `   (${(report.socketOffset / report.source.offHandSocketOffset).toFixed(1)}x the source's off hand)`);
+console.log(`\nSECONDARY_GRIP sits ${report.secondaryGripFromMainHand.toFixed(4)} from the main hand; the source's`
+  + ` equipment span is ${(report.source.equipmentSpan * report.stature).toFixed(4)}`);
+console.log(`weapon bind correction ${report.bindCorrectionDegrees.toFixed(1)} deg, composed into the mount`);
 
 if (report.worst > TWO_HAND_GRIP_REACH_TOLERANCE) {
   console.log(`\nFAIL · the off hand is not on the hilt for the whole clip. Worst gap `
