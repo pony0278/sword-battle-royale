@@ -8727,4580 +8727,8 @@ const V3_GREATSWORD_DEFINITION = defineV3Weapon({
 return Object.freeze({ V3_GREATSWORD_DEFINITION });
 })();
 
-// src/animation/two-bone-ik.js
-const __actionStudioModule19 = (() => {
-// Two-bone IK: put the end of a limb on a point, by rotating two joints.
-//
-// Analytic, not iterative. A two-bone chain has one degree of freedom left once the effector's
-// position is fixed - the limb can spin about the line from shoulder to target - and that freedom
-// is spent HERE by keeping the plane the arm is already in. That is deliberate: the plane comes
-// from the retargeted animation, so the elbow keeps pointing where the animator put it, and this
-// solver never has to invent a pole vector it would have no evidence for.
-//
-// The chain is (root, mid, effector). Only root and mid are written. Everything from mid outward -
-// the wrist, the hand, the socket the weapon or shield hangs on - is treated as rigid and rides
-// along, which is what makes it correct to aim a SOCKET rather than a bone: the second segment's
-// length is measured to the effector, wherever it is.
-//
-// TWO REFUSALS, both of which return applied:false and restore the pose rather than doing their
-// best. A solver that quietly does its best is how a limb ends up somewhere nobody chose:
-//
-//   out of reach     the target is further than the two segments can span. Reaching for it would
-//                    lock the arm straight and point it at something it cannot hold.
-//   over budget      the correction exceeds maxCorrectionDegrees at either joint. The budget is
-//                    the caller's statement of how much of the animation it is willing to overwrite.
-
-function rotateBoneInWorld(THREE, bone, deltaWorldQuaternion) {
-  const parentWorld = bone.parent
-    ? bone.parent.getWorldQuaternion(new THREE.Quaternion())
-    : new THREE.Quaternion();
-  const boneWorld = bone.getWorldQuaternion(new THREE.Quaternion());
-  const desired = deltaWorldQuaternion.clone().multiply(boneWorld);
-  bone.quaternion.copy(parentWorld.invert().multiply(desired)).normalize();
-}
-
-function worldPosition(THREE, object3d) {
-  return object3d.getWorldPosition(new THREE.Vector3());
-}
-
-// The plane the arm bends in. Normally the one it is already in; when the arm is straight there is
-// no such plane, so the target picks one - bending toward what we are reaching for is the only
-// choice with a reason behind it.
-function bendAxis(THREE, fromMid, toMid, target, mid) {
-  const axis = new THREE.Vector3().crossVectors(fromMid, toMid);
-  if (axis.lengthSq() > 1e-10) return axis.normalize();
-  const fallback = new THREE.Vector3().crossVectors(fromMid, target.clone().sub(mid));
-  if (fallback.lengthSq() > 1e-10) return fallback.normalize();
-  // Fully degenerate: shoulder, effector and target are collinear. Any perpendicular will do.
-  const arbitrary = Math.abs(fromMid.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
-  return new THREE.Vector3().crossVectors(fromMid, arbitrary).normalize();
-}
-
-/**
- * Rotate `root` and `mid` so that `effector` lands on `target`.
- *
- * @param {object} THREE Three.js namespace (Quaternion, Vector3, MathUtils).
- * @param {object} options
- * @param {object} options.root   the shoulder-side bone, rotated second
- * @param {object} options.mid    the elbow-side bone, rotated first
- * @param {object} options.effector the object whose world position must reach the target
- * @param {object} options.target THREE.Vector3, in world space
- * @param {number} [options.maxCorrectionDegrees] per-joint budget; over it, nothing is written
- * @param {object} [options.updateRoot] what to updateMatrixWorld on between steps; defaults to root
- */
-function solveTwoBoneIk(THREE, options = {}) {
-  const { root, mid, effector, target } = options;
-  if (!root || !mid || !effector || !target) throw new Error('solveTwoBoneIk needs root, mid, effector and target');
-  const budget = Number.isFinite(options.maxCorrectionDegrees) ? options.maxCorrectionDegrees : Infinity;
-  const updateRoot = options.updateRoot || root;
-
-  const before = { root: root.quaternion.clone(), mid: mid.quaternion.clone() };
-  const restore = () => {
-    root.quaternion.copy(before.root);
-    mid.quaternion.copy(before.mid);
-    updateRoot.updateMatrixWorld(true);
-  };
-
-  const shoulder = worldPosition(THREE, root);
-  const elbow = worldPosition(THREE, mid);
-  const handStart = worldPosition(THREE, effector);
-  const upper = shoulder.distanceTo(elbow);
-  const fore = elbow.distanceTo(handStart);
-  const gapBefore = handStart.distanceTo(target);
-  const report = { applied: false, gapBefore, gapAfter: gapBefore, upper, fore, rootDegrees: 0, midDegrees: 0 };
-
-  if (upper < 1e-6 || fore < 1e-6) return { ...report, reason: 'degenerate-chain' };
-
-  const span = upper + fore;
-  const distance = shoulder.distanceTo(target);
-  if (distance > span) return { ...report, reason: 'out-of-reach', reach: span, distance };
-
-  // 1. The elbow, by the law of cosines: the interior angle that makes the chain span `distance`.
-  const toShoulder = shoulder.clone().sub(elbow);
-  const toHand = handStart.clone().sub(elbow);
-  const axis = bendAxis(THREE, toShoulder, toHand, target, elbow);
-  const currentAngle = toShoulder.angleTo(toHand);
-  const clampedDistance = Math.max(Math.abs(upper - fore) + 1e-6, Math.min(span - 1e-6, distance));
-  const cosine = (upper * upper + fore * fore - clampedDistance * clampedDistance) / (2 * upper * fore);
-  const desiredAngle = Math.acos(Math.max(-1, Math.min(1, cosine)));
-  const midDelta = desiredAngle - currentAngle;
-
-  // 2. The shoulder, swinging the now-correctly-bent arm onto the target.
-  rotateBoneInWorld(THREE, mid, new THREE.Quaternion().setFromAxisAngle(axis, midDelta));
-  updateRoot.updateMatrixWorld(true);
-  const handBent = worldPosition(THREE, effector);
-  const from = handBent.clone().sub(shoulder);
-  const to = target.clone().sub(shoulder);
-  if (from.lengthSq() < 1e-12 || to.lengthSq() < 1e-12) {
-    restore();
-    return { ...report, reason: 'degenerate-target' };
-  }
-  const swing = new THREE.Quaternion().setFromUnitVectors(from.clone().normalize(), to.clone().normalize());
-  const rootDegrees = THREE.MathUtils.radToDeg(2 * Math.acos(Math.min(1, Math.abs(swing.w))));
-  const midDegrees = Math.abs(THREE.MathUtils.radToDeg(midDelta));
-
-  if (midDegrees > budget || rootDegrees > budget) {
-    restore();
-    return { ...report, reason: 'over-budget', rootDegrees, midDegrees, budget };
-  }
-
-  rotateBoneInWorld(THREE, root, swing);
-  updateRoot.updateMatrixWorld(true);
-  const gapAfter = worldPosition(THREE, effector).distanceTo(target);
-  return { applied: true, gapBefore, gapAfter, upper, fore, rootDegrees, midDegrees, reason: null };
-}
-return Object.freeze({ solveTwoBoneIk });
-})();
-
-// src/animation/off-hand-grip-ik.js
-const __actionStudioModule18 = (() => {
-// The off hand goes on the hilt.
-//
-// WHY THIS IS NEEDED, measured rather than assumed (handoff/46): a retargeted Skyrim two-handed
-// clip keeps the POSE - wrist to wrist comes out 1.32x the source's - but not the GRIP. This rig
-// hangs its equipment sockets 15.1% of head-to-root off the wrist where Skyrim's sit at 6.4% and
-// 4.9%, so two grip points 0.12 apart in the clip end up 0.43 apart here, and the retarget cannot
-// correct it because handslot.l and handslot.r receive rotation only.
-//
-// Fixing THAT means moving every weapon and every shield on every clip. This does not do that. It
-// closes the gap where it shows, by asking the off arm to reach the weapon's own second grip node,
-// and it is deliberately the smaller of the two changes: two bones, no equipment moved, nothing the
-// guard gates measure.
-//
-// OWNERSHIP, which is the part that needs stating rather than discovering. src/combat/
-// shield-arm-hold.js already owns this exact chain - upperarm.l, lowerarm.l, wrist.l, hand.l,
-// handslot.l - whenever a shield is up. Two writers on one arm is not a merge, it is a bug, so the
-// rule here is a refusal: if anything is socketed on HAND_L, the off hand is busy and this does
-// nothing. A fighter holds a greatsword with two hands or a sword and a shield. Not both.
-const { solveTwoBoneIk } = __actionStudioModule19;
-
-const OFF_HAND_GRIP_STAGE = 'the-off-hand-goes-on-the-hilt';
-
-const OFF_HAND_GRIP_SCOPE = Object.freeze({
-  stage: OFF_HAND_GRIP_STAGE,
-  // Written. Everything past the elbow rides along rigid, which is what makes it correct to aim the
-  // SOCKET rather than a bone.
-  bones: Object.freeze(['upperarm.l', 'lowerarm.l']),
-  effectorSocket: 'HAND_L',
-  targetSocket: 'SECONDARY_GRIP',
-  // Never written, and each for its own reason: the right arm and the torso carry the swing, the
-  // legs and root carry the stance, and the off hand's own wrist keeps the animator's hand angle -
-  // a palm turned by an IK solver reads as a broken wrist long before the position looks wrong.
-  forbiddenBones: Object.freeze([
-    'root', 'hips', 'spine', 'chest',
-    'wrist.l', 'hand.l', 'handslot.l',
-    'upperarm.r', 'lowerarm.r', 'wrist.r', 'hand.r', 'handslot.r',
-    'upperleg.l', 'upperleg.r', 'lowerleg.l', 'lowerleg.r', 'foot.l', 'foot.r', 'toes.l', 'toes.r',
-  ]),
-  // The budget, measured rather than guessed - the first value here was 45 and it refused all 31
-  // frames of 2hm_idle. That clip needs 47.7 degrees at the shoulder and 20.1 at the elbow, most of
-  // which is absorbing the socket offset above rather than anything about the animation. 60 leaves
-  // room for a hold carried a little differently without letting an arm be thrown anywhere.
-  maxCorrectionDegrees: 60,
-  conflictsWith: 'SHIELD_ARM_HOLD_BONES',
-  policy: 'refuse when the off hand is holding something; never stretch; never write past the elbow',
-});
-
-/**
- * Put the off hand on the mounted weapon's second grip, for one frame.
- *
- * The caller samples the animation and updates world matrices first; this runs after, on the posed
- * rig, and updates the matrices again itself.
- */
-function applyOffHandGripIk(THREE, options = {}) {
-  const { character, weapon } = options;
-  if (!character?.rig?.bones || !character?.sockets) throw new Error('applyOffHandGripIk requires a procedural character');
-  if (!weapon?.sockets?.SECONDARY_GRIP) throw new Error('applyOffHandGripIk requires a weapon with a SECONDARY_GRIP');
-
-  const effector = character.sockets[OFF_HAND_GRIP_SCOPE.effectorSocket];
-  // The ownership rule, checked rather than documented: a shield or buckler is socketed here.
-  const occupied = (effector.children || []).filter((child) => child !== weapon.object3d);
-  if (occupied.length > 0) {
-    return { applied: false, reason: 'off-hand-occupied', occupants: occupied.map((child) => child.name || 'unnamed') };
-  }
-
-  const target = weapon.sockets[OFF_HAND_GRIP_SCOPE.targetSocket].getWorldPosition(new THREE.Vector3());
-  const budget = Number.isFinite(options.maxCorrectionDegrees)
-    ? options.maxCorrectionDegrees
-    : OFF_HAND_GRIP_SCOPE.maxCorrectionDegrees;
-
-  return solveTwoBoneIk(THREE, {
-    root: character.rig.bones['upperarm.l'],
-    mid: character.rig.bones['lowerarm.l'],
-    effector,
-    target,
-    maxCorrectionDegrees: budget,
-    updateRoot: character.object3d,
-  });
-}
-return Object.freeze({ OFF_HAND_GRIP_STAGE, OFF_HAND_GRIP_SCOPE, applyOffHandGripIk });
-})();
-
-// tools/action-studio/studio-off-hand-grip-controls.js
-const __actionStudioModule17 = (() => {
-// The studio's off-hand grip toggle: two hands on one haft, on the stage figure.
-//
-// The solving is src/animation/off-hand-grip-ik.js; this is only the page's half - the checkbox,
-// when it defaults on, and saying in one line what happened. It lives here rather than in
-// action-studio.js because that entry is held to a line budget as a composition root, and this is
-// a control with its own state and its own vocabulary of refusals.
-const { OFF_HAND_GRIP_SCOPE, applyOffHandGripIk } = __actionStudioModule18;
-
-// Said in the terms an author can act on. "out-of-reach" is the honest answer for the authored
-// poses this page opens with - the seven-key chop leaves gaps up to 1.26 (handoff/44) - and it is
-// not a fault to fix, it is a pose the off hand cannot hold.
-const REFUSALS = Object.freeze({
-  'out-of-reach': 'the hilt is beyond the off arm in this pose · play a two-handed clip',
-  'off-hand-occupied': 'the off hand is holding something · a shield keeps the arm',
-  'over-budget': `the reach needs more than ${OFF_HAND_GRIP_SCOPE.maxCorrectionDegrees}° at a joint`,
-});
-
-// Defaulted per weapon rather than remembered, because it is a property of what is being held: a
-// longsword's off hand is free, a greatsword's is not. The checkbox is still there to argue with.
-function defaultOffHandGrip(weaponId) {
-  return weaponId === 'greatsword';
-}
-
-function createStudioOffHandGripController(THREE, { getCharacter, getWeapon, stageWeaponId }) {
-  const toggle = document.getElementById('offHandGrip');
-  const status = document.getElementById('offHandGripStatus');
-  if (toggle) {
-    toggle.checked = defaultOffHandGrip(stageWeaponId);
-    toggle.addEventListener('change', () => {
-      if (!toggle.checked && status) {
-        status.textContent = 'off-hand grip · off · the arm plays as the clip retargeted it';
-      }
-    });
-  }
-
-  return {
-    // Called on the posed rig, after the weapon has followed the right hand: the target is the
-    // weapon's own SECONDARY_GRIP, so it has to be where it will be drawn before the arm is solved.
-    update() {
-      if (!toggle?.checked) return null;
-      const result = applyOffHandGripIk(THREE, { character: getCharacter(), weapon: getWeapon() });
-      if (status) {
-        status.textContent = result.applied
-          ? `off-hand grip · reached · shoulder ${result.rootDegrees.toFixed(1)}° `
-            + `elbow ${result.midDegrees.toFixed(1)}° · closed ${result.gapBefore.toFixed(3)} `
-            + `(budget ${OFF_HAND_GRIP_SCOPE.maxCorrectionDegrees}°)`
-          : `off-hand grip · not applied · ${REFUSALS[result.reason] || result.reason}`;
-      }
-      return result;
-    },
-    syncToWeapon(weaponId) {
-      if (toggle) toggle.checked = defaultOffHandGrip(weaponId);
-    },
-  };
-}
-return Object.freeze({ defaultOffHandGrip, createStudioOffHandGripController });
-})();
-
-// src/character/default-character-mount.js
-const __actionStudioModule20 = (() => {
-const DEFAULT_KAYKIT_SWORD_MOUNT = Object.freeze({
-  position: Object.freeze({ x: 0, y: 0, z: 0 }),
-  rotation: Object.freeze({ x: 0, y: 0, z: Math.PI }),
-  scale: Object.freeze({ x: 1, y: 1, z: 1 }),
-});
-return Object.freeze({ DEFAULT_KAYKIT_SWORD_MOUNT });
-})();
-
-// src/animation/animation-clip.js
-const __actionStudioModule21 = (() => {
-const { normalizePose, evaluateEase, interpolatePose } = __actionStudioModule9;
-
-const SUPPORTED_EASES = Object.freeze(['lin', 'in', 'out', 'in-out']);
-
-function safeKeyName(value, index) {
-  const name = String(value ?? '').trim();
-  return name || `key_${index}`;
-}
-
-function uniqueName(name, used) {
-  if (!used.has(name)) {
-    used.add(name);
-    return name;
-  }
-  let suffix = 2;
-  while (used.has(`${name}_${suffix}`)) suffix += 1;
-  const result = `${name}_${suffix}`;
-  used.add(result);
-  return result;
-}
-
-function inferTag(name, impact) {
-  if (impact) return 'impact';
-  return String(name).toLowerCase();
-}
-
-function normalizeTimeline(input = []) {
-  const source = Array.isArray(input) && input.length ? input : [{ name: 'idle', frame: 0 }];
-  const used = new Set();
-  let accumulatedFrame = 0;
-  const normalized = source.map((raw = {}, index) => {
-    const explicitFrame = Number(raw.frame);
-    const segmentFrames = Math.max(1, Math.round(Number(raw.frames) || (index === 0 ? 1 : 6)));
-    if (index === 0) accumulatedFrame = Number.isFinite(explicitFrame) ? Math.max(0, Math.round(explicitFrame)) : 0;
-    else accumulatedFrame = Number.isFinite(explicitFrame)
-      ? Math.max(0, Math.round(explicitFrame))
-      : accumulatedFrame + segmentFrames;
-    const name = uniqueName(safeKeyName(raw.name, index), used);
-    const impact = Boolean(raw.impact);
-    const ease = SUPPORTED_EASES.includes(raw.ease) ? raw.ease : (index === 0 ? 'lin' : 'out');
-    return {
-      name,
-      frame: accumulatedFrame,
-      frames: segmentFrames,
-      ease,
-      impact,
-      cancel: Boolean(raw.cancel),
-      tag: raw.tag == null || String(raw.tag).trim() === '' ? inferTag(name, impact) : String(raw.tag),
-    };
-  });
-
-  normalized.sort((a, b) => a.frame - b.frame);
-  let previousFrame = normalized[0].frame;
-  normalized[0].frames = 0;
-  for (let index = 1; index < normalized.length; index += 1) {
-    normalized[index].frame = Math.max(previousFrame + 1, normalized[index].frame);
-    normalized[index].frames = normalized[index].frame - previousFrame;
-    previousFrame = normalized[index].frame;
-  }
-  return normalized;
-}
-
-function createAnimationClip(input = {}) {
-  const timeline = normalizeTimeline(input.timeline || input.seq);
-  const sourcePoses = input.poses || input.phases || {};
-  const poses = {};
-  let previousPose = normalizePose();
-  for (const key of timeline) {
-    previousPose = normalizePose(sourcePoses[key.name] || previousPose);
-    poses[key.name] = previousPose;
-  }
-  const fps = Number.isFinite(Number(input.fps)) && Number(input.fps) > 0 ? Number(input.fps) : 60;
-  return {
-    format: 'action-studio-clip',
-    version: 1,
-    id: String(input.id || input.name || 'untitled_action'),
-    name: String(input.name || input.id || 'Untitled Action'),
-    fps,
-    timeline,
-    poses,
-    durationFrames: timeline[timeline.length - 1].frame,
-    metadata: input.metadata && typeof input.metadata === 'object' ? structuredCloneSafe(input.metadata) : {},
-  };
-}
-
-function structuredCloneSafe(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function evaluateClip(clip, frame, options = {}) {
-  if (!clip || !Array.isArray(clip.timeline) || !clip.timeline.length) return null;
-  const timeline = clip.timeline;
-  const currentFrame = Math.max(timeline[0].frame, Math.min(Number(frame) || 0, clip.durationFrames));
-  const first = timeline[0];
-  if (timeline.length === 1 || currentFrame <= first.frame) {
-    return {
-      frame: currentFrame,
-      pose: normalizePose(clip.poses[first.name]),
-      from: first.name,
-      to: first.name,
-      progress: 1,
-      easedProgress: 1,
-      key: first,
-      isImpact: Boolean(first.impact),
-    };
-  }
-
-  for (let index = 1; index < timeline.length; index += 1) {
-    const previous = timeline[index - 1];
-    const next = timeline[index];
-    if (currentFrame <= next.frame) {
-      const progress = (currentFrame - previous.frame) / Math.max(1, next.frame - previous.frame);
-      const easedProgress = evaluateEase(progress, next.ease);
-      const lags = next.impact ? undefined : options.lags;
-      return {
-        frame: currentFrame,
-        pose: interpolatePose(clip.poses[previous.name], clip.poses[next.name], easedProgress, { lags }),
-        from: previous.name,
-        to: next.name,
-        progress,
-        easedProgress,
-        key: next,
-        isImpact: Boolean(next.impact && currentFrame > previous.frame),
-      };
-    }
-  }
-
-  const last = timeline[timeline.length - 1];
-  return {
-    frame: currentFrame,
-    pose: normalizePose(clip.poses[last.name]),
-    from: last.name,
-    to: last.name,
-    progress: 1,
-    easedProgress: 1,
-    key: last,
-    isImpact: Boolean(last.impact),
-  };
-}
-
-function clipMarkerSummary(clip) {
-  return {
-    impacts: clip.timeline.filter((key) => key.impact).map((key) => key.frame),
-    cancels: clip.timeline.filter((key) => key.cancel).map((key) => key.frame),
-  };
-}
-return Object.freeze({ SUPPORTED_EASES, normalizeTimeline, createAnimationClip, evaluateClip, clipMarkerSummary });
-})();
-
-// src/animation/clip-player.js
-const __actionStudioModule23 = (() => {
-const { evaluateClip } = __actionStudioModule21;
-
-class ClipPlayer {
-  constructor(clip = null) {
-    this.clip = clip;
-    this.frame = 0;
-    this.playing = false;
-    this.loop = false;
-    this.speed = 1;
-  }
-
-  setClip(clip, { reset = true } = {}) {
-    this.clip = clip;
-    if (reset) this.seek(0);
-    return this.evaluate();
-  }
-
-  play({ restart = false } = {}) {
-    if (!this.clip) return null;
-    if (restart || this.frame >= this.clip.durationFrames) this.frame = 0;
-    this.playing = true;
-    return this.evaluate();
-  }
-
-  pause() {
-    this.playing = false;
-    return this.evaluate();
-  }
-
-  seek(frame) {
-    const max = this.clip ? this.clip.durationFrames : 0;
-    this.frame = Math.max(0, Math.min(Number(frame) || 0, max));
-    return this.evaluate();
-  }
-
-  update(deltaSeconds) {
-    if (!this.clip || !this.playing) return this.evaluate();
-    this.frame += Math.max(0, Number(deltaSeconds) || 0) * this.clip.fps * this.speed;
-    if (this.frame >= this.clip.durationFrames) {
-      if (this.loop && this.clip.durationFrames > 0) this.frame %= this.clip.durationFrames;
-      else {
-        this.frame = this.clip.durationFrames;
-        this.playing = false;
-      }
-    }
-    return this.evaluate();
-  }
-
-  evaluate(options) {
-    return this.clip ? evaluateClip(this.clip, this.frame, options) : null;
-  }
-}
-return Object.freeze({ ClipPlayer });
-})();
-
-// src/animation/animation-binding.js
-const __actionStudioModule24 = (() => {
-const ACTION_MOTION_SOURCES = Object.freeze(['authored', 'kaykit', 'ual2', 'ual1', 'skyrim']);
-
-function finiteNumber(value, fallback) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function normalizeAnimationBinding(input = {}, fallbackClipId = '') {
-  const requestedSource = String(input.source || 'authored');
-  const source = ACTION_MOTION_SOURCES.includes(requestedSource) ? requestedSource : 'authored';
-  return {
-    source,
-    clipId: String(input.clipId || (source === 'authored' ? fallbackClipId : '')),
-    speed: Math.max(0.001, finiteNumber(input.speed, 1)),
-    startOffsetSeconds: Math.max(0, finiteNumber(input.startOffsetSeconds, 0)),
-    inPlace: input.inPlace !== false,
-    loop: input.loop === true,
-    blendInSeconds: Math.max(0, finiteNumber(input.blendInSeconds, 0.08)),
-    blendOutSeconds: Math.max(0, finiteNumber(input.blendOutSeconds, 0.12)),
-  };
-}
-
-function createFittedAnimationBinding(options = {}) {
-  const fps = Math.max(1, finiteNumber(options.fps, 30));
-  const actionSeconds = Math.max(0, finiteNumber(options.durationFrames, 0)) / fps;
-  const animationSeconds = Math.max(0, finiteNumber(options.animationDurationSeconds, 0));
-  const speed = actionSeconds > 0 && animationSeconds > 0 ? animationSeconds / actionSeconds : 1;
-  const requestedSource = String(options.source || 'kaykit');
-  const source = ACTION_MOTION_SOURCES.includes(requestedSource) && requestedSource !== 'authored'
-    ? requestedSource
-    : 'kaykit';
-  return normalizeAnimationBinding({
-    ...options,
-    source,
-    speed,
-    startOffsetSeconds: 0,
-    loop: false,
-  });
-}
-
-function animationTimeAtFrame(bindingInput, frame, fps, animationDurationSeconds) {
-  const binding = normalizeAnimationBinding(bindingInput);
-  const safeFps = Math.max(1, finiteNumber(fps, 30));
-  const timelineSeconds = Math.max(0, finiteNumber(frame, 0)) / safeFps;
-  const rawTime = binding.startOffsetSeconds + timelineSeconds * binding.speed;
-  const duration = finiteNumber(animationDurationSeconds, Number.POSITIVE_INFINITY);
-  if (!Number.isFinite(duration) || duration <= 0) return rawTime;
-  if (binding.loop) return ((rawTime % duration) + duration) % duration;
-  return Math.min(rawTime, duration);
-}
-return Object.freeze({ ACTION_MOTION_SOURCES, normalizeAnimationBinding, createFittedAnimationBinding, animationTimeAtFrame });
-})();
-
-// src/animation/action-motion-player.js
-const __actionStudioModule22 = (() => {
-const { ClipPlayer } = __actionStudioModule23;
-const { animationTimeAtFrame, normalizeAnimationBinding } = __actionStudioModule24;
-
-class ActionMotionPlayer {
-  constructor(options = {}) {
-    this.posePlayer = options.posePlayer || new ClipPlayer();
-    this.adapter = options.adapter || {};
-    this.action = null;
-    this.appliedSource = null;
-  }
-
-  get clip() { return this.posePlayer.clip; }
-  get frame() { return this.posePlayer.frame; }
-  get playing() { return this.posePlayer.playing; }
-  get loop() { return this.posePlayer.loop; }
-  set loop(value) { this.posePlayer.loop = Boolean(value); }
-  get speed() { return this.posePlayer.speed; }
-  set speed(value) { this.posePlayer.speed = Number(value) || 1; }
-  get binding() {
-    return normalizeAnimationBinding(this.action?.animationBinding, this.clip?.id || '');
-  }
-
-  setProject(clip, action, options = {}) {
-    this.action = action || null;
-    return this.posePlayer.setClip(clip, options);
-  }
-
-  setClip(clip, options = {}) {
-    return this.posePlayer.setClip(clip, options);
-  }
-
-  setAction(action) {
-    this.action = action || null;
-    return this.evaluate();
-  }
-
-  play(options) { return this.decorate(this.posePlayer.play(options)); }
-  pause() { return this.decorate(this.posePlayer.pause()); }
-  seek(frame) { return this.decorate(this.posePlayer.seek(frame)); }
-  update(deltaSeconds) { return this.decorate(this.posePlayer.update(deltaSeconds)); }
-  evaluate(options) { return this.decorate(this.posePlayer.evaluate(options)); }
-
-  decorate(evaluation) {
-    if (!evaluation) return null;
-    const binding = this.binding;
-    const external = binding.source !== 'authored';
-    const hasAnimation = external
-      && binding.clipId
-      && (this.adapter.hasAnimation ? this.adapter.hasAnimation(binding.clipId) : Boolean(this.adapter.sampleAnimation));
-    const animationDurationSeconds = hasAnimation && this.adapter.getAnimationDuration
-      ? this.adapter.getAnimationDuration(binding.clipId)
-      : 0;
-    return {
-      ...evaluation,
-      motion: {
-        source: binding.source,
-        clipId: binding.clipId,
-        binding,
-        available: Boolean(hasAnimation),
-        pending: external && !hasAnimation,
-        timeSeconds: external
-          ? animationTimeAtFrame(binding, evaluation.frame, this.clip?.fps, animationDurationSeconds)
-          : evaluation.frame / Math.max(1, this.clip?.fps || 30),
-      },
-    };
-  }
-
-  apply(evaluation = this.evaluate()) {
-    if (!evaluation) return null;
-    const { motion } = evaluation;
-    if (motion.source !== 'authored' && motion.available && this.adapter.sampleAnimation) {
-      this.adapter.sampleAnimation(motion.clipId, motion.timeSeconds, motion.binding);
-      this.appliedSource = motion.source;
-      return { ...evaluation, motion: { ...motion, appliedSource: motion.source } };
-    }
-    if (this.appliedSource && this.appliedSource !== 'authored') this.adapter.stopAnimation?.();
-    this.adapter.applyPose?.(evaluation.pose);
-    this.appliedSource = 'authored';
-    return { ...evaluation, motion: { ...motion, appliedSource: 'authored' } };
-  }
-}
-return Object.freeze({ ActionMotionPlayer });
-})();
-
-// src/animation/motion-guide-schema.js
-const __actionStudioModule26 = (() => {
-const MOTION_GUIDE_PRESETS = Object.freeze(['advancing_vertical_chop']);
-const MOTION_GUIDE_LEAD_FEET = Object.freeze(['L', 'R']);
-
-const DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE = Object.freeze({
-  format: 'whole-body-motion-guide',
-  version: 3,
-  preset: 'advancing_vertical_chop',
-  leadFoot: 'L',
-  stepDistance: 0.58,
-  crouchDepth: 30,
-  forwardLean: 16,
-  windupHeight: 1.45,
-  windupPullback: 0.2,
-  windupLoad: 0.85,
-  plantFrame: 16,
-  impactFrame: 19,
-  durationFrames: 36,
-  impactHeight: 1.18,
-  cutPlaneOffset: 0,
-  coupling: 0.85,
-  windupTarget: true,
-  footLock: true,
-  twoHandGrip: true,
-  secondaryGripWeight: 1,
-  visible: true,
-});
-
-function finiteNumber(value, fallback) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function normalizeMotionGuide(input = {}) {
-  const preset = MOTION_GUIDE_PRESETS.includes(input.preset)
-    ? input.preset
-    : DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.preset;
-  const durationFrames = Math.round(clamp(finiteNumber(
-    input.durationFrames,
-    DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.durationFrames,
-  ), 24, 72));
-  const impactFrame = Math.round(clamp(finiteNumber(
-    input.impactFrame,
-    DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.impactFrame,
-  ), 10, durationFrames - 7));
-  const plantFrame = Math.round(clamp(finiteNumber(
-    input.plantFrame,
-    DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.plantFrame,
-  ), 8, impactFrame - 1));
-  return {
-    format: 'whole-body-motion-guide',
-    version: 3,
-    preset,
-    leadFoot: MOTION_GUIDE_LEAD_FEET.includes(input.leadFoot) ? input.leadFoot : 'L',
-    stepDistance: clamp(finiteNumber(input.stepDistance, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.stepDistance), 0, 1.2),
-    crouchDepth: clamp(finiteNumber(input.crouchDepth, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.crouchDepth), 0, 60),
-    forwardLean: clamp(finiteNumber(input.forwardLean, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.forwardLean), 0, 40),
-    windupHeight: clamp(finiteNumber(input.windupHeight, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.windupHeight), 0.9, 2),
-    windupPullback: clamp(finiteNumber(input.windupPullback, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.windupPullback), 0, 0.5),
-    windupLoad: clamp(finiteNumber(input.windupLoad, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.windupLoad), 0, 1),
-    plantFrame,
-    impactFrame,
-    durationFrames,
-    impactHeight: clamp(finiteNumber(input.impactHeight, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.impactHeight), 0.5, 2),
-    cutPlaneOffset: clamp(finiteNumber(input.cutPlaneOffset, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.cutPlaneOffset), -35, 35),
-    coupling: clamp(finiteNumber(input.coupling, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.coupling), 0, 1),
-    windupTarget: input.windupTarget !== false,
-    footLock: input.footLock !== false,
-    twoHandGrip: input.twoHandGrip !== false,
-    secondaryGripWeight: clamp(finiteNumber(
-      input.secondaryGripWeight,
-      DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.secondaryGripWeight,
-    ), 0, 1),
-    visible: input.visible !== false,
-  };
-}
-
-function createAdvancingVerticalChopGuide(overrides = {}) {
-  return normalizeMotionGuide({ ...DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE, ...overrides });
-}
-
-function isWholeBodyMotionGuide(value) {
-  return value?.format === 'whole-body-motion-guide'
-    && value?.preset === 'advancing_vertical_chop';
-}
-return Object.freeze({ MOTION_GUIDE_PRESETS, MOTION_GUIDE_LEAD_FEET, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE, normalizeMotionGuide, createAdvancingVerticalChopGuide, isWholeBodyMotionGuide });
-})();
-
-// src/animation/two-hand-grip.js
-const __actionStudioModule28 = (() => {
-// @ts-check
-// The off hand on the hilt, as seven authored arm poses.
-//
-// WHAT THIS IS, because the name does not say it: a two-handed grip in this repository is not a
-// clip and not a constraint. It is seven hand-authored left-arm poses - shoulder, elbow, wrist and
-// a small upper-arm stretch - blended over whatever the right arm is already doing. The numbers
-// live in the pose vocabulary of pose-schema.js, where aL_sx is the left shoulder's X rotation in
-// degrees and aL_ex the elbow's bend, and two adapters turn them into bone rotations:
-// pose-applier.js for the line rig, kaykit-pose-adapter.js for the KayKit one (upperarm.l,
-// lowerarm.l, wrist.l).
-//
-// WHERE IT CAME FROM: whole-body-motion-solver.js, where it was private to one clip baker - the
-// advancing vertical chop that Action Studio's templates use. It is here because the greatsword
-// needs it and a second caller should not have to import a clip baker to get an arm.
-//
-// WHAT IT IS NOT: solved. Nothing in here knows where a hilt is. These angles were tuned by eye
-// against ONE weapon in ONE move until the hand looked like it was holding something, and the
-// aL_stretch of 1.03-1.05 is the tell - the upper arm is lengthened by three to five percent to
-// make the hand reach. An open-loop pose is fine when the target barely moves, and measured, the
-// target barely moves: the longsword's secondary_grip sits at +0.1350 above the mount origin and
-// the greatsword's at +0.0881, 0.047 apart. It is NOT fine as a general answer, which is why
-// two-hand-grip-reach.test.js measures the gap rather than trusting this paragraph.
-
-/**
- * The authored left arm, one entry per phase of a swing.
- * @type {Readonly<Record<string, Readonly<Record<string, number>>>>}
- */
-const TWO_HAND_LEFT_ARM = Object.freeze({
-  ready: Object.freeze({ aL_sx: -84, aL_sy: -2, aL_sz: 16, aL_ex: 86, aL_wx: -6, aL_wy: -18, aL_wz: 4, aL_stretch: 1.03 }),
-  windup: Object.freeze({ aL_sx: -142, aL_sy: 6, aL_sz: 10, aL_ex: 62, aL_wx: -18, aL_wy: -10, aL_wz: 0, aL_stretch: 1.05 }),
-  commit: Object.freeze({ aL_sx: -118, aL_sy: 4, aL_sz: 8, aL_ex: 46, aL_wx: -8, aL_wy: -12, aL_wz: 0, aL_stretch: 1.04 }),
-  plant: Object.freeze({ aL_sx: -94, aL_sy: 3, aL_sz: 6, aL_ex: 33, aL_wx: 0, aL_wy: -10, aL_wz: 0, aL_stretch: 1.03 }),
-  impact: Object.freeze({ aL_sx: -64, aL_sy: 4, aL_sz: 4, aL_ex: 16, aL_wx: 12, aL_wy: -8, aL_wz: 0, aL_stretch: 1.02 }),
-  follow: Object.freeze({ aL_sx: -36, aL_sy: 6, aL_sz: 4, aL_ex: 28, aL_wx: 18, aL_wy: -8, aL_wz: 0, aL_stretch: 1.02 }),
-  recover: Object.freeze({ aL_sx: -84, aL_sy: -2, aL_sz: 16, aL_ex: 86, aL_wx: -6, aL_wy: -18, aL_wz: 4, aL_stretch: 1.03 }),
-});
-
-const TWO_HAND_GRIP_PHASES = Object.freeze(['ready', 'windup', 'commit', 'plant', 'impact', 'follow', 'recover']);
-
-// The frames the clip baker places those seven at, under the default motion guide. Data here rather
-// than a call, because importing the baker to ask would make this module depend on the thing it was
-// taken out of - and two-hand-grip.test.js asserts these against advancingVerticalChopFrames() so
-// the copy cannot drift.
-const AUTHORED_PHASE_FRAMES = Object.freeze({
-  ready: 0, windup: 8, commit: 13, plant: 16, impact: 19, follow: 25, recover: 36,
-});
-
-const LEFT_ARM_KEYS = Object.freeze(Object.keys(TWO_HAND_LEFT_ARM.ready));
-
-function finite(value, fallback = 0) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function clamp01(value) {
-  return Math.max(0, Math.min(1, finite(value)));
-}
-
-/**
- * Where the seven phases fall on ONE WEAPON'S measured swing.
- *
- * Four of them are anchored to landmarks the timings record already produces, so they are that
- * weapon's own numbers rather than the chop's: plant is where the blade goes live, impact is the
- * measured contact, follow is where it stops being live, recover is the end. The two that have no
- * landmark - windup and commit - keep their authored share of the run-up, 8/16 and 13/16 of the
- * way from ready to plant, read off AUTHORED_PHASE_FRAMES rather than chosen here.
- *
- * A greatsword swinging slower therefore stretches the whole arm motion rather than desynchronising
- * from its own blade, which is the property that makes this reusable at all.
- *
- * @param {{activeStartSeconds?: number, activeEndSeconds?: number, durationSeconds?: number, contactSeconds?: number}} profile
- */
-function twoHandGripLandmarkSeconds(profile = {}) {
-  const plant = Math.max(0, finite(profile.activeStartSeconds));
-  const runUp = (frame) => plant * (frame / AUTHORED_PHASE_FRAMES.plant);
-  const raw = {
-    ready: 0,
-    windup: runUp(AUTHORED_PHASE_FRAMES.windup),
-    commit: runUp(AUTHORED_PHASE_FRAMES.commit),
-    plant,
-    impact: finite(profile.contactSeconds, plant),
-    follow: finite(profile.activeEndSeconds, plant),
-    recover: finite(profile.durationSeconds, plant),
-  };
-  // Monotonic by construction rather than by assumption. A weapon whose contact was measured
-  // outside its own active window would otherwise run the arm backwards, and silently.
-  let previous = -Infinity;
-  const seconds = {};
-  for (const phase of TWO_HAND_GRIP_PHASES) {
-    previous = Math.max(previous, raw[phase]);
-    seconds[phase] = previous;
-  }
-  return Object.freeze(seconds);
-}
-
-/**
- * The authored left arm at one moment of a swing, interpolated between the two phases it falls
- * between. Before ready and after recover it holds the end pose rather than extrapolating.
- * @param {number} elapsedSeconds
- * @param {Readonly<Record<string, number>>} landmarks from twoHandGripLandmarkSeconds
- */
-function twoHandLeftArmAtSeconds(elapsedSeconds, landmarks) {
-  const elapsed = Math.max(0, finite(elapsedSeconds));
-  let lower = TWO_HAND_GRIP_PHASES[0];
-  let upper = TWO_HAND_GRIP_PHASES[0];
-  for (const phase of TWO_HAND_GRIP_PHASES) {
-    if (landmarks[phase] <= elapsed) { lower = phase; upper = phase; } else { upper = phase; break; }
-  }
-  if (lower === upper) return TWO_HAND_LEFT_ARM[lower];
-  const span = landmarks[upper] - landmarks[lower];
-  const alpha = span > 0 ? clamp01((elapsed - landmarks[lower]) / span) : 0;
-  const from = TWO_HAND_LEFT_ARM[lower];
-  const to = TWO_HAND_LEFT_ARM[upper];
-  return Object.freeze(Object.fromEntries(LEFT_ARM_KEYS.map((key) => [key, from[key] + (to[key] - from[key]) * alpha])));
-}
-
-/**
- * Blend an authored left arm into a pose. Weight 0 leaves the pose one-handed, 1 takes the authored
- * arm outright, and anything between is a partial commitment to the hilt.
- * @param {Record<string, number>} pose
- * @param {Readonly<Record<string, number>>} leftArm
- * @param {number} weight
- */
-function applyTwoHandGrip(pose, leftArm, weight = 1) {
-  const blend = clamp01(weight);
-  if (blend === 0 || !leftArm) return pose;
-  return Object.fromEntries(Object.entries(pose).map(([key, value]) => [
-    key,
-    key in leftArm ? value + (leftArm[key] - value) * blend : value,
-  ]));
-}
-
-const DEG_TO_RAD = Math.PI / 180;
-// The left arm's three bones, and the side sign kaykit-pose-adapter.js applies to the Z rotations.
-// Mirrored here rather than shared, because that adapter resets the rig to its rest pose first and
-// this one must not: it composes onto whatever a clip has just written.
-const LEFT_ARM_BONES = Object.freeze({ upper: 'upperarm.l', lower: 'lowerarm.l', wrist: 'wrist.l' });
-const LEFT_SIDE_SIGN = -1;
-
-/**
- * Write an authored left arm onto a KayKit rig, on top of whatever pose it is already in.
- *
- * PRECONDITION, and it is not optional: the rig must have been posed this frame - by a clip sample
- * or by the pose adapter - because these are RELATIVE rotations. Called twice against the same
- * sampled frame it applies twice. That is the same contract guard-quaternion-correction.js works
- * under, and the same reason it exists: an overlay is how this rig adds an arm to a clip that does
- * not animate one.
- *
- * Returns what it actually wrote, so a caller can report it rather than assume it.
- *
- * @param {{bones: Record<string, {rotateX: Function, rotateY: Function, rotateZ: Function, scale: {y: number}}>}} rig
- * @param {Readonly<Record<string, number>>} leftArm
- * @param {number} weight
- */
-function applyTwoHandGripToKayKitRig(rig, leftArm, weight = 1) {
-  const blend = clamp01(weight);
-  if (blend === 0 || !leftArm) return Object.freeze({ applied: false, weight: 0, degrees: null });
-  const bones = rig?.bones || {};
-  for (const name of Object.values(LEFT_ARM_BONES)) {
-    if (!bones[name]) throw new Error(`two-hand grip needs ${name}; this rig does not have it`);
-  }
-  const shoulder = {
-    x: finite(leftArm.aL_sx) * blend,
-    y: finite(leftArm.aL_sy) * blend,
-    z: finite(leftArm.aL_sz) * blend * LEFT_SIDE_SIGN,
-  };
-  const elbowX = -finite(leftArm.aL_ex) * blend;
-  const wrist = {
-    x: finite(leftArm.aL_wx) * blend,
-    y: finite(leftArm.aL_wy) * blend,
-    z: finite(leftArm.aL_wz) * blend * LEFT_SIDE_SIGN,
-  };
-  const upper = bones[LEFT_ARM_BONES.upper];
-  upper.rotateX(shoulder.x * DEG_TO_RAD);
-  upper.rotateY(shoulder.y * DEG_TO_RAD);
-  upper.rotateZ(shoulder.z * DEG_TO_RAD);
-  bones[LEFT_ARM_BONES.lower].rotateX(elbowX * DEG_TO_RAD);
-  const wristBone = bones[LEFT_ARM_BONES.wrist];
-  wristBone.rotateX(wrist.x * DEG_TO_RAD);
-  wristBone.rotateY(wrist.y * DEG_TO_RAD);
-  wristBone.rotateZ(wrist.z * DEG_TO_RAD);
-  // The stretch is a scale, so it interpolates from 1 rather than from 0.
-  const stretch = 1 + (finite(leftArm.aL_stretch, 1) - 1) * blend;
-  upper.scale.y *= Math.max(0.2, stretch);
-  return Object.freeze({ applied: true, weight: blend, degrees: Object.freeze({ shoulder, elbowX, wrist, stretch }) });
-}
-return Object.freeze({ TWO_HAND_LEFT_ARM, TWO_HAND_GRIP_PHASES, AUTHORED_PHASE_FRAMES, twoHandGripLandmarkSeconds, twoHandLeftArmAtSeconds, applyTwoHandGrip, applyTwoHandGripToKayKitRig });
-})();
-
-// src/animation/whole-body-motion-solver.js
-const __actionStudioModule27 = (() => {
-const { createAnimationClip } = __actionStudioModule21;
-const { normalizeMotionGuide } = __actionStudioModule26;
-const { normalizePose } = __actionStudioModule9;
-const { TWO_HAND_LEFT_ARM, applyTwoHandGrip } = __actionStudioModule28;
-
-function clamp01(value) {
-  return Math.max(0, Math.min(1, value));
-}
-
-function withLegs(pose, leadFoot, values) {
-  const lead = leadFoot === 'L' ? 'lL' : 'lR';
-  const rear = leadFoot === 'L' ? 'lR' : 'lL';
-  return {
-    ...pose,
-    [`${lead}_hx`]: values.leadHx,
-    [`${lead}_hz`]: values.leadHz,
-    [`${lead}_kx`]: values.leadKx,
-    [`${lead}_ax`]: values.leadAx || 0,
-    [`${lead}_contact`]: values.leadContact,
-    [`${rear}_hx`]: values.rearHx,
-    [`${rear}_hz`]: values.rearHz,
-    [`${rear}_kx`]: values.rearKx,
-    [`${rear}_ax`]: values.rearAx || 0,
-    [`${rear}_contact`]: values.rearContact,
-  };
-}
-
-// The seven-phase left arm moved to two-hand-grip.js when the greatsword needed it: a second caller
-// should not have to import a clip baker to get an arm. Same numbers, same blend - the baked clip
-// is byte-identical across the move, which is the only thing that makes it a move rather than a
-// change.
-function withTwoHandGrip(pose, guide, phase) {
-  if (!guide.twoHandGrip) return pose;
-  return applyTwoHandGrip(pose, TWO_HAND_LEFT_ARM[phase], guide.secondaryGripWeight);
-}
-
-function withPlantedLeadFoot(plant, pose, guide) {
-  if (!guide.footLock) return pose;
-  const lead = guide.leadFoot === 'L' ? 'lL' : 'lR';
-  const lockedKeys = [
-    'root_pz', 'root_x', 'squat', 'pelvis_y',
-    `${lead}_hx`, `${lead}_hy`, `${lead}_hz`, `${lead}_kx`,
-    `${lead}_ax`, `${lead}_ty`, `${lead}_stretch`, `${lead}_contact`,
-  ];
-  return { ...pose, ...Object.fromEntries(lockedKeys.map((key) => [key, plant[key]])) };
-}
-
-function advancingVerticalChopFrames(guideInput = {}) {
-  const guide = normalizeMotionGuide(guideInput);
-  const windupFrame = Math.max(4, guide.plantFrame - 8);
-  const commitFrame = Math.max(windupFrame + 2, guide.plantFrame - 3);
-  const followFrame = Math.min(guide.durationFrames - 4, guide.impactFrame + 6);
-  return {
-    ready: 0,
-    windup: windupFrame,
-    commit: commitFrame,
-    plant: guide.plantFrame,
-    impact: guide.impactFrame,
-    follow: followFrame,
-    recover: guide.durationFrames,
-  };
-}
-
-function bakeAdvancingVerticalChopClip(guideInput = {}) {
-  const guide = normalizeMotionGuide(guideInput);
-  const frame = advancingVerticalChopFrames(guide);
-  const c = guide.coupling;
-  const plane = guide.cutPlaneOffset;
-  const step = guide.stepDistance;
-  const lean = guide.forwardLean;
-  const crouch = guide.crouchDepth;
-  const windupHeight = clamp01((guide.windupHeight - 0.95) / 1.2);
-  const windupPullback = clamp01(guide.windupPullback / 0.65);
-  const windupCoupling = c * guide.windupLoad;
-  const ready = normalizePose({
-    squat: 18,
-    spine_x: 4,
-    head_x: 2,
-    aL_sx: -24,
-    aL_sy: -8,
-    aL_sz: 12,
-    aL_ex: 54,
-    aR_sx: -72,
-    aR_sy: -10,
-    aR_sz: 12,
-    aR_ex: 72,
-    aR_wy: 18,
-    lL_hx: -12,
-    lL_hz: 8,
-    lL_kx: 20,
-    lR_hx: -12,
-    lR_hz: 8,
-    lR_kx: 20,
-    lL_contact: 1,
-    lR_contact: 1,
-  });
-  const windup = normalizePose(withLegs({
-    ...ready,
-    root_pz: -(step * 0.03 * windupCoupling + guide.windupPullback * 0.16 * windupCoupling),
-    root_x: -lean * (0.18 + windupPullback * 0.24) * windupCoupling,
-    squat: 18 + crouch * (0.58 + windupPullback * 0.34) * windupCoupling,
-    spine_x: 4 - lean * (0.42 + windupPullback * 0.42) * windupCoupling,
-    pelvis_y: -plane * 0.12 * c,
-    head_x: 2 + lean * 0.3 * windupCoupling,
-    head_y: plane * 0.12 * c,
-    aR_sx: -118 - 48 * windupHeight - 16 * windupPullback,
-    aR_sy: -8 + plane * 0.35 - windupPullback * 4,
-    aR_sz: 6 + windupPullback * 6,
-    aR_ex: 82 - windupHeight * 15 - windupPullback * 10,
-    aR_wx: -16 - windupHeight * 16 - windupPullback * 8,
-    aR_wy: 8,
-    aL_sx: -50 - 18 * c,
-    aL_sy: 16 - plane * 0.2,
-    aL_sz: 22,
-    aL_ex: 78,
-  }, guide.leadFoot, {
-    leadHx: 12 + 12 * c,
-    leadHz: 10,
-    leadKx: 38 + 18 * c,
-    leadContact: 0,
-    rearHx: -24,
-    rearHz: 10,
-    rearKx: 36 + crouch * 0.45,
-    rearContact: 1,
-  }));
-  const commit = normalizePose(withLegs({
-    ...windup,
-    root_pz: step * 0.42,
-    root_x: lean * 0.55 * c,
-    squat: 14 + crouch * 0.72 * c,
-    spine_x: 4 + lean * 0.45 * c,
-    pelvis_y: plane * 0.16 * c,
-    head_x: 2 - lean * 0.22 * c,
-    head_y: -plane * 0.1 * c,
-    aR_sx: -126,
-    aR_sy: -5 + plane * 0.42,
-    aR_sz: 5,
-    aR_ex: 48,
-    aR_wx: -10,
-    aL_sx: 10 + 28 * c,
-    aL_sy: -16 - plane * 0.2,
-    aL_sz: 18,
-    aL_ex: 42,
-  }, guide.leadFoot, {
-    leadHx: 26,
-    leadHz: 12,
-    leadKx: 44,
-    leadContact: 0,
-    rearHx: -8,
-    rearHz: 8,
-    rearKx: 22,
-    rearContact: 1,
-  }));
-  const plant = normalizePose(withLegs({
-    ...commit,
-    root_pz: guide.footLock ? step : step * 0.76,
-    root_x: lean * 0.78 * c,
-    squat: 12 + crouch * 0.52 * c,
-    spine_x: 5 + lean * 0.68 * c,
-    aR_sx: -98,
-    aR_sy: plane * 0.48,
-    aR_ex: 31,
-    aR_wx: 0,
-  }, guide.leadFoot, {
-    leadHx: -18,
-    leadHz: 12,
-    leadKx: 24,
-    leadAx: 5,
-    leadContact: 1,
-    rearHx: 16,
-    rearHz: 8,
-    rearKx: 18,
-    rearContact: 1,
-  }));
-  const impact = normalizePose(withLegs({
-    ...plant,
-    root_pz: step,
-    root_x: lean * c,
-    squat: 10 + crouch * 0.42 * c,
-    spine_x: 6 + lean * 0.82 * c,
-    pelvis_y: plane * 0.2 * c,
-    head_x: 2 - lean * 0.4 * c,
-    head_y: -plane * 0.14 * c,
-    aR_sx: -66,
-    aR_sy: 4 + plane * 0.55,
-    aR_sz: 2,
-    aR_ex: 12,
-    aR_wx: 14,
-    aR_wy: -8,
-    aL_sx: 34 + 24 * c,
-    aL_sy: -24 - plane * 0.18,
-    aL_ex: 30,
-  }, guide.leadFoot, {
-    leadHx: -13,
-    leadHz: 12,
-    leadKx: 16,
-    leadAx: 4,
-    leadContact: 1,
-    rearHx: 24,
-    rearHz: 8,
-    rearKx: 12,
-    rearContact: 1,
-  }));
-  const follow = normalizePose(withLegs({
-    ...impact,
-    root_pz: step * 1.06,
-    root_x: lean * 0.72 * c,
-    squat: 14 + crouch * 0.3 * c,
-    spine_x: 6 + lean * 0.5 * c,
-    head_x: 2 - lean * 0.25 * c,
-    aR_sx: -35,
-    aR_sy: 6 + plane * 0.5,
-    aR_ex: 24,
-    aR_wx: 20,
-    aL_sx: 22 + 16 * c,
-    aL_ex: 42,
-  }, guide.leadFoot, {
-    leadHx: -10,
-    leadHz: 10,
-    leadKx: 15,
-    leadContact: 1,
-    rearHx: 17,
-    rearHz: 8,
-    rearKx: 18,
-    rearContact: 1,
-  }));
-  const recover = normalizePose({ ...ready, root_pz: step * 0.7 });
-  const plantedImpact = normalizePose(withPlantedLeadFoot(plant, impact, guide));
-  const plantedFollow = normalizePose(withPlantedLeadFoot(plant, follow, guide));
-  const poses = {
-    ready: normalizePose(withTwoHandGrip(ready, guide, 'ready')),
-    windup: normalizePose(withTwoHandGrip(windup, guide, 'windup')),
-    commit: normalizePose(withTwoHandGrip(commit, guide, 'commit')),
-    plant: normalizePose(withTwoHandGrip(plant, guide, 'plant')),
-    impact: normalizePose(withTwoHandGrip(plantedImpact, guide, 'impact')),
-    follow_through: normalizePose(withTwoHandGrip(plantedFollow, guide, 'follow')),
-    recover: normalizePose(withTwoHandGrip(recover, guide, 'recover')),
-  };
-
-  return createAnimationClip({
-    id: 'advancing_vertical_chop',
-    name: 'Advancing Vertical Chop',
-    fps: 60,
-    timeline: [
-      { name: 'ready', frame: frame.ready, ease: 'lin', tag: 'ready' },
-      { name: 'windup', frame: frame.windup, ease: 'out', tag: 'windup' },
-      { name: 'commit', frame: frame.commit, ease: 'in', tag: 'commit' },
-      { name: 'plant', frame: frame.plant, ease: 'out', tag: 'lead-foot-plant' },
-      { name: 'impact', frame: frame.impact, ease: 'in', tag: 'vertical-impact', impact: true },
-      { name: 'follow_through', frame: frame.follow, ease: 'out', tag: 'follow-through' },
-      { name: 'recover', frame: frame.recover, ease: 'out', tag: 'recover', cancel: true },
-    ],
-    poses,
-    metadata: { motionGuide: guide },
-  });
-}
-return Object.freeze({ advancingVerticalChopFrames, bakeAdvancingVerticalChopClip });
-})();
-
-// src/combat/action-definition.js
-const __actionStudioModule29 = (() => {
-const { normalizeAnimationBinding } = __actionStudioModule24;
-
-const ACTION_WINDOW_TYPES = Object.freeze([
-  'active',
-  'cancel',
-  'movement',
-  'weaponTrail',
-  'parry',
-]);
-
-const ACTION_AUTHORITY_NOTE =
-  'Authoring hints only. Authoritative combat simulation resolves hit, block, parry and counter outcomes.';
-
-function normalizeFrameWindow(input = {}, maxFrame = Number.POSITIVE_INFINITY) {
-  const rawStart = Number(input.startFrame ?? input.start ?? 0);
-  const rawEnd = Number(input.endFrame ?? input.end ?? rawStart);
-  const startFrame = Math.max(0, Math.min(Number.isFinite(rawStart) ? rawStart : 0, maxFrame));
-  const endFrame = Math.max(startFrame, Math.min(Number.isFinite(rawEnd) ? rawEnd : startFrame, maxFrame));
-  return {
-    startFrame,
-    endFrame,
-    label: input.label == null ? '' : String(input.label),
-  };
-}
-
-function createActionDefinition(input = {}, maxFrame = Number.POSITIVE_INFINITY) {
-  const sourceWindows = input.windows && typeof input.windows === 'object' ? input.windows : {};
-  const windows = {};
-  for (const type of ACTION_WINDOW_TYPES) {
-    const list = Array.isArray(sourceWindows[type]) ? sourceWindows[type] : [];
-    windows[type] = list.map((window) => normalizeFrameWindow(window, maxFrame));
-  }
-  const clipId = String(input.clipId || input.id || 'untitled_action');
-  return {
-    format: 'action-definition',
-    version: 2,
-    id: String(input.id || 'untitled_action'),
-    clipId,
-    category: String(input.category || 'attack'),
-    animationBinding: normalizeAnimationBinding(input.animationBinding, clipId),
-    windows,
-    authority: ACTION_AUTHORITY_NOTE,
-  };
-}
-
-function isFrameInWindow(action, type, frame) {
-  if (!ACTION_WINDOW_TYPES.includes(type)) return false;
-  const value = Number(frame) || 0;
-  return action.windows[type].some((window) => value >= window.startFrame && value <= window.endFrame);
-}
-return Object.freeze({ ACTION_WINDOW_TYPES, ACTION_AUTHORITY_NOTE, normalizeFrameWindow, createActionDefinition, isFrameInWindow });
-})();
-
-// src/animation/action-templates.js
-const __actionStudioModule25 = (() => {
-const { createAnimationClip } = __actionStudioModule21;
-const { createAdvancingVerticalChopGuide } = __actionStudioModule26;
-const { normalizePose } = __actionStudioModule9;
-const { advancingVerticalChopFrames, bakeAdvancingVerticalChopClip } = __actionStudioModule27;
-const { createActionDefinition } = __actionStudioModule29;
-
-const T_POSE = Object.freeze(normalizePose({ aL_sz: 90, aR_sz: 90 }));
-
-const IDLE_POSE = Object.freeze(normalizePose({
-  squat: 18,
-  spine_x: 4,
-  head_y: 7,
-  head_x: 2,
-  aL_sx: -18,
-  aL_sy: -8,
-  aL_sz: 14,
-  aL_ex: 54,
-  aR_sx: -28,
-  aR_sy: 18,
-  aR_sz: 10,
-  aR_ex: 62,
-  aR_wy: 12,
-  lL_hx: -10,
-  lL_hz: 8,
-  lL_kx: 15,
-  lR_hx: -10,
-  lR_hz: 8,
-  lR_kx: 15,
-}));
-
-function makeTemplate(input, actionInput) {
-  const clip = createAnimationClip(input);
-  const action = createActionDefinition({ ...actionInput, id: clip.id, clipId: clip.id }, clip.durationFrames);
-  return { clip, action };
-}
-
-function createTPoseTemplate() {
-  return makeTemplate({
-    id: 't_pose',
-    name: 'T-Pose',
-    timeline: [{ name: 't_pose', frame: 0, tag: 'reference' }],
-    poses: { t_pose: T_POSE },
-  }, { category: 'reference' });
-}
-
-function createIdleTemplate() {
-  return makeTemplate({
-    id: 'idle',
-    name: 'Idle',
-    timeline: [{ name: 'idle', frame: 0, tag: 'idle' }],
-    poses: { idle: IDLE_POSE },
-  }, { category: 'idle' });
-}
-
-function createSlashTestTemplate() {
-  const ready = normalizePose({ ...IDLE_POSE, aR_sx: -72, aR_sy: -18, aR_sz: 18, aR_ex: 72, aR_wy: 24 });
-  return makeTemplate({
-    id: 'slash_test',
-    name: 'Slash Test',
-    timeline: [
-      { name: 'ready', frame: 0, ease: 'lin', tag: 'idle' },
-      { name: 'windup', frame: 6, ease: 'out', tag: 'windup' },
-      { name: 'slash_start', frame: 10, ease: 'in', tag: 'slash_start' },
-      { name: 'slash_active', frame: 14, ease: 'in', tag: 'slash_active', impact: true },
-      { name: 'follow_through', frame: 19, ease: 'out', tag: 'follow_through' },
-      { name: 'recover', frame: 26, ease: 'out', tag: 'recover', cancel: true },
-    ],
-    poses: {
-      ready,
-      windup: { ...ready, root_y: -30, root_x: -4, spine_y: -18, aR_sx: -58, aR_sy: -82, aR_ex: 96, aR_wx: -22, aL_ex: 78 },
-      slash_start: { ...ready, root_y: -12, root_x: 3, root_pz: 0.08, spine_y: -8, aR_sx: -90, aR_sy: -52, aR_ex: 42, aR_wy: 34 },
-      slash_active: { ...ready, root_y: 26, root_x: 6, root_pz: 0.22, spine_y: 22, aR_sx: -102, aR_sy: 38, aR_ex: 7, aR_wy: -18, aR_wz: 12, lR_hx: 8, lR_kx: 5 },
-      follow_through: { ...ready, root_y: 42, root_x: 3, root_pz: 0.18, spine_y: 30, aR_sx: -86, aR_sy: 104, aR_ex: 24, aR_wy: -38 },
-      recover: ready,
-    },
-  }, {
-    category: 'attack',
-    windows: {
-      active: [{ startFrame: 12, endFrame: 15, label: 'suggested hit window' }],
-      cancel: [{ startFrame: 22, endFrame: 26, label: 'combo cancel' }],
-      movement: [{ startFrame: 8, endFrame: 17, label: 'forward lunge' }],
-      weaponTrail: [{ startFrame: 9, endFrame: 19, label: 'sword trail' }],
-    },
-  });
-}
-
-function createGuardTemplate() {
-  const hold = normalizePose({ ...IDLE_POSE, root_y: -5, aR_sx: -104, aR_sy: -12, aR_ex: 92, aR_wx: -25, aL_sx: -88, aL_ex: 96 });
-  return makeTemplate({
-    id: 'guard',
-    name: 'Guard',
-    timeline: [
-      { name: 'guard_enter', frame: 0, tag: 'guard_enter' },
-      { name: 'guard_hold', frame: 7, tag: 'guard_hold' },
-      { name: 'guard_exit', frame: 18, tag: 'guard_exit', cancel: true },
-    ],
-    poses: { guard_enter: IDLE_POSE, guard_hold: hold, guard_exit: IDLE_POSE },
-  }, { category: 'guard', windows: { cancel: [{ startFrame: 15, endFrame: 18 }] } });
-}
-
-function createParryTemplate() {
-  const contact = normalizePose({ ...IDLE_POSE, root_y: -12, aR_sx: -112, aR_sy: -38, aR_ex: 58, aR_wx: 20, aL_sx: -82, aL_ex: 86 });
-  return makeTemplate({
-    id: 'parry',
-    name: 'Parry',
-    timeline: [
-      { name: 'parry_start', frame: 0, tag: 'parry_start' },
-      { name: 'parry_contact', frame: 5, tag: 'parry_contact', impact: true },
-      { name: 'parry_recover', frame: 13, tag: 'parry_recover', cancel: true },
-    ],
-    poses: { parry_start: IDLE_POSE, parry_contact: contact, parry_recover: IDLE_POSE },
-  }, {
-    category: 'parry',
-    windows: {
-      parry: [{ startFrame: 3, endFrame: 6, label: 'suggested perfect-parry window' }],
-      cancel: [{ startFrame: 10, endFrame: 13, label: 'counter transition' }],
-      weaponTrail: [{ startFrame: 2, endFrame: 7 }],
-    },
-  });
-}
-
-function createCounterTemplate() {
-  const strike = normalizePose({ ...IDLE_POSE, root_y: 22, root_pz: 0.24, aR_sx: -106, aR_sy: 32, aR_ex: 4, aR_wy: -20 });
-  return makeTemplate({
-    id: 'counter',
-    name: 'Counter',
-    timeline: [
-      { name: 'counter_start', frame: 0, tag: 'counter_start' },
-      { name: 'counter_strike', frame: 6, tag: 'counter_strike' },
-      { name: 'counter_impact', frame: 10, tag: 'counter_impact', impact: true },
-      { name: 'counter_recover', frame: 18, tag: 'counter_recover', cancel: true },
-    ],
-    poses: { counter_start: IDLE_POSE, counter_strike: { ...strike, root_y: -8, aR_sy: -42 }, counter_impact: strike, counter_recover: IDLE_POSE },
-  }, {
-    category: 'counter',
-    windows: {
-      active: [{ startFrame: 8, endFrame: 11 }],
-      cancel: [{ startFrame: 15, endFrame: 18 }],
-      weaponTrail: [{ startFrame: 5, endFrame: 12 }],
-    },
-  });
-}
-
-function createAdvancingVerticalChopTemplate(guideInput = {}) {
-  const guide = createAdvancingVerticalChopGuide(guideInput);
-  const clip = bakeAdvancingVerticalChopClip(guide);
-  const frame = advancingVerticalChopFrames(guide);
-  const action = createActionDefinition({
-    id: clip.id,
-    clipId: clip.id,
-    category: 'heavy-attack',
-    windows: {
-      active: [{ startFrame: frame.impact - 1, endFrame: frame.impact + 2, label: 'vertical chop impact' }],
-      cancel: [{ startFrame: frame.follow + 3, endFrame: frame.recover, label: 'recover cancel' }],
-      movement: [{ startFrame: frame.commit, endFrame: frame.impact + 1, label: 'advancing step' }],
-      weaponTrail: [{ startFrame: frame.commit, endFrame: frame.follow, label: 'vertical sword trail' }],
-    },
-  }, clip.durationFrames);
-  return { clip, action };
-}
-
-const ACTION_TEMPLATE_FACTORIES = Object.freeze({
-  t_pose: createTPoseTemplate,
-  idle: createIdleTemplate,
-  slash_test: createSlashTestTemplate,
-  guard: createGuardTemplate,
-  parry: createParryTemplate,
-  counter: createCounterTemplate,
-  advancing_vertical_chop: createAdvancingVerticalChopTemplate,
-});
-return Object.freeze({ T_POSE, IDLE_POSE, createTPoseTemplate, createIdleTemplate, createSlashTestTemplate, createGuardTemplate, createParryTemplate, createCounterTemplate, createAdvancingVerticalChopTemplate, ACTION_TEMPLATE_FACTORIES });
-})();
-
-// tools/action-studio/studio-preview-runtime.js
-const __actionStudioModule30 = (() => {
-function createPreviewDummy(THREE) {
-  const group = new THREE.Group();
-  group.name = 'PREVIEW_DUMMY';
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(0.62, 1.32, 0.46),
-    new THREE.MeshStandardMaterial({ color: 0x7b314d, roughness: 0.82, metalness: 0 }),
-  );
-  body.position.y = 0.82;
-  group.add(body);
-  const head = new THREE.Mesh(
-    new THREE.BoxGeometry(0.52, 0.52, 0.52),
-    new THREE.MeshStandardMaterial({ color: 0xb74a68, roughness: 0.7 }),
-  );
-  head.position.y = 1.72;
-  group.add(head);
-  group.position.z = 2.15;
-  return group;
-}
-
-const COMBAT_FEEL_PROFILES = Object.freeze({
-  light: Object.freeze({
-    label: 'Light Slash',
-    hitstop: 0.03,
-    shake: 0.18,
-    knockback: 0.22,
-    attackerRecoil: 0.035,
-    cameraKick: 0.045,
-    cameraSide: 0.25,
-    cameraDown: 0.12,
-    flash: 0.22,
-    sparkScale: 0.42,
-    reactionDuration: 0.22,
-  }),
-  heavy: Object.freeze({
-    label: 'Heavy Slash',
-    hitstop: 0.065,
-    shake: 0.38,
-    knockback: 0.68,
-    attackerRecoil: 0.075,
-    cameraKick: 0.105,
-    cameraSide: 0.18,
-    cameraDown: 0.42,
-    flash: 0.44,
-    sparkScale: 0.85,
-    reactionDuration: 0.38,
-  }),
-  block: Object.freeze({
-    label: 'Block',
-    hitstop: 0.04,
-    shake: 0.24,
-    knockback: 0.08,
-    attackerRecoil: 0.11,
-    cameraKick: 0.075,
-    cameraSide: 0.72,
-    cameraDown: 0.08,
-    flash: 0.34,
-    sparkScale: 0.62,
-    reactionDuration: 0.2,
-  }),
-  parry: Object.freeze({
-    label: 'Perfect Parry',
-    hitstop: 0.085,
-    shake: 0.46,
-    knockback: 0.14,
-    attackerRecoil: 0.19,
-    cameraKick: 0.13,
-    cameraSide: 0.9,
-    cameraDown: 0.12,
-    flash: 0.62,
-    sparkScale: 1.15,
-    reactionDuration: 0.3,
-  }),
-});
-
-function createSparkBurst(THREE) {
-  const positions = [];
-  const rayCount = 18;
-  for (let index = 0; index < rayCount; index += 1) {
-    const angle = (index / rayCount) * Math.PI * 2;
-    const tilt = ((index % 5) - 2) * 0.12;
-    const length = 0.12 + (index % 4) * 0.035;
-    positions.push(0, 0, 0);
-    positions.push(
-      Math.cos(angle) * length,
-      Math.sin(angle) * length * 0.72 + tilt,
-      Math.sin(angle * 1.7) * length * 0.45,
-    );
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  const material = new THREE.LineBasicMaterial({
-    color: 0xffd36b,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-  });
-  const burst = new THREE.LineSegments(geometry, material);
-  burst.visible = false;
-  burst.frustumCulled = false;
-  return burst;
-}
-
-function createStudioPreviewRuntime(THREE, options) {
-  const {
-    canvas,
-    character,
-    impactFlash,
-    isDummyEnabled,
-  } = options;
-  // The weapon can be swapped while the studio is running (the stage weapon selector), so this is
-  // held rather than destructured: a captured reference would keep drawing the trail of a sword
-  // that is no longer in the hand.
-  let sword = options.sword;
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.outputEncoding = THREE.sRGBEncoding;
-  renderer.shadowMap.enabled = true;
-
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0f19);
-  scene.fog = new THREE.Fog(0x0a0f19, 7, 16);
-  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 60);
-  const cameraTarget = new THREE.Vector3(0, 1.05, 0);
-  let cameraTheta = 0.45;
-  let cameraPhi = 1.12;
-  let cameraRadius = 5.1;
-  let gameCameraOn = false;
-  let savedCamera = null;
-
-  scene.add(new THREE.HemisphereLight(0xb9d2ff, 0x11131d, 1.15));
-  const keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
-  keyLight.position.set(4, 7, 5);
-  keyLight.castShadow = true;
-  scene.add(keyLight);
-  const rimLight = new THREE.DirectionalLight(0x55e6c1, 0.7);
-  rimLight.position.set(-4, 3, -4);
-  scene.add(rimLight);
-  scene.add(new THREE.GridHelper(18, 18, 0x33425f, 0x1b263a));
-  scene.add(character.object3d);
-
-  const dummy = createPreviewDummy(THREE);
-  scene.add(dummy);
-  const sparkBurst = createSparkBurst(THREE);
-  scene.add(sparkBurst);
-  const weaponTrail = new THREE.Line(
-    new THREE.BufferGeometry(),
-    new THREE.LineBasicMaterial({ color: 0x55e6c1, transparent: true, opacity: 0.92 }),
-  );
-  weaponTrail.frustumCulled = false;
-  scene.add(weaponTrail);
-  const trailPoint = new THREE.Vector3();
-  let trailPoints = [];
-
-  const feel = { ...COMBAT_FEEL_PROFILES.light };
-  let activeFeelProfile = 'light';
-  let impactFeel = { ...feel };
-  let hitstopRemaining = 0;
-  let releasePending = false;
-  let shakeRemaining = 0;
-  let cameraImpulseRemaining = 0;
-  let reactionElapsed = 0;
-  let attackerReactionElapsed = 0;
-  let sparkRemaining = 0;
-  const cameraImpulseDuration = 0.18;
-  const sparkDuration = 0.16;
-  const dummyBaseZ = 2.15;
-  const attackerBasePosition = character.object3d.position.clone();
-  const cameraRight = new THREE.Vector3();
-  const cameraUp = new THREE.Vector3();
-  const cameraForward = new THREE.Vector3();
-  const cameraOffset = new THREE.Vector3();
-
-  function placeCamera() {
-    camera.position.set(
-      cameraTarget.x + cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta),
-      cameraTarget.y + cameraRadius * Math.cos(cameraPhi),
-      cameraTarget.z + cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta),
-    );
-    camera.lookAt(cameraTarget);
-  }
-
-  function resize() {
-    const rect = canvas.getBoundingClientRect();
-    renderer.setSize(rect.width, rect.height, false);
-    camera.aspect = rect.width / Math.max(1, rect.height);
-    camera.updateProjectionMatrix();
-  }
-
-  function clearWeaponTrail() {
-    trailPoints = [];
-    weaponTrail.geometry.dispose();
-    weaponTrail.geometry = new THREE.BufferGeometry();
-  }
-
-  function recordWeaponTrail(enabled) {
-    if (!enabled) return;
-    sword.trailTip.getWorldPosition(trailPoint);
-    if (!trailPoints.length || trailPoints[trailPoints.length - 1].distanceToSquared(trailPoint) > 0.0002) {
-      trailPoints.push(trailPoint.clone());
-      if (trailPoints.length > 70) trailPoints.shift();
-      weaponTrail.geometry.dispose();
-      weaponTrail.geometry = new THREE.BufferGeometry().setFromPoints(trailPoints);
-    }
-  }
-
-  function applyFeelProfile(profileName) {
-    const key = String(profileName || '').toLowerCase();
-    const profile = COMBAT_FEEL_PROFILES[key];
-    if (!profile) throw new Error(`Unknown combat feel profile: ${profileName}`);
-    activeFeelProfile = key;
-    Object.assign(feel, profile);
-    return { name: key, ...feel };
-  }
-
-  function releaseImpact() {
-    releasePending = false;
-    shakeRemaining = cameraImpulseDuration;
-    cameraImpulseRemaining = cameraImpulseDuration;
-    reactionElapsed = 0.000001;
-    attackerReactionElapsed = 0.000001;
-    sparkRemaining = sparkDuration;
-    sparkBurst.visible = isDummyEnabled();
-    sparkBurst.position.set(0, 1.13, dummyBaseZ - 0.18);
-    sparkBurst.scale.setScalar(0.15);
-    sparkBurst.material.opacity = 1;
-    if (isDummyEnabled()) {
-      impactFlash.style.transition = 'none';
-      impactFlash.style.opacity = String(impactFeel.flash);
-      requestAnimationFrame(() => {
-        impactFlash.style.transition = 'opacity .14s ease-out';
-        impactFlash.style.opacity = '0';
-      });
-    }
-  }
-
-  function triggerImpact() {
-    impactFeel = { ...feel };
-    hitstopRemaining = Math.max(0, impactFeel.hitstop);
-    releasePending = true;
-    reactionElapsed = 0;
-    attackerReactionElapsed = 0;
-    shakeRemaining = 0;
-    cameraImpulseRemaining = 0;
-    sparkRemaining = 0;
-    sparkBurst.visible = false;
-    dummy.position.z = dummyBaseZ;
-    dummy.rotation.x = 0;
-    character.object3d.position.copy(attackerBasePosition);
-    if (hitstopRemaining <= 0) releaseImpact();
-  }
-
-  function consumeHitstop(deltaSeconds) {
-    if (hitstopRemaining > 0) {
-      hitstopRemaining = Math.max(0, hitstopRemaining - deltaSeconds);
-      return true;
-    }
-    if (releasePending) releaseImpact();
-    return false;
-  }
-
-  function reactionCurve(elapsed, duration) {
-    if (elapsed <= 0 || duration <= 0) return 0;
-    const t = Math.min(1, elapsed / duration);
-    return Math.pow(Math.sin(Math.PI * t), 0.72);
-  }
-
-  function update(deltaSeconds) {
-    dummy.visible = isDummyEnabled();
-    if (reactionElapsed > 0) {
-      reactionElapsed += deltaSeconds;
-      const amount = reactionCurve(reactionElapsed, impactFeel.reactionDuration);
-      dummy.position.z = dummyBaseZ + impactFeel.knockback * 0.72 * amount;
-      dummy.rotation.x = -impactFeel.knockback * 0.18 * amount;
-      if (reactionElapsed >= impactFeel.reactionDuration) {
-        reactionElapsed = 0;
-        dummy.position.z = dummyBaseZ;
-        dummy.rotation.x = 0;
-      }
-    } else {
-      dummy.position.z = dummyBaseZ;
-      dummy.rotation.x = 0;
-    }
-
-    if (attackerReactionElapsed > 0) {
-      attackerReactionElapsed += deltaSeconds;
-      const duration = Math.max(0.16, impactFeel.reactionDuration * 0.72);
-      const amount = reactionCurve(attackerReactionElapsed, duration);
-      character.object3d.position.copy(attackerBasePosition);
-      character.object3d.position.z -= impactFeel.attackerRecoil * amount;
-      if (attackerReactionElapsed >= duration) {
-        attackerReactionElapsed = 0;
-        character.object3d.position.copy(attackerBasePosition);
-      }
-    } else {
-      character.object3d.position.copy(attackerBasePosition);
-    }
-
-    if (sparkRemaining > 0) {
-      sparkRemaining = Math.max(0, sparkRemaining - deltaSeconds);
-      const t = 1 - sparkRemaining / sparkDuration;
-      const scale = impactFeel.sparkScale * (0.2 + t * 1.1);
-      sparkBurst.scale.setScalar(scale);
-      sparkBurst.material.opacity = Math.pow(1 - t, 1.8);
-      if (sparkRemaining <= 0) sparkBurst.visible = false;
-    }
-  }
-
-  function render() {
-    cameraOffset.set(0, 0, 0);
-    if (cameraImpulseRemaining > 0) {
-      const t = cameraImpulseRemaining / cameraImpulseDuration;
-      const kick = impactFeel.cameraKick * t * t;
-      cameraRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
-      cameraUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
-      cameraForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
-      cameraOffset
-        .addScaledVector(cameraRight, kick * impactFeel.cameraSide)
-        .addScaledVector(cameraUp, -kick * impactFeel.cameraDown)
-        .addScaledVector(cameraForward, -kick * 0.55);
-    }
-    if (shakeRemaining > 0) {
-      const amount = impactFeel.shake * 0.022 * (shakeRemaining / cameraImpulseDuration);
-      cameraRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
-      cameraUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
-      cameraOffset
-        .addScaledVector(cameraRight, (Math.random() * 2 - 1) * amount)
-        .addScaledVector(cameraUp, (Math.random() * 2 - 1) * amount);
-    }
-    camera.position.add(cameraOffset);
-    renderer.render(scene, camera);
-    camera.position.sub(cameraOffset);
-  }
-
-  function advanceShake(deltaSeconds) {
-    shakeRemaining = Math.max(0, shakeRemaining - deltaSeconds);
-    cameraImpulseRemaining = Math.max(0, cameraImpulseRemaining - deltaSeconds);
-  }
-
-  function toggleGameCamera() {
-    gameCameraOn = !gameCameraOn;
-    if (gameCameraOn) {
-      savedCamera = { cameraTheta, cameraPhi, cameraRadius, fov: camera.fov };
-      cameraTheta = Math.PI;
-      cameraPhi = 0.82;
-      cameraRadius = 5.35;
-      camera.fov = 34;
-    } else if (savedCamera) {
-      ({ cameraTheta, cameraPhi, cameraRadius } = savedCamera);
-      camera.fov = savedCamera.fov;
-    }
-    camera.updateProjectionMatrix();
-    placeCamera();
-    return gameCameraOn;
-  }
-
-  function setFeel(key, value) {
-    if (!(key in feel)) throw new Error(`Unknown preview feel control: ${key}`);
-    feel[key] = Number(value);
-    return feel[key];
-  }
-
-  function handleFeelProfileEvent(event) {
-    const profileName = event?.detail?.profile;
-    if (!profileName) return;
-    try {
-      const applied = applyFeelProfile(profileName);
-      window.dispatchEvent(new CustomEvent('action-studio-feel-profile-applied', {
-        detail: applied,
-      }));
-    } catch (_error) {
-      // UI validation owns invalid profile names; ignore unrelated custom events.
-    }
-  }
-  window.addEventListener('action-studio-feel-profile', handleFeelProfileEvent);
-
-  let orbiting = false;
-  let pointerX = 0;
-  let pointerY = 0;
-  canvas.addEventListener('pointerdown', (event) => {
-    orbiting = true;
-    pointerX = event.clientX;
-    pointerY = event.clientY;
-    canvas.setPointerCapture(event.pointerId);
-  });
-  canvas.addEventListener('pointerup', () => { orbiting = false; });
-  canvas.addEventListener('pointercancel', () => { orbiting = false; });
-  canvas.addEventListener('pointermove', (event) => {
-    if (!orbiting || gameCameraOn) return;
-    cameraTheta -= (event.clientX - pointerX) * 0.008;
-    cameraPhi = Math.max(0.3, Math.min(1.48, cameraPhi - (event.clientY - pointerY) * 0.008));
-    pointerX = event.clientX;
-    pointerY = event.clientY;
-    placeCamera();
-  });
-  canvas.addEventListener('wheel', (event) => {
-    event.preventDefault();
-    cameraRadius = Math.max(3.2, Math.min(10, cameraRadius + event.deltaY * 0.008));
-    placeCamera();
-  }, { passive: false });
-
-  placeCamera();
-  return {
-    scene,
-    camera,
-    renderer,
-    feel,
-    get activeFeelProfile() { return activeFeelProfile; },
-    get feelProfiles() { return COMBAT_FEEL_PROFILES; },
-    resize,
-    render,
-    update,
-    advanceShake,
-    toggleGameCamera,
-    clearWeaponTrail,
-    recordWeaponTrail,
-    setSword(next) { sword = next; clearWeaponTrail(); },
-    triggerImpact,
-    consumeHitstop,
-    setFeel,
-    applyFeelProfile,
-  };
-}
-return Object.freeze({ createStudioPreviewRuntime });
-})();
-
-// tools/action-studio/studio-combat-feel-controller.js
-const __actionStudioModule31 = (() => {
-function updateSlider(id, value, digits = 2, suffix = '') {
-  const input = document.getElementById(id);
-  const output = document.getElementById(`${id}Value`);
-  if (!input || !output) return;
-  input.value = String(value);
-  output.textContent = `${Number(value).toFixed(digits)}${suffix}`;
-}
-
-function createStudioCombatFeelController(preview) {
-  let externalImpactReleaseTimer = null;
-
-  function applyProfile(slot) {
-    const select = document.getElementById(`feelProfile${slot}`);
-    const name = select?.value || 'light';
-    const applied = preview.applyFeelProfile(name);
-    updateSlider('hitstop', applied.hitstop, applied.hitstop % 0.01 === 0 ? 2 : 3, 's');
-    updateSlider('shake', applied.shake);
-    updateSlider('knockback', applied.knockback);
-    const status = document.getElementById('feelProfileStatus');
-    if (status) status.textContent = `Active ${slot} · ${applied.label} · same animation, different impact response`;
-    document.getElementById('feelUseA')?.classList.toggle('on', slot === 'A');
-    document.getElementById('feelUseB')?.classList.toggle('on', slot === 'B');
-  }
-
-  function releaseExternalImpact(hitstopSeconds) {
-    preview.consumeHitstop(hitstopSeconds + 0.001);
-    preview.consumeHitstop(0);
-  }
-
-  function handleExternalImpact() {
-    if (externalImpactReleaseTimer !== null) clearTimeout(externalImpactReleaseTimer);
-    preview.triggerImpact();
-    const hitstopSeconds = Math.max(0, Number(preview.feel?.hitstop) || 0);
-    if (hitstopSeconds <= 0) {
-      releaseExternalImpact(0);
-      return;
-    }
-    externalImpactReleaseTimer = setTimeout(() => {
-      externalImpactReleaseTimer = null;
-      releaseExternalImpact(hitstopSeconds);
-    }, hitstopSeconds * 1000);
-  }
-
-  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-    window.addEventListener('action-studio-external-impact', handleExternalImpact);
-  }
-
-  const controls = document.getElementById('feelAbControls');
-  if (!controls) return { applyProfile, handleExternalImpact };
-  document.getElementById('feelUseA')?.addEventListener('click', () => applyProfile('A'));
-  document.getElementById('feelUseB')?.addEventListener('click', () => applyProfile('B'));
-  document.getElementById('feelProfileA')?.addEventListener('change', () => {
-    if (document.getElementById('feelUseA')?.classList.contains('on')) applyProfile('A');
-  });
-  document.getElementById('feelProfileB')?.addEventListener('change', () => {
-    if (document.getElementById('feelUseB')?.classList.contains('on')) applyProfile('B');
-  });
-  applyProfile('A');
-  return { applyProfile, handleExternalImpact };
-}
-return Object.freeze({ createStudioCombatFeelController });
-})();
-
-// tools/action-studio/studio-motion-guide-overlay.js
-const __actionStudioModule32 = (() => {
-const { normalizeMotionGuide } = __actionStudioModule26;
-
-const GUIDE_COLORS = Object.freeze({
-  hand: 0xffc857,
-  windup: 0xff985c,
-  head: 0x59d8ff,
-  body: 0xff72a6,
-  foot: 0x65e6a5,
-  grip: 0xb99aff,
-  linkage: 0xa5b5d6,
-});
-
-function createMarker(THREE, name, color, radius = 0.045, target = false, dragTarget = '') {
-  const geometry = target
-    ? new THREE.TorusGeometry(radius * 1.55, radius * 0.32, 7, 20)
-    : new THREE.SphereGeometry(radius, 10, 8);
-  const material = new THREE.MeshBasicMaterial({
-    color,
-    transparent: true,
-    opacity: target ? 0.98 : 0.82,
-    depthTest: false,
-    depthWrite: false,
-  });
-  const marker = new THREE.Mesh(geometry, material);
-  marker.name = name;
-  marker.renderOrder = 90;
-  marker.userData.motionGuideTarget = dragTarget;
-  return marker;
-}
-
-function createLink(THREE, name, color, opacity = 0.55) {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-  const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({
-    color,
-    transparent: true,
-    opacity,
-    depthTest: false,
-    depthWrite: false,
-  }));
-  line.name = name;
-  line.frustumCulled = false;
-  line.renderOrder = 89;
-  return line;
-}
-
-function setLink(line, start, end) {
-  const position = line.geometry.attributes.position;
-  position.setXYZ(0, start.x, start.y, start.z);
-  position.setXYZ(1, end.x, end.y, end.z);
-  position.needsUpdate = true;
-  line.geometry.computeBoundingSphere();
-}
-
-function createWholeBodyMotionGuideOverlay(THREE, {
-  scene,
-  camera,
-  canvas,
-  character,
-  sword: initialSword,
-}) {
-  // Held rather than captured, for the same reason as the preview runtime: the stage weapon can be
-  // swapped, and the off-hand guide reads the weapon's own secondary grip.
-  let sword = initialSword;
-  const group = new THREE.Group();
-  group.name = 'WHOLE_BODY_MOTION_GUIDES';
-  group.visible = false;
-  scene.add(group);
-
-  const markers = {
-    head: createMarker(THREE, 'GUIDE_HEAD_LINK', GUIDE_COLORS.head),
-    hand: createMarker(THREE, 'GUIDE_SWORD_HAND_LINK', GUIDE_COLORS.hand),
-    offHand: createMarker(THREE, 'GUIDE_OFF_HAND_LINK', GUIDE_COLORS.grip),
-    secondaryGrip: createMarker(THREE, 'GUIDE_SECONDARY_GRIP', GUIDE_COLORS.grip, 0.04, true),
-    hips: createMarker(THREE, 'GUIDE_BODY_LINK', GUIDE_COLORS.body, 0.055),
-    footL: createMarker(THREE, 'GUIDE_FOOT_L_LINK', GUIDE_COLORS.foot),
-    footR: createMarker(THREE, 'GUIDE_FOOT_R_LINK', GUIDE_COLORS.foot),
-    impactTarget: createMarker(THREE, 'GUIDE_IMPACT_TARGET', GUIDE_COLORS.hand, 0.09, true, 'impact'),
-    comTarget: createMarker(THREE, 'GUIDE_COM_TARGET', GUIDE_COLORS.body, 0.075, true, 'com'),
-    plantTarget: createMarker(THREE, 'GUIDE_PLANT_TARGET', GUIDE_COLORS.foot, 0.08, true, 'plant'),
-    windupTarget: createMarker(THREE, 'GUIDE_WINDUP_TARGET', GUIDE_COLORS.windup, 0.085, true, 'windup'),
-  };
-  markers.comTarget.rotation.y = Math.PI / 2;
-  markers.plantTarget.rotation.x = Math.PI / 2;
-  markers.windupTarget.rotation.y = Math.PI / 2;
-  const draggableMarkers = [markers.windupTarget, markers.impactTarget, markers.comTarget, markers.plantTarget];
-
-  const links = {
-    headBody: createLink(THREE, 'GUIDE_HEAD_BODY_LINK', GUIDE_COLORS.linkage, 0.32),
-    bodyHand: createLink(THREE, 'GUIDE_BODY_HAND_LINK', GUIDE_COLORS.linkage, 0.32),
-    bodyFootL: createLink(THREE, 'GUIDE_BODY_FOOT_L_LINK', GUIDE_COLORS.linkage, 0.26),
-    bodyFootR: createLink(THREE, 'GUIDE_BODY_FOOT_R_LINK', GUIDE_COLORS.linkage, 0.26),
-    headTarget: createLink(THREE, 'GUIDE_HEAD_TARGET_LINK', GUIDE_COLORS.head),
-    handTarget: createLink(THREE, 'GUIDE_HAND_TARGET_LINK', GUIDE_COLORS.hand, 0.72),
-    handWindup: createLink(THREE, 'GUIDE_HAND_WINDUP_LINK', GUIDE_COLORS.windup, 0.78),
-    bodyTarget: createLink(THREE, 'GUIDE_BODY_TARGET_LINK', GUIDE_COLORS.body),
-    footTarget: createLink(THREE, 'GUIDE_FOOT_TARGET_LINK', GUIDE_COLORS.foot, 0.72),
-    offHandGrip: createLink(THREE, 'GUIDE_OFF_HAND_GRIP_LINK', GUIDE_COLORS.grip, 0.82),
-  };
-  Object.values(markers).forEach((marker) => group.add(marker));
-  Object.values(links).forEach((line) => group.add(line));
-
-  const points = Object.fromEntries([
-    'origin', 'head', 'hand', 'offHand', 'secondaryGrip', 'hips', 'chest',
-    'footL', 'footR', 'windup', 'impact', 'com', 'plant',
-  ].map((key) => [key, new THREE.Vector3()]));
-  const raycaster = new THREE.Raycaster();
-  const pointer = new THREE.Vector2();
-  const dragPlane = new THREE.Plane();
-  const dragPoint = new THREE.Vector3();
-  const planeNormal = new THREE.Vector3();
-  let guide = null;
-  let onGuideChange = null;
-  let dragging = null;
-  let hovered = null;
-  const diagnostics = { windupTargetError: 0, secondaryGripError: 0, draggingTarget: '' };
-
-  function setGuide(nextGuide) {
-    guide = nextGuide ? normalizeMotionGuide(nextGuide) : null;
-    group.visible = Boolean(guide?.visible);
-  }
-
-  function updateTargetPoints() {
-    const planeX = guide.cutPlaneOffset * 0.008;
-    points.windup.copy(points.origin).add(new THREE.Vector3(
-      planeX,
-      guide.windupHeight,
-      -guide.windupPullback,
-    ));
-    points.impact.copy(points.origin).add(new THREE.Vector3(
-      planeX,
-      guide.impactHeight,
-      Math.max(0.9, guide.stepDistance + 0.82),
-    ));
-    points.com.copy(points.origin).add(new THREE.Vector3(
-      planeX * 0.35,
-      0.93 - guide.crouchDepth * 0.003,
-      guide.stepDistance * (0.32 + guide.coupling * 0.42),
-    ));
-    points.plant.copy(points.origin).add(new THREE.Vector3(
-      guide.leadFoot === 'L' ? 0.18 : -0.18,
-      0.035,
-      guide.stepDistance,
-    ));
-  }
-
-  function update() {
-    group.visible = Boolean(guide?.visible);
-    if (!group.visible) return;
-    character.object3d.updateMatrixWorld(true);
-    character.object3d.getWorldPosition(points.origin);
-    character.rig.bones.head.getWorldPosition(points.head);
-    character.rig.bones['handslot.r'].getWorldPosition(points.hand);
-    character.rig.bones['handslot.l'].getWorldPosition(points.offHand);
-    character.rig.bones.hips.getWorldPosition(points.hips);
-    character.rig.bones.chest.getWorldPosition(points.chest);
-    character.rig.bones['foot.l'].getWorldPosition(points.footL);
-    character.rig.bones['foot.r'].getWorldPosition(points.footR);
-    sword.secondaryGrip.getWorldPosition(points.secondaryGrip);
-    updateTargetPoints();
-
-    markers.head.position.copy(points.head);
-    markers.hand.position.copy(points.hand);
-    markers.offHand.position.copy(points.offHand);
-    markers.secondaryGrip.position.copy(points.secondaryGrip);
-    markers.hips.position.copy(points.hips);
-    markers.footL.position.copy(points.footL);
-    markers.footR.position.copy(points.footR);
-    markers.windupTarget.position.copy(points.windup);
-    markers.impactTarget.position.copy(points.impact);
-    markers.comTarget.position.copy(points.com);
-    markers.plantTarget.position.copy(points.plant);
-
-    setLink(links.headBody, points.head, points.chest);
-    setLink(links.bodyHand, points.chest, points.hand);
-    setLink(links.bodyFootL, points.hips, points.footL);
-    setLink(links.bodyFootR, points.hips, points.footR);
-    setLink(links.headTarget, points.head, points.impact);
-    setLink(links.handTarget, points.hand, points.impact);
-    setLink(links.handWindup, points.hand, points.windup);
-    setLink(links.bodyTarget, points.hips, points.com);
-    setLink(links.footTarget, guide.leadFoot === 'L' ? points.footL : points.footR, points.plant);
-    setLink(links.offHandGrip, points.offHand, points.secondaryGrip);
-    diagnostics.windupTargetError = points.hand.distanceTo(points.windup);
-    diagnostics.secondaryGripError = points.offHand.distanceTo(points.secondaryGrip);
-    const showGrip = guide.twoHandGrip;
-    markers.offHand.visible = showGrip;
-    markers.secondaryGrip.visible = showGrip;
-    links.offHandGrip.visible = showGrip;
-    markers.windupTarget.visible = guide.windupTarget;
-    links.handWindup.visible = guide.windupTarget;
-  }
-
-  function setPointer(event) {
-    const rect = canvas.getBoundingClientRect();
-    pointer.set(
-      ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
-      -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
-    );
-    raycaster.setFromCamera(pointer, camera);
-  }
-
-  function pickTarget(event) {
-    if (!group.visible) return null;
-    setPointer(event);
-    return raycaster.intersectObjects(draggableMarkers, false)[0]?.object || null;
-  }
-
-  function setDragPlane(target) {
-    if (target === 'impact') planeNormal.set(0, 0, 1);
-    else if (target === 'com' || target === 'windup') planeNormal.set(1, 0, 0);
-    else planeNormal.set(0, 1, 0);
-    dragPlane.setFromNormalAndCoplanarPoint(planeNormal, markers[`${target}Target`].position);
-  }
-
-  function applyDrag(event) {
-    setPointer(event);
-    if (!raycaster.ray.intersectPlane(dragPlane, dragPoint)) return;
-    const next = { ...guide };
-    if (dragging === 'windup') {
-      next.windupHeight = dragPoint.y - points.origin.y;
-      next.windupPullback = points.origin.z - dragPoint.z;
-    } else if (dragging === 'impact') {
-      next.impactHeight = dragPoint.y - points.origin.y;
-      next.cutPlaneOffset = (dragPoint.x - points.origin.x) / 0.008;
-    } else if (dragging === 'plant') {
-      next.stepDistance = dragPoint.z - points.origin.z;
-      next.leadFoot = dragPoint.x >= points.origin.x ? 'L' : 'R';
-    } else if (dragging === 'com') {
-      next.crouchDepth = (0.93 - (dragPoint.y - points.origin.y)) / 0.003;
-      if (next.stepDistance > 0.05) {
-        next.coupling = (((dragPoint.z - points.origin.z) / next.stepDistance) - 0.32) / 0.42;
-      }
-    }
-    guide = normalizeMotionGuide(next);
-    updateTargetPoints();
-    onGuideChange?.({ ...guide }, { source: 'stage-drag', target: dragging });
-  }
-
-  canvas.addEventListener('pointerdown', (event) => {
-    const marker = pickTarget(event);
-    if (!marker) return;
-    dragging = marker.userData.motionGuideTarget;
-    diagnostics.draggingTarget = dragging;
-    setDragPlane(dragging);
-    marker.scale.setScalar(1.25);
-    canvas.style.cursor = 'grabbing';
-    canvas.setPointerCapture(event.pointerId);
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  }, true);
-
-  canvas.addEventListener('pointermove', (event) => {
-    if (dragging) {
-      applyDrag(event);
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return;
-    }
-    const marker = pickTarget(event);
-    if (hovered && hovered !== marker) hovered.scale.setScalar(1);
-    hovered = marker;
-    if (hovered) hovered.scale.setScalar(1.12);
-    canvas.style.cursor = hovered ? 'grab' : '';
-  }, true);
-
-  function endDrag(event) {
-    if (!dragging) return;
-    draggableMarkers.forEach((marker) => marker.scale.setScalar(1));
-    dragging = null;
-    diagnostics.draggingTarget = '';
-    canvas.style.cursor = '';
-    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  }
-
-  canvas.addEventListener('pointerup', endDrag, true);
-  canvas.addEventListener('pointercancel', endDrag, true);
-
-  return {
-    group,
-    markers,
-    setGuide,
-    update,
-    setGuideChangeHandler(handler) { onGuideChange = typeof handler === 'function' ? handler : null; },
-    setSword(next) { sword = next; },
-    get guide() { return guide ? { ...guide } : null; },
-    get diagnostics() { return { ...diagnostics }; },
-  };
-}
-return Object.freeze({ createWholeBodyMotionGuideOverlay });
-})();
-
-// tools/action-studio/studio-motion-guide-editor.js
-const __actionStudioModule33 = (() => {
-const { createAdvancingVerticalChopTemplate } = __actionStudioModule25;
-const { createAdvancingVerticalChopGuide, isWholeBodyMotionGuide, normalizeMotionGuide } = __actionStudioModule26;
-
-const CONTROL_DEFINITIONS = Object.freeze([
-  { key: 'stepDistance', label: 'Step distance', min: 0, max: 1.2, step: 0.01, suffix: 'm' },
-  { key: 'crouchDepth', label: 'Crouch depth', min: 0, max: 60, step: 1, suffix: '°' },
-  { key: 'forwardLean', label: 'Forward lean', min: 0, max: 40, step: 1, suffix: '°' },
-  { key: 'windupHeight', label: 'Windup height', min: 0.9, max: 2, step: 0.01, suffix: 'm' },
-  { key: 'windupPullback', label: 'Windup pullback', min: 0, max: 0.5, step: 0.01, suffix: 'm' },
-  { key: 'windupLoad', label: 'Windup body load', min: 0, max: 1, step: 0.01, suffix: '' },
-  { key: 'impactHeight', label: 'Impact height', min: 0.5, max: 2, step: 0.01, suffix: 'm' },
-  { key: 'cutPlaneOffset', label: 'Cut-plane offset', min: -35, max: 35, step: 1, suffix: '°' },
-  { key: 'coupling', label: 'Readability coupling', min: 0, max: 1, step: 0.01, suffix: '' },
-  { key: 'secondaryGripWeight', label: 'Off-hand grip weight', min: 0, max: 1, step: 0.01, suffix: '' },
-]);
-
-function displayValue(value, definition) {
-  const decimals = Number(definition.step) < 1 ? 2 : 0;
-  return `${Number(value).toFixed(decimals)}${definition.suffix}`;
-}
-
-function renderSlider(definition, guide) {
-  return `<label class="motion-guide-control">
-    <span>${definition.label}</span><output data-guide-output="${definition.key}">${displayValue(guide[definition.key], definition)}</output>
-    <input data-guide-key="${definition.key}" type="range" min="${definition.min}" max="${definition.max}" step="${definition.step}" value="${guide[definition.key]}">
-  </label>`;
-}
-
-function constraintSummary(guide, report) {
-  const parts = [];
-  if (guide.windupTarget && report?.windupTarget) parts.push(`Windup ${Math.round(report.windupAfterError * 100)}cm`);
-  else parts.push(guide.windupTarget ? 'Windup pending bake' : 'Windup fit off');
-  parts.push(guide.footLock ? 'Lead foot locked' : 'Foot lock off');
-  if (guide.twoHandGrip && report?.twoHandGrip) parts.push(`2H grip ${Math.round(report.afterError * 100)}cm avg`);
-  else parts.push(guide.twoHandGrip ? '2H grip pending bake' : 'Single-hand mode');
-  return parts.join(' · ');
-}
-
-function createStudioMotionGuideEditor({
-  overlay,
-  applyProject,
-  bakeProject,
-  getFrame,
-  onStatus,
-}) {
-  const host = document.getElementById('wholeBodyMotionEditor');
-  let guide = null;
-  let dirty = false;
-  let constraintReport = null;
-
-  function renderInactive() {
-    host.innerHTML = `<p class="motion-guide-intro">Create an advancing vertical chop from linked hand, head, center-of-mass, and foot targets.</p>
-      <button id="createVerticalChop" class="primary motion-guide-create">Create Advancing Chop</button>`;
-    document.getElementById('createVerticalChop').addEventListener('click', () => {
-      guide = createAdvancingVerticalChopGuide();
-      bakeCurrentGuide(guide.plantFrame, 'Created an advancing vertical chop with draggable whole-body guides.');
-    });
-  }
-
-  function syncControlValues() {
-    if (!guide) return;
-    host.querySelectorAll('[data-guide-key]').forEach((control) => {
-      const value = guide[control.dataset.guideKey];
-      if (control.type === 'checkbox') control.checked = Boolean(value);
-      else control.value = value;
-    });
-    const leadFoot = document.getElementById('motionLeadFoot');
-    if (leadFoot) leadFoot.value = guide.leadFoot;
-    CONTROL_DEFINITIONS.forEach((definition) => {
-      const output = host.querySelector(`[data-guide-output="${definition.key}"]`);
-      if (output) output.textContent = displayValue(guide[definition.key], definition);
-    });
-  }
-
-  function markDirty(message = 'Guides changed · Bake Pose Keys to apply') {
-    dirty = true;
-    constraintReport = null;
-    const status = document.getElementById('wholeBodyMotionStatus');
-    if (status) {
-      status.textContent = message;
-      status.classList.add('pending');
-    }
-  }
-
-  function acceptGuide(nextGuide, message) {
-    guide = normalizeMotionGuide(nextGuide);
-    overlay.setGuide(guide);
-    syncControlValues();
-    markDirty(message);
-  }
-
-  function updateGuideFromControls() {
-    const next = { ...guide };
-    host.querySelectorAll('[data-guide-key]').forEach((control) => {
-      next[control.dataset.guideKey] = control.type === 'checkbox' ? control.checked : Number(control.value);
-    });
-    next.leadFoot = document.getElementById('motionLeadFoot').value;
-    acceptGuide(next);
-  }
-
-  function bakeCurrentGuide(frame, message) {
-    const baseProject = createAdvancingVerticalChopTemplate(guide);
-    const baked = bakeProject?.(baseProject, guide) || { project: baseProject, report: null };
-    applyProject(baked.project || baked, { seekFrame: frame });
-    constraintReport = baked.report || constraintReport;
-    dirty = false;
-    renderActive();
-    onStatus(`${message} ${constraintSummary(guide, constraintReport)}.`);
-  }
-
-  function renderActive() {
-    host.innerHTML = `<div class="motion-guide-legend" aria-label="Motion guide legend">
-        <span><i class="guide-windup"></i>Windup / load</span><span><i class="guide-hand"></i>Sword / impact</span>
-        <span><i class="guide-head"></i>Head / gaze</span>
-        <span><i class="guide-body"></i>Center of mass</span><span><i class="guide-foot"></i>Lead-foot plant</span>
-        <span><i class="guide-grip"></i>Off-hand grip</span>
-      </div>
-      <p class="motion-guide-drag-hint">Drag the orange windup ring to stage the overhead load. Yellow, pink, and green control impact, center of mass, and foot plant.</p>
-      <div class="motion-guide-grid">
-        <label class="motion-guide-select"><span>Lead foot</span><select id="motionLeadFoot"><option value="L"${guide.leadFoot === 'L' ? ' selected' : ''}>Left</option><option value="R"${guide.leadFoot === 'R' ? ' selected' : ''}>Right</option></select></label>
-        <label class="motion-guide-number"><span>Plant frame</span><input data-guide-key="plantFrame" type="number" min="8" max="${guide.impactFrame - 1}" step="1" value="${guide.plantFrame}"></label>
-        <label class="motion-guide-number"><span>Impact frame</span><input data-guide-key="impactFrame" type="number" min="10" max="${guide.durationFrames - 7}" step="1" value="${guide.impactFrame}"></label>
-        <label class="motion-guide-number"><span>Duration</span><input data-guide-key="durationFrames" type="number" min="24" max="72" step="1" value="${guide.durationFrames}"></label>
-        ${CONTROL_DEFINITIONS.map((definition) => renderSlider(definition, guide)).join('')}
-      </div>
-      <div class="motion-guide-toggles">
-        <label class="check"><input data-guide-key="windupTarget" type="checkbox"${guide.windupTarget ? ' checked' : ''}> Fit sword hand to windup target</label>
-        <label class="check"><input data-guide-key="footLock" type="checkbox"${guide.footLock ? ' checked' : ''}> Lock lead foot from plant through follow-through</label>
-        <label class="check"><input data-guide-key="twoHandGrip" type="checkbox"${guide.twoHandGrip ? ' checked' : ''}> Fit off-hand to sword secondary grip</label>
-        <label class="check"><input data-guide-key="visible" type="checkbox"${guide.visible ? ' checked' : ''}> Show linked targets in the stage</label>
-      </div>
-      <div class="button-grid two motion-guide-actions"><button id="resetVerticalChop">Reset guides</button><button id="bakeVerticalChop" class="primary">Bake Constraints + Pose Keys</button></div>
-      <div id="wholeBodyMotionStatus" class="status-line${dirty ? ' pending' : ''}">${dirty ? 'Guides changed · Bake Pose Keys to apply' : constraintSummary(guide, constraintReport)}</div>`;
-
-    host.querySelectorAll('[data-guide-key]').forEach((control) => {
-      control.addEventListener('input', updateGuideFromControls);
-      control.addEventListener('change', () => renderActive());
-    });
-    document.getElementById('motionLeadFoot').addEventListener('change', () => {
-      updateGuideFromControls();
-      renderActive();
-    });
-    document.getElementById('resetVerticalChop').addEventListener('click', () => {
-      acceptGuide(createAdvancingVerticalChopGuide());
-      renderActive();
-    });
-    document.getElementById('bakeVerticalChop').addEventListener('click', () => {
-      bakeCurrentGuide(getFrame(), 'Windup load, whole-body targets, foot lock, and grip constraint baked into Pose Keys.');
-    });
-  }
-
-  function setClip(clip) {
-    const storedGuide = clip?.metadata?.motionGuide;
-    guide = isWholeBodyMotionGuide(storedGuide) ? normalizeMotionGuide(storedGuide) : null;
-    constraintReport = clip?.metadata?.motionGuideBake || null;
-    dirty = false;
-    overlay.setGuide(guide);
-    if (guide) renderActive();
-    else renderInactive();
-  }
-
-  overlay.setGuideChangeHandler((nextGuide, details) => {
-    const label = details.target === 'windup'
-      ? 'Windup target'
-      : details.target === 'plant'
-        ? 'Plant target'
-        : details.target === 'impact'
-          ? 'Impact target'
-          : 'Center-of-mass target';
-    acceptGuide(nextGuide, `${label} moved · Bake Pose Keys to apply`);
-  });
-
-  return {
-    setClip,
-    get guide() { return guide ? { ...guide } : null; },
-    get dirty() { return dirty; },
-    get constraintReport() { return constraintReport ? { ...constraintReport } : null; },
-  };
-}
-return Object.freeze({ createStudioMotionGuideEditor });
-})();
-
-// tools/action-studio/studio-motion-constraint-baker.js
-const __actionStudioModule34 = (() => {
-const { createAnimationClip } = __actionStudioModule21;
-const { normalizeMotionGuide } = __actionStudioModule26;
-const { normalizePose } = __actionStudioModule9;
-
-const WINDUP_HAND_POSE_KEYS = Object.freeze([
-  ['root_pz', -0.32, 0.08, 0.07],
-  ['root_x', -25, 12, 5],
-  ['spine_x', -30, 18, 5],
-  ['squat', 8, 60, 5],
-  ['aR_sx', -180, 80, 24],
-  ['aR_sy', -140, 140, 24],
-  ['aR_sz', -110, 110, 20],
-  ['aR_ex', -15, 165, 22],
-  ['aR_wx', -120, 120, 18],
-  ['aR_wy', -120, 120, 18],
-  ['aR_wz', -120, 120, 18],
-  ['aR_stretch', 0.72, 1.55, 0.12],
-]);
-
-const WINDUP_BODY_POSE_KEYS = new Set(['root_pz', 'root_x', 'spine_x', 'squat']);
-
-const SECONDARY_GRIP_POSE_KEYS = Object.freeze([
-  ['aL_sx', -180, 80, 24],
-  ['aL_sy', -140, 140, 24],
-  ['aL_sz', -110, 110, 20],
-  ['aL_ex', -15, 165, 22],
-  ['aL_wx', -120, 120, 18],
-  ['aL_wy', -120, 120, 18],
-  ['aL_wz', -120, 120, 18],
-  ['aL_stretch', 0.72, 1.55, 0.12],
-]);
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function refinePose(seedPose, poseKeys, evaluate) {
-  const candidate = { ...seedPose };
-  poseKeys.forEach(([key, min, max]) => {
-    candidate[key] = clamp(candidate[key], min, max);
-  });
-  let bestError = evaluate(candidate);
-  let stepScale = 1;
-
-  for (let pass = 0; pass < 8; pass += 1) {
-    for (const [key, min, max, baseStep] of poseKeys) {
-      const startValue = candidate[key];
-      let axisValue = startValue;
-      let axisError = bestError;
-      for (const direction of [-1, 1]) {
-        candidate[key] = clamp(startValue + direction * baseStep * stepScale, min, max);
-        const error = evaluate(candidate);
-        if (error < axisError) {
-          axisError = error;
-          axisValue = candidate[key];
-        }
-      }
-      candidate[key] = axisValue;
-      bestError = axisError;
-    }
-    stepScale *= 0.56;
-  }
-  return { pose: candidate, error: bestError };
-}
-
-function optimizePose(sourcePose, weight, poseKeys, seeds, evaluate, keyWeight = null) {
-  const original = normalizePose(sourcePose);
-  const beforeError = evaluate(original);
-  const fitted = seeds(original)
-    .map((seed) => refinePose(seed, poseKeys, evaluate))
-    .reduce((best, result) => (result.error < best.error ? result : best));
-  const constrained = { ...original };
-  poseKeys.forEach(([key]) => {
-    const axisWeight = weight * (keyWeight ? keyWeight(key) : 1);
-    constrained[key] = original[key] + (fitted.pose[key] - original[key]) * axisWeight;
-  });
-  const afterError = evaluate(constrained);
-  return { pose: normalizePose(constrained), beforeError, afterError };
-}
-
-function evaluateGripDistance(character, sword, pose, leftPoint, gripPoint) {
-  character.applyPose(pose);
-  character.object3d.updateMatrixWorld(true);
-  sword.object3d.updateMatrixWorld(true);
-  character.rig.bones['handslot.l'].getWorldPosition(leftPoint);
-  sword.secondaryGrip.getWorldPosition(gripPoint);
-  return leftPoint.distanceTo(gripPoint);
-}
-
-function evaluateWindupDistance(character, pose, targetPoint, handPoint) {
-  character.applyPose(pose);
-  character.object3d.updateMatrixWorld(true);
-  character.rig.bones['handslot.r'].getWorldPosition(handPoint);
-  return handPoint.distanceTo(targetPoint);
-}
-
-function gripSeeds(original) {
-  const mirrored = {
-    ...original,
-    aL_sx: original.aR_sx,
-    aL_sy: original.aR_sy + 42,
-    aL_sz: -original.aR_sz,
-    aL_ex: original.aR_ex + 22,
-    aL_wx: original.aR_wx,
-    aL_wy: -original.aR_wy,
-    aL_wz: -original.aR_wz,
-    aL_stretch: 1.08,
-  };
-  return [
-    original,
-    mirrored,
-    { ...mirrored, aL_sx: mirrored.aL_sx - 48, aL_sy: mirrored.aL_sy + 54, aL_ex: 92 },
-  ];
-}
-
-function windupSeeds(original) {
-  return [
-    original,
-    { ...original, aR_sx: -164, aR_sy: -12, aR_sz: 10, aR_ex: 62, aR_wx: -26, aR_stretch: 1.08 },
-    { ...original, aR_sx: -142, aR_sy: -34, aR_sz: 22, aR_ex: 88, aR_wx: -38, aR_stretch: 1.12 },
-  ];
-}
-
-function setWindupTarget(character, guide, targetPoint) {
-  character.object3d.updateMatrixWorld(true);
-  targetPoint.set(
-    guide.cutPlaneOffset * 0.008,
-    guide.windupHeight,
-    -guide.windupPullback,
-  );
-  character.object3d.localToWorld(targetPoint);
-}
-
-function bakeStudioMotionConstraints(projectInput, { character, sword, guide: guideInput } = {}) {
-  const project = JSON.parse(JSON.stringify(projectInput));
-  const guide = normalizeMotionGuide(guideInput || project.clip?.metadata?.motionGuide);
-  const hasRig = Boolean(character?.rig && project.clip?.poses && project.clip?.timeline);
-  const Vector3 = character?.object3d?.position?.constructor;
-  const report = {
-    windupTarget: false,
-    windupOptimizedPoseCount: 0,
-    windupBeforeError: 0,
-    windupAfterError: 0,
-    twoHandGrip: false,
-    optimizedPoseCount: 0,
-    beforeError: 0,
-    afterError: 0,
-    maxError: 0,
-    poseErrors: [],
-  };
-
-  if (hasRig && Vector3 && guide.windupTarget && project.clip.poses.windup) {
-    const target = new Vector3();
-    const hand = new Vector3();
-    setWindupTarget(character, guide, target);
-    const evaluate = (pose) => evaluateWindupDistance(character, pose, target, hand);
-    const result = optimizePose(
-      project.clip.poses.windup,
-      1,
-      WINDUP_HAND_POSE_KEYS,
-      windupSeeds,
-      evaluate,
-      (key) => (WINDUP_BODY_POSE_KEYS.has(key) ? guide.windupLoad * guide.coupling : 1),
-    );
-    project.clip.poses.windup = result.pose;
-    report.windupTarget = true;
-    report.windupOptimizedPoseCount = 1;
-    report.windupBeforeError = result.beforeError;
-    report.windupAfterError = result.afterError;
-  }
-
-  if (hasRig && Vector3 && guide.twoHandGrip && guide.secondaryGripWeight > 0 && sword?.secondaryGrip) {
-    const points = { left: new Vector3(), grip: new Vector3() };
-    const errors = [];
-    for (const key of project.clip.timeline) {
-      const evaluate = (pose) => evaluateGripDistance(character, sword, pose, points.left, points.grip);
-      const result = optimizePose(
-        project.clip.poses[key.name],
-        guide.secondaryGripWeight,
-        SECONDARY_GRIP_POSE_KEYS,
-        gripSeeds,
-        evaluate,
-      );
-      project.clip.poses[key.name] = result.pose;
-      errors.push({ name: key.name, beforeError: result.beforeError, afterError: result.afterError });
-    }
-    const average = (key) => errors.reduce((total, entry) => total + entry[key], 0) / Math.max(1, errors.length);
-    report.twoHandGrip = true;
-    report.optimizedPoseCount = errors.length;
-    report.beforeError = average('beforeError');
-    report.afterError = average('afterError');
-    report.maxError = Math.max(...errors.map((entry) => entry.afterError));
-    report.poseErrors = errors;
-  }
-
-  project.clip.metadata = { ...project.clip.metadata, motionGuide: guide, motionGuideBake: report };
-  project.clip = createAnimationClip(project.clip);
-  return { project, report };
-}
-return Object.freeze({ WINDUP_HAND_POSE_KEYS, SECONDARY_GRIP_POSE_KEYS, bakeStudioMotionConstraints });
-})();
-
-// src/animation/whole-body-drag-solver.js
-const __actionStudioModule36 = (() => {
-const { normalizePose } = __actionStudioModule9;
-
-const WHOLE_BODY_DRAG_EFFECTORS = Object.freeze([
-  'handL', 'handR', 'footL', 'footR',
-]);
-
-const WHOLE_BODY_JOINT_EFFECTORS = Object.freeze([
-  'elbowL', 'elbowR', 'kneeL', 'kneeR',
-]);
-
-const EFFECTOR_CHAINS = Object.freeze({
-  handL: Object.freeze({ prefix: 'aL', kind: 'arm' }),
-  handR: Object.freeze({ prefix: 'aR', kind: 'arm' }),
-  footL: Object.freeze({ prefix: 'lL', kind: 'leg' }),
-  footR: Object.freeze({ prefix: 'lR', kind: 'leg' }),
-  elbowL: Object.freeze({ prefix: 'aL', kind: 'arm' }),
-  elbowR: Object.freeze({ prefix: 'aR', kind: 'arm' }),
-  kneeL: Object.freeze({ prefix: 'lL', kind: 'leg' }),
-  kneeR: Object.freeze({ prefix: 'lR', kind: 'leg' }),
-});
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function finite(value, fallback) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function point(value, label) {
-  const result = {
-    x: Number(value?.x),
-    y: Number(value?.y),
-    z: Number(value?.z),
-  };
-  if (!Number.isFinite(result.x) || !Number.isFinite(result.y) || !Number.isFinite(result.z)) {
-    throw new Error(`Whole-body drag evaluator returned an invalid ${label} point`);
-  }
-  return result;
-}
-
-function distanceSquared(a, b) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  const dz = a.z - b.z;
-  return dx * dx + dy * dy + dz * dz;
-}
-
-function armSpecs(prefix, maxStretch) {
-  return [
-    [`${prefix}_sx`, -180, 80, 24, 90],
-    [`${prefix}_sy`, -140, 140, 24, 90],
-    [`${prefix}_sz`, -110, 110, 20, 80],
-    [`${prefix}_ex`, -15, 165, 22, 85],
-    [`${prefix}_wx`, -120, 120, 16, 80],
-    [`${prefix}_wy`, -120, 120, 16, 80],
-    [`${prefix}_wz`, -120, 120, 16, 80],
-    [`${prefix}_stretch`, 0.72, maxStretch, 0.025, 0.08],
-  ];
-}
-
-function legSpecs(prefix, maxStretch) {
-  return [
-    [`${prefix}_hx`, -130, 130, 22, 90],
-    [`${prefix}_hy`, -100, 100, 18, 75],
-    [`${prefix}_hz`, -100, 100, 18, 75],
-    [`${prefix}_kx`, -15, 165, 22, 85],
-    [`${prefix}_ax`, -100, 100, 16, 70],
-    [`${prefix}_ty`, -100, 100, 16, 70],
-    [`${prefix}_stretch`, 0.72, maxStretch, 0.025, 0.08],
-  ];
-}
-
-function bodySpecs(reference, coupling, allowVerticalRoot) {
-  const scale = 0.28 + coupling * 0.72;
-  const specs = [
-    ['root_pz', clamp(reference.root_pz - 0.7, -1.2, 2), clamp(reference.root_pz + 0.7, -1.2, 2), 0.07 * scale, 0.5],
-    ['root_x', -65, 65, 7 * scale, 45],
-    ['root_y', -100, 100, 8 * scale, 60],
-    ['spine_x', -70, 70, 8 * scale, 45],
-    ['spine_y', -90, 90, 9 * scale, 55],
-    ['pelvis_y', -90, 90, 9 * scale, 55],
-    ['squat', 0, 80, 7 * scale, 45],
-  ];
-  if (allowVerticalRoot) {
-    specs.push([
-      'root_py',
-      clamp(reference.root_py - 0.55, -0.8, 0.8),
-      clamp(reference.root_py + 0.55, -0.8, 0.8),
-      0.055 * scale,
-      0.45,
-    ]);
-  }
-  return specs;
-}
-
-function uniqueSpecs(groups) {
-  const seen = new Set();
-  const result = [];
-  groups.flat().forEach((spec) => {
-    if (seen.has(spec[0])) return;
-    seen.add(spec[0]);
-    result.push(spec);
-  });
-  return result;
-}
-
-function regularization(pose, reference, specs) {
-  return specs.reduce((total, [key, _min, _max, _step, normalizer]) => {
-    const delta = (pose[key] - reference[key]) / Math.max(0.001, normalizer);
-    return total + delta * delta;
-  }, 0);
-}
-
-function improvePose(seedPose, specs, scorePose, passes, decay = 0.58) {
-  const candidate = { ...seedPose };
-  specs.forEach(([key, min, max]) => {
-    candidate[key] = clamp(finite(candidate[key], 0), min, max);
-  });
-  let bestScore = scorePose(candidate);
-
-  for (let pass = 0; pass < passes; pass += 1) {
-    const stepScale = decay ** pass;
-    for (const [key, min, max, baseStep] of specs) {
-      const startValue = candidate[key];
-      let bestValue = startValue;
-      for (const direction of [-1, 1]) {
-        candidate[key] = clamp(startValue + direction * baseStep * stepScale, min, max);
-        const score = scorePose(candidate);
-        if (score < bestScore) {
-          bestScore = score;
-          bestValue = candidate[key];
-        }
-      }
-      candidate[key] = bestValue;
-    }
-  }
-  return { pose: candidate, score: bestScore };
-}
-
-function createScore({
-  evaluatePose,
-  effector,
-  target,
-  pins,
-  secondaryTargets,
-  reference,
-  regularizedSpecs,
-  pinWeight,
-  regularizationWeight,
-}) {
-  return (pose) => {
-    const evaluated = evaluatePose(pose);
-    let score = distanceSquared(point(evaluated[effector], effector), target);
-    for (const [pinEffector, pinTarget] of Object.entries(pins)) {
-      score += distanceSquared(point(evaluated[pinEffector], pinEffector), pinTarget) * pinWeight;
-    }
-    for (const [secondaryEffector, constraint] of Object.entries(secondaryTargets)) {
-      score += distanceSquared(point(evaluated[secondaryEffector], secondaryEffector), constraint.target)
-        * constraint.weight;
-    }
-    score += regularization(pose, reference, regularizedSpecs) * regularizationWeight;
-    return score;
-  };
-}
-
-function solveWholeBodyDragPose(options = {}) {
-  const {
-    evaluatePose,
-    effector,
-    target: targetInput,
-    pinnedFeet = {},
-  } = options;
-  if (typeof evaluatePose !== 'function') throw new Error('Whole-body drag requires an evaluatePose function');
-  const chain = EFFECTOR_CHAINS[effector];
-  if (!chain) throw new Error(`Unknown whole-body drag effector: ${effector}`);
-
-  const coupling = clamp(finite(options.coupling, 0.85), 0, 1);
-  const maxStretch = clamp(finite(options.maxStretch, 1.05), 1, 1.12);
-  const passes = Math.round(clamp(finite(options.passes, 4), 1, 10));
-  const activationDistance = clamp(finite(options.activationDistance, 0.025), 0, 0.25);
-  const reference = normalizePose(options.referencePose || options.pose);
-  const seed = normalizePose(options.seedPose || options.pose || reference);
-  const target = point(targetInput, 'target');
-  const pins = {};
-  for (const pinEffector of ['footL', 'footR']) {
-    if (pinEffector === effector || !pinnedFeet?.[pinEffector]) continue;
-    pins[pinEffector] = point(pinnedFeet[pinEffector], `${pinEffector} pin`);
-  }
-  const secondaryTargets = {};
-  for (const [secondaryEffector, constraintInput] of Object.entries(options.secondaryTargets || {})) {
-    const constraint = constraintInput?.target ? constraintInput : { target: constraintInput };
-    secondaryTargets[secondaryEffector] = {
-      target: point(constraint.target, `${secondaryEffector} secondary target`),
-      weight: clamp(finite(constraint.weight, 2), 0, 10),
-    };
-  }
-
-  const localSpecs = chain.kind === 'arm'
-    ? armSpecs(chain.prefix, maxStretch)
-    : legSpecs(chain.prefix, maxStretch);
-  const supportSpecs = Object.keys(pins).map((pinEffector) => (
-    legSpecs(EFFECTOR_CHAINS[pinEffector].prefix, maxStretch)
-  ));
-  const allSupportSpecs = uniqueSpecs(supportSpecs);
-  const localScore = createScore({
-    evaluatePose,
-    effector,
-    target,
-    pins: {},
-    secondaryTargets: {},
-    reference,
-    regularizedSpecs: localSpecs,
-    pinWeight: 0,
-    regularizationWeight: 0.0015,
-  });
-  let result = improvePose(seed, localSpecs, localScore, passes);
-  if (Object.keys(secondaryTargets).length) {
-    const anchoredLocalScore = createScore({
-      evaluatePose,
-      effector,
-      target,
-      pins: {},
-      secondaryTargets,
-      reference,
-      regularizedSpecs: localSpecs,
-      pinWeight: 0,
-      regularizationWeight: 0.0015,
-    });
-    result = improvePose(result.pose, localSpecs, anchoredLocalScore, passes);
-  }
-  let evaluated = evaluatePose(result.pose);
-  let targetError = Math.sqrt(distanceSquared(point(evaluated[effector], effector), target));
-  const activatedWholeBody = options.allowWholeBody !== false
-    && coupling > 0.01
-    && targetError > activationDistance;
-
-  if (activatedWholeBody) {
-    const coupledBodySpecs = bodySpecs(reference, coupling, Object.keys(pins).length === 0);
-    const coupledSpecs = uniqueSpecs([localSpecs, coupledBodySpecs, allSupportSpecs]);
-    const coupledScore = createScore({
-      evaluatePose,
-      effector,
-      target,
-      pins,
-      secondaryTargets,
-      reference,
-      regularizedSpecs: coupledSpecs,
-      pinWeight: 0.65 + coupling * 0.55,
-      regularizationWeight: 0.002 + (1 - coupling) * 0.018,
-    });
-    result = improvePose(result.pose, coupledSpecs, coupledScore, passes);
-
-    if (allSupportSpecs.length) {
-      const settleSpecs = uniqueSpecs([localSpecs, allSupportSpecs]);
-      const settleScore = createScore({
-        evaluatePose,
-        effector,
-        target,
-        pins,
-        secondaryTargets,
-        reference,
-        regularizedSpecs: settleSpecs,
-        pinWeight: 7,
-        regularizationWeight: 0.001,
-      });
-      result = improvePose(result.pose, settleSpecs, settleScore, passes);
-    }
-  }
-
-  const pose = normalizePose(result.pose);
-  const finalEvaluation = evaluatePose(pose);
-  const referenceEvaluation = evaluatePose(reference);
-  targetError = Math.sqrt(distanceSquared(point(finalEvaluation[effector], effector), target));
-  const pinErrors = Object.fromEntries(Object.entries(pins).map(([pinEffector, pinTarget]) => [
-    pinEffector,
-    Math.sqrt(distanceSquared(point(finalEvaluation[pinEffector], pinEffector), pinTarget)),
-  ]));
-  const secondaryErrors = Object.fromEntries(Object.entries(secondaryTargets).map(([secondaryEffector, constraint]) => [
-    secondaryEffector,
-    Math.sqrt(distanceSquared(point(finalEvaluation[secondaryEffector], secondaryEffector), constraint.target)),
-  ]));
-
-  return {
-    pose,
-    targetError,
-    pinErrors,
-    secondaryErrors,
-    activatedWholeBody,
-    bodyLift: finalEvaluation.hips && referenceEvaluation.hips
-      ? point(finalEvaluation.hips, 'hips').y - point(referenceEvaluation.hips, 'reference hips').y
-      : 0,
-  };
-}
-return Object.freeze({ WHOLE_BODY_DRAG_EFFECTORS, WHOLE_BODY_JOINT_EFFECTORS, solveWholeBodyDragPose });
-})();
-
-// tools/action-studio/studio-axis-gizmo.js
-const __actionStudioModule37 = (() => {
-const DIRECT_POSE_AXES = Object.freeze({
-  x: Object.freeze({ color: 0xff4d5e, vector: Object.freeze({ x: 1, y: 0, z: 0 }) }),
-  y: Object.freeze({ color: 0x62df76, vector: Object.freeze({ x: 0, y: 1, z: 0 }) }),
-  z: Object.freeze({ color: 0x4c8dff, vector: Object.freeze({ x: 0, y: 0, z: 1 }) }),
-});
-
-function snapAxisDragDistance(distance, snapEnabled = false, snapStep = 0.05) {
-  const value = Number(distance) || 0;
-  const step = Math.max(0.001, Number(snapStep) || 0.05);
-  const snapped = Math.round(value / step) * step;
-  return snapEnabled ? Number(snapped.toFixed(10)) : value;
-}
-
-function axisConstrainedTarget(origin, axis, distance, options = {}) {
-  const length = Math.hypot(Number(axis?.x) || 0, Number(axis?.y) || 0, Number(axis?.z) || 0) || 1;
-  const direction = {
-    x: (Number(axis?.x) || 0) / length,
-    y: (Number(axis?.y) || 0) / length,
-    z: (Number(axis?.z) || 0) / length,
-  };
-  const constrainedDistance = snapAxisDragDistance(distance, options.snap, options.snapStep);
-  return {
-    distance: constrainedDistance,
-    target: {
-      x: (Number(origin?.x) || 0) + direction.x * constrainedDistance,
-      y: (Number(origin?.y) || 0) + direction.y * constrainedDistance,
-      z: (Number(origin?.z) || 0) + direction.z * constrainedDistance,
-    },
-  };
-}
-
-function createAxisHandle(THREE, axis, definition) {
-  const root = new THREE.Group();
-  root.name = `POSE_AXIS_${axis.toUpperCase()}`;
-  const material = new THREE.MeshBasicMaterial({
-    color: definition.color,
-    transparent: true,
-    opacity: 0.96,
-    depthTest: false,
-    depthWrite: false,
-  });
-  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.32, 8), material);
-  shaft.position.y = 0.16;
-  const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.13, 10), material);
-  arrow.position.y = 0.385;
-  const pickMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthTest: false, depthWrite: false });
-  const pickShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.42, 8), pickMaterial);
-  pickShaft.position.y = 0.21;
-  const pickArrow = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), pickMaterial);
-  pickArrow.position.y = 0.40;
-  const direction = new THREE.Vector3(definition.vector.x, definition.vector.y, definition.vector.z);
-  root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-  [shaft, arrow, pickShaft, pickArrow].forEach((object) => {
-    object.name = `POSE_AXIS_${axis.toUpperCase()}_${object.geometry.type}`;
-    object.renderOrder = 101;
-    object.userData.poseDragAxis = axis;
-    object.userData.poseDragAxisRoot = root;
-    root.add(object);
-  });
-  return { root, material, pickables: [shaft, arrow, pickShaft, pickArrow] };
-}
-
-function createStudioAxisGizmo(THREE, parent) {
-  const group = new THREE.Group();
-  group.name = 'POSE_AXIS_GIZMO';
-  group.visible = false;
-  parent.add(group);
-  const handles = Object.fromEntries(Object.entries(DIRECT_POSE_AXES).map(([axis, definition]) => [
-    axis,
-    createAxisHandle(THREE, axis, definition),
-  ]));
-  Object.values(handles).forEach((handle) => group.add(handle.root));
-  const pickables = Object.values(handles).flatMap((handle) => handle.pickables);
-  const worldQuaternion = new THREE.Quaternion();
-  const basis = new THREE.Vector3();
-  let hoveredAxis = null;
-  let activeAxis = null;
-
-  function updateAppearance() {
-    Object.entries(handles).forEach(([axis, handle]) => {
-      const emphasized = axis === activeAxis || axis === hoveredAxis;
-      handle.root.scale.setScalar(emphasized ? 1.13 : 1);
-      handle.material.opacity = emphasized ? 1 : 0.9;
-    });
-  }
-
-  return {
-    group,
-    handles,
-    setVisible(value) { group.visible = Boolean(value); },
-    setTransform(position, quaternion, space = 'world') {
-      group.position.copy(position);
-      if (space === 'local' && quaternion) group.quaternion.copy(quaternion);
-      else group.quaternion.identity();
-      group.updateMatrixWorld(true);
-    },
-    updateScale(camera) {
-      const distance = camera.position.distanceTo(group.position);
-      group.scale.setScalar(Math.max(0.72, Math.min(1.8, distance / 5.1)));
-    },
-    pick(raycaster) {
-      if (!group.visible) return null;
-      return raycaster.intersectObjects(pickables, false)[0]?.object?.userData?.poseDragAxis || null;
-    },
-    setHovered(axis) {
-      hoveredAxis = axis || null;
-      updateAppearance();
-    },
-    setActive(axis) {
-      activeAxis = axis || null;
-      updateAppearance();
-    },
-    getWorldAxis(axis, target) {
-      const definition = DIRECT_POSE_AXES[axis];
-      if (!definition) return target.set(0, 0, 0);
-      group.getWorldQuaternion(worldQuaternion);
-      return target.set(definition.vector.x, definition.vector.y, definition.vector.z)
-        .applyQuaternion(worldQuaternion)
-        .normalize();
-    },
-  };
-}
-return Object.freeze({ DIRECT_POSE_AXES, snapAxisDragDistance, axisConstrainedTarget, createStudioAxisGizmo });
-})();
-
-// tools/action-studio/studio-pose-drag-controller.js
-const __actionStudioModule35 = (() => {
-const { normalizePose } = __actionStudioModule9;
-const { solveWholeBodyDragPose } = __actionStudioModule36;
-const { applyPoseToProceduralKayKitRig } = __actionStudioModule8;
-const { axisConstrainedTarget, createStudioAxisGizmo } = __actionStudioModule37;
-
-const EFFECTORS = Object.freeze({
-  handL: Object.freeze({ bone: 'handslot.l', label: 'LEFT HAND', color: 0xb99aff, radius: 0.065 }),
-  handR: Object.freeze({ bone: 'handslot.r', label: 'RIGHT HAND · WEAPON', color: 0xff3b81, radius: 0.082 }),
-  footL: Object.freeze({ bone: 'foot.l', label: 'LEFT FOOT', color: 0x65e6a5, radius: 0.075 }),
-  footR: Object.freeze({ bone: 'foot.r', label: 'RIGHT FOOT', color: 0x59d8ff, radius: 0.075 }),
-  elbowL: Object.freeze({ bone: 'lowerarm.l', label: 'LEFT ELBOW', color: 0xd9b8ff, radius: 0.052, joint: true, anchor: 'handL' }),
-  elbowR: Object.freeze({ bone: 'lowerarm.r', label: 'RIGHT ELBOW', color: 0xff8fb5, radius: 0.052, joint: true, anchor: 'handR' }),
-  kneeL: Object.freeze({ bone: 'lowerleg.l', label: 'LEFT KNEE', color: 0xaaffcf, radius: 0.057, joint: true, anchor: 'footL' }),
-  kneeR: Object.freeze({ bone: 'lowerleg.r', label: 'RIGHT KNEE', color: 0x9ce9ff, radius: 0.057, joint: true, anchor: 'footR' }),
-});
-
-function createEffectorMarker(THREE, effector, definition) {
-  const geometry = definition.joint
-    ? new THREE.SphereGeometry(definition.radius, 10, 8)
-    : new THREE.OctahedronGeometry(definition.radius, 0);
-  const marker = new THREE.Mesh(
-    geometry,
-    new THREE.MeshBasicMaterial({
-      color: definition.color,
-      transparent: true,
-      opacity: definition.joint ? 0.78 : 0.95,
-      wireframe: Boolean(definition.joint),
-      depthTest: false,
-      depthWrite: false,
-    }),
-  );
-  marker.name = `POSE_DRAG_${effector.toUpperCase()}`;
-  marker.renderOrder = 96;
-  marker.userData.poseDragEffector = effector;
-  return marker;
-}
-
-function createPinRing(THREE, name, color) {
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.105, 0.012, 7, 24),
-    new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.72,
-      depthTest: false,
-      depthWrite: false,
-    }),
-  );
-  ring.name = name;
-  ring.rotation.x = Math.PI / 2;
-  ring.renderOrder = 94;
-  return ring;
-}
-
-function createTargetRing(THREE) {
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.105, 0.014, 7, 24),
-    new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.92,
-      depthTest: false,
-      depthWrite: false,
-    }),
-  );
-  ring.name = 'POSE_DRAG_TARGET';
-  ring.renderOrder = 98;
-  ring.visible = false;
-  return ring;
-}
-
-function createLink(THREE) {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-  const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.68,
-    depthTest: false,
-    depthWrite: false,
-  }));
-  line.name = 'POSE_DRAG_ERROR_LINK';
-  line.frustumCulled = false;
-  line.renderOrder = 97;
-  line.visible = false;
-  return line;
-}
-
-function setLink(line, start, end) {
-  const position = line.geometry.attributes.position;
-  position.setXYZ(0, start.x, start.y, start.z);
-  position.setXYZ(1, end.x, end.y, end.z);
-  position.needsUpdate = true;
-  line.geometry.computeBoundingSphere();
-}
-
-function centimeters(value) {
-  return `${Math.round(Math.max(0, value) * 100)}cm`;
-}
-
-function signedCentimeters(value) {
-  return `${value >= 0 ? '+' : '-'}${Math.round(Math.abs(value) * 100)}cm`;
-}
-
-function createStudioPoseDragController(THREE, options) {
-  const {
-    scene,
-    camera,
-    canvas,
-    character,
-    prepareDrag,
-    applyPose,
-    finishDrag,
-  } = options;
-  const enabledControl = document.getElementById('poseDragEnabled');
-  const pinLeftControl = document.getElementById('posePinLeftFoot');
-  const pinRightControl = document.getElementById('posePinRightFoot');
-  const jointControl = document.getElementById('poseJointHandles');
-  const planeControl = document.getElementById('poseDragPlane');
-  const axisEnabledControl = document.getElementById('poseAxisGizmo');
-  const axisSpaceControl = document.getElementById('poseAxisSpace');
-  const axisReadout = document.getElementById('poseAxisReadout');
-  const couplingControl = document.getElementById('poseDragCoupling');
-  const couplingOutput = document.getElementById('poseDragCouplingValue');
-  const status = document.getElementById('poseDragStatus');
-
-  const group = new THREE.Group();
-  group.name = 'DIRECT_POSE_MANIPULATORS';
-  scene.add(group);
-  const axisGizmo = createStudioAxisGizmo(THREE, group);
-  const markers = Object.fromEntries(Object.entries(EFFECTORS).map(([effector, definition]) => [
-    effector,
-    createEffectorMarker(THREE, effector, definition),
-  ]));
-  const pinRings = {
-    footL: createPinRing(THREE, 'POSE_PIN_FOOT_L', EFFECTORS.footL.color),
-    footR: createPinRing(THREE, 'POSE_PIN_FOOT_R', EFFECTORS.footR.color),
-  };
-  const targetMarker = createTargetRing(THREE);
-  const errorLink = createLink(THREE);
-  Object.values(markers).forEach((marker) => group.add(marker));
-  Object.values(pinRings).forEach((ring) => group.add(ring));
-  group.add(targetMarker, errorLink);
-
-  const raycaster = new THREE.Raycaster();
-  const pointer = new THREE.Vector2();
-  const dragPlane = new THREE.Plane();
-  const planeNormal = new THREE.Vector3();
-  const ringNormal = new THREE.Vector3(0, 0, 1);
-  const dragPoint = new THREE.Vector3();
-  const dragAxisWorld = new THREE.Vector3();
-  const axisStartPoint = new THREE.Vector3();
-  const axisStartTarget = new THREE.Vector3();
-  const boneWorldQuaternion = new THREE.Quaternion();
-  const dragGizmoQuaternion = new THREE.Quaternion();
-  const targetPoint = new THREE.Vector3();
-  const rigPoints = Object.fromEntries([
-    ...Object.keys(EFFECTORS), 'hips', 'chest',
-  ].map((key) => [key, new THREE.Vector3()]));
-  let dragging = null;
-  let selectedEffector = null;
-  let hovered = null;
-  let hoveredAxis = null;
-  let dragAxis = null;
-  let dragAxisSpace = 'world';
-  let axisDistance = 0;
-  let axisSnap = false;
-  let dragContext = null;
-  let referencePose = null;
-  let workingPose = null;
-  let pinnedFeet = {};
-  let secondaryTargets = {};
-  let lastResult = null;
-
-  function settings() {
-    return {
-      enabled: enabledControl.checked,
-      pinLeftFoot: pinLeftControl.checked,
-      pinRightFoot: pinRightControl.checked,
-      coupling: Number(couplingControl.value),
-      showJointHandles: jointControl.checked,
-      dragPlane: planeControl.value,
-      showAxisGizmo: axisEnabledControl.checked,
-      axisSpace: axisSpaceControl.value,
-      maxStretch: 1.05,
-    };
-  }
-
-  function setStatus(message, pending = false) {
-    status.textContent = message;
-    status.classList.toggle('pending', pending);
-  }
-
-  function readRigPoints() {
-    character.object3d.updateMatrixWorld(true);
-    Object.entries(EFFECTORS).forEach(([effector, definition]) => {
-      character.rig.bones[definition.bone].getWorldPosition(rigPoints[effector]);
-    });
-    character.rig.bones.hips.getWorldPosition(rigPoints.hips);
-    character.rig.bones.chest.getWorldPosition(rigPoints.chest);
-    return Object.fromEntries(Object.entries(rigPoints).map(([key, value]) => [
-      key,
-      { x: value.x, y: value.y, z: value.z },
-    ]));
-  }
-
-  function evaluatePose(pose) {
-    applyPoseToProceduralKayKitRig(character.rig, pose);
-    return readRigPoints();
-  }
-
-  function setPointer(event) {
-    const rect = canvas.getBoundingClientRect();
-    pointer.set(
-      ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
-      -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
-    );
-    raycaster.setFromCamera(pointer, camera);
-  }
-
-  function pickControl(event) {
-    if (!group.visible) return null;
-    setPointer(event);
-    const axis = selectedEffector && settings().showAxisGizmo ? axisGizmo.pick(raycaster) : null;
-    if (axis) return { axis, effector: selectedEffector, marker: null };
-    const marker = raycaster.intersectObjects(Object.values(markers).filter((entry) => entry.visible), false)[0]?.object || null;
-    return marker ? { axis: null, effector: marker.userData.poseDragEffector, marker } : null;
-  }
-
-  function solve(passes) {
-    lastResult = solveWholeBodyDragPose({
-      pose: referencePose,
-      seedPose: workingPose,
-      referencePose,
-      evaluatePose,
-      effector: dragging,
-      target: targetPoint,
-      pinnedFeet,
-      coupling: settings().coupling,
-      secondaryTargets,
-      allowWholeBody: !EFFECTORS[dragging].joint,
-      maxStretch: settings().maxStretch,
-      passes,
-    });
-    workingPose = lastResult.pose;
-    applyPose?.(workingPose, dragContext, { ...lastResult, effector: dragging, live: true });
-    const pins = Object.values(lastResult.pinErrors);
-    const pinError = pins.length ? Math.max(...pins) : 0;
-    const anchors = Object.values(lastResult.secondaryErrors || {});
-    const anchorError = anchors.length ? Math.max(...anchors) : 0;
-    const lift = Math.abs(lastResult.bodyLift) >= 0.005
-      ? ` · body ${signedCentimeters(lastResult.bodyLift)}`
-      : '';
-    const anchor = anchors.length ? ` · anchor ${centimeters(anchorError)}` : '';
-    const axis = dragAxis
-      ? ` · ${dragAxisSpace.toUpperCase()} ${dragAxis.toUpperCase()} ${signedCentimeters(axisDistance)}${axisSnap ? ' · SNAP' : ''}`
-      : '';
-    setStatus(`${EFFECTORS[dragging].label} · target ${centimeters(lastResult.targetError)} · pins ${centimeters(pinError)}${anchor}${lift}${axis}`, true);
-    axisReadout.textContent = dragAxis
-      ? `${dragAxisSpace.toUpperCase()} ${dragAxis.toUpperCase()} · ${signedCentimeters(axisDistance)}${axisSnap ? ' · Shift snap 5cm' : ''}`
-      : 'FREE · constrained by the selected drag plane';
-  }
-
-  function configureDragPlane() {
-    const mode = settings().dragPlane;
-    if (mode === 'ground') {
-      planeNormal.set(0, 1, 0);
-    } else if (mode === 'vertical') {
-      camera.getWorldDirection(planeNormal);
-      planeNormal.y = 0;
-      if (planeNormal.lengthSq() < 0.0001) planeNormal.set(0, 0, 1);
-      planeNormal.normalize();
-    } else {
-      camera.getWorldDirection(planeNormal);
-    }
-    dragPlane.setFromNormalAndCoplanarPoint(planeNormal, targetPoint);
-    targetMarker.quaternion.setFromUnitVectors(ringNormal, planeNormal);
-    return planeControl.options[planeControl.selectedIndex]?.text || mode;
-  }
-
-  function setSelectedGizmoTransform(position, locked = false) {
-    const space = locked ? dragAxisSpace : settings().axisSpace;
-    const quaternion = locked
-      ? dragGizmoQuaternion
-      : character.rig.bones[EFFECTORS[selectedEffector].bone].getWorldQuaternion(boneWorldQuaternion);
-    axisGizmo.setTransform(position, quaternion, space);
-  }
-
-  function configureAxisDrag() {
-    dragAxisSpace = settings().axisSpace;
-    character.rig.bones[EFFECTORS[dragging].bone].getWorldQuaternion(dragGizmoQuaternion);
-    setSelectedGizmoTransform(targetPoint, true);
-    axisGizmo.getWorldAxis(dragAxis, dragAxisWorld);
-    axisStartTarget.copy(targetPoint);
-    camera.getWorldDirection(planeNormal);
-    planeNormal.addScaledVector(dragAxisWorld, -planeNormal.dot(dragAxisWorld));
-    if (planeNormal.lengthSq() < 0.0001) {
-      planeNormal.set(0, 1, 0);
-      if (Math.abs(planeNormal.dot(dragAxisWorld)) > 0.92) planeNormal.set(1, 0, 0);
-      planeNormal.addScaledVector(dragAxisWorld, -planeNormal.dot(dragAxisWorld));
-    }
-    planeNormal.normalize();
-    dragPlane.setFromNormalAndCoplanarPoint(planeNormal, targetPoint);
-    axisStartPoint.copy(targetPoint);
-    raycaster.ray.intersectPlane(dragPlane, axisStartPoint);
-    targetMarker.quaternion.setFromUnitVectors(ringNormal, dragAxisWorld);
-    axisGizmo.setActive(dragAxis);
-    return `${dragAxisSpace.toUpperCase()} ${dragAxis.toUpperCase()} axis`;
-  }
-
-  function beginDrag(event, effector, axis = null) {
-    dragContext = prepareDrag?.(effector);
-    if (!dragContext?.pose) return;
-    dragging = effector;
-    selectedEffector = effector;
-    dragAxis = axis;
-    axisDistance = 0;
-    axisSnap = false;
-    referencePose = normalizePose(dragContext.pose);
-    workingPose = { ...referencePose };
-    evaluatePose(referencePose);
-    readRigPoints();
-    targetPoint.copy(rigPoints[dragging]);
-    pinnedFeet = {};
-    if (pinLeftControl.checked && dragging !== 'footL') pinnedFeet.footL = rigPoints.footL.clone();
-    if (pinRightControl.checked && dragging !== 'footR') pinnedFeet.footR = rigPoints.footR.clone();
-    secondaryTargets = {};
-    const anchorEffector = EFFECTORS[dragging].anchor;
-    if (anchorEffector) {
-      secondaryTargets[anchorEffector] = { target: rigPoints[anchorEffector].clone(), weight: 2 };
-    }
-    const planeLabel = dragAxis ? configureAxisDrag() : configureDragPlane();
-    markers[dragging].scale.setScalar(1.28);
-    targetMarker.visible = true;
-    targetMarker.position.copy(targetPoint);
-    errorLink.visible = true;
-    canvas.style.cursor = 'grabbing';
-    canvas.setPointerCapture(event.pointerId);
-    setStatus(`${EFFECTORS[dragging].label} selected · ${planeLabel} plane`, true);
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  }
-
-  function moveDrag(event) {
-    setPointer(event);
-    if (!raycaster.ray.intersectPlane(dragPlane, dragPoint)) return;
-    if (dragAxis) {
-      const rawDistance = dragPoint.sub(axisStartPoint).dot(dragAxisWorld);
-      const constrained = axisConstrainedTarget(axisStartTarget, dragAxisWorld, rawDistance, {
-        snap: event.shiftKey,
-        snapStep: 0.05,
-      });
-      targetPoint.set(constrained.target.x, constrained.target.y, constrained.target.z);
-      axisDistance = constrained.distance;
-      axisSnap = event.shiftKey;
-    } else {
-      targetPoint.copy(dragPoint);
-    }
-    targetMarker.position.copy(targetPoint);
-    solve(2);
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  }
-
-  function endDrag(event) {
-    if (!dragging) return;
-    solve(6);
-    if (dragging === 'footL' || dragging === 'footR') {
-      const contactKey = dragging === 'footL' ? 'lL_contact' : 'lR_contact';
-      const startPoint = evaluatePose(referencePose)[dragging];
-      workingPose[contactKey] = Math.abs(targetPoint.y - startPoint.y) < 0.05 ? 1 : 0;
-    }
-    applyPose?.(workingPose, dragContext, { ...lastResult, effector: dragging, live: false });
-    finishDrag?.(workingPose, dragContext, { ...lastResult, effector: dragging });
-    const finishedLabel = EFFECTORS[dragging].label;
-    const finishedError = lastResult?.targetError || 0;
-    const finishedAxis = dragAxis ? ` · ${dragAxisSpace.toUpperCase()} ${dragAxis.toUpperCase()} ${signedCentimeters(axisDistance)}` : '';
-    Object.values(markers).forEach((marker) => marker.scale.setScalar(1));
-    dragging = null;
-    dragAxis = null;
-    dragContext = null;
-    referencePose = null;
-    workingPose = null;
-    pinnedFeet = {};
-    secondaryTargets = {};
-    targetMarker.visible = false;
-    errorLink.visible = false;
-    axisGizmo.setActive(null);
-    canvas.style.cursor = '';
-    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
-    axisReadout.textContent = `${finishedLabel} selected · choose X / Y / Z or drag the center freely`;
-    setStatus(`${finishedLabel} baked into the selected Pose Key · error ${centimeters(finishedError)}${finishedAxis}`);
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  }
-
-  canvas.addEventListener('pointerdown', (event) => {
-    const control = pickControl(event);
-    if (control) beginDrag(event, control.effector, control.axis);
-  }, true);
-  canvas.addEventListener('pointermove', (event) => {
-    if (dragging) {
-      moveDrag(event);
-      return;
-    }
-    const control = pickControl(event);
-    hovered = control?.marker || null;
-    hoveredAxis = control?.axis || null;
-    axisGizmo.setHovered(hoveredAxis);
-    if (hoveredAxis) canvas.style.cursor = 'move';
-    else if (hovered) canvas.style.cursor = 'grab';
-    else if (canvas.style.cursor === 'grab' || canvas.style.cursor === 'move') canvas.style.cursor = '';
-  }, true);
-  canvas.addEventListener('pointerup', endDrag, true);
-  canvas.addEventListener('pointercancel', endDrag, true);
-
-  enabledControl.addEventListener('change', () => {
-    group.visible = enabledControl.checked;
-    setStatus(enabledControl.checked
-      ? 'Drag a hand or foot control in the stage.'
-      : 'Direct Pose controls hidden.');
-  });
-  axisEnabledControl.addEventListener('change', () => {
-    setStatus(axisEnabledControl.checked
-      ? 'XYZ axis gizmo enabled · select a pose node.'
-      : 'XYZ axis gizmo hidden · free drag remains available.');
-  });
-  axisSpaceControl.addEventListener('change', () => {
-    axisReadout.textContent = `${axisSpaceControl.value.toUpperCase()} axes · select X / Y / Z`;
-    setStatus(`Axis space · ${axisSpaceControl.value.toUpperCase()}`);
-  });
-  window.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || dragging) return;
-    selectedEffector = null;
-    hoveredAxis = null;
-    axisGizmo.setHovered(null);
-    axisGizmo.setVisible(false);
-    axisReadout.textContent = 'No node selected';
-    setStatus('Axis selection cleared.');
-  });
-  couplingControl.addEventListener('input', () => {
-    couplingOutput.textContent = Number(couplingControl.value).toFixed(2);
-  });
-  [pinLeftControl, pinRightControl].forEach((control) => {
-    control.addEventListener('change', () => {
-      setStatus(`Foot pins · L ${pinLeftControl.checked ? 'ON' : 'OFF'} · R ${pinRightControl.checked ? 'ON' : 'OFF'}`);
-    });
-  });
-  jointControl.addEventListener('change', () => {
-    setStatus(jointControl.checked
-      ? 'Elbow and knee bend handles visible.'
-      : 'Elbow and knee bend handles hidden.');
-  });
-  planeControl.addEventListener('change', () => {
-    setStatus(`Drag plane · ${planeControl.options[planeControl.selectedIndex].text}`);
-  });
-
-  function update() {
-    group.visible = settings().enabled;
-    if (!group.visible) return;
-    readRigPoints();
-    Object.keys(markers).forEach((effector) => {
-      markers[effector].visible = !EFFECTORS[effector].joint || settings().showJointHandles || dragging === effector;
-      markers[effector].position.copy(rigPoints[effector]);
-      const scale = dragging === effector ? 1.28 : selectedEffector === effector ? 1.17 : hovered === markers[effector] ? 1.14 : 1;
-      markers[effector].scale.setScalar(scale);
-    });
-    const selectedVisible = selectedEffector && markers[selectedEffector]?.visible;
-    axisGizmo.setVisible(Boolean(selectedVisible && settings().showAxisGizmo));
-    if (selectedVisible && settings().showAxisGizmo) {
-      if (dragAxis) setSelectedGizmoTransform(targetPoint, true);
-      else setSelectedGizmoTransform(rigPoints[selectedEffector]);
-      axisGizmo.updateScale(camera);
-    }
-    pinRings.footL.position.copy(rigPoints.footL);
-    pinRings.footR.position.copy(rigPoints.footR);
-    pinRings.footL.visible = settings().pinLeftFoot && dragging !== 'footL';
-    pinRings.footR.visible = settings().pinRightFoot && dragging !== 'footR';
-    if (dragging) {
-      setLink(errorLink, rigPoints[dragging], targetPoint);
-    }
-  }
-
-  group.visible = settings().enabled;
-  couplingOutput.textContent = settings().coupling.toFixed(2);
-  axisReadout.textContent = 'Select a hand, foot, elbow, or knee';
-  setStatus('Select a pose node, then drag X / Y / Z or drag the node freely.');
-  return {
-    group,
-    markers,
-    axisGizmo,
-    update,
-    get dragging() { return dragging; },
-    get selected() { return selectedEffector; },
-    get axis() { return dragAxis; },
-    get diagnostics() {
-      return { selectedEffector, dragAxis, axisSpace: settings().axisSpace, axisDistance, axisSnap, ...(lastResult || {}) };
-    },
-  };
-}
-return Object.freeze({ createStudioPoseDragController });
-})();
-
-// tools/action-studio/studio-blocking-workflow.js
-const __actionStudioModule38 = (() => {
-const { evaluateClip } = __actionStudioModule21;
-const { normalizePose } = __actionStudioModule9;
-const { createDefaultCharacter } = __actionStudioModule1;
-const { createDebugSword, mountDebugSword } = __actionStudioModule12;
-const { applyMountCalibration } = __actionStudioModule3;
-
-const GHOST_STYLES = Object.freeze({
-  previous: Object.freeze({ color: 0x648dff, opacity: 0.28 }),
-  next: Object.freeze({ color: 0xffad5b, opacity: 0.24 }),
-});
-
-const TRAJECTORY_STYLES = Object.freeze({
-  handL: Object.freeze({ color: 0xcaa8ff, label: 'left palm' }),
-  handR: Object.freeze({ color: 0xff3b81, label: 'weapon palm' }),
-  swordTip: Object.freeze({ color: 0x55e6c1, label: 'sword tip' }),
-});
-
-function boundedFrameStep(value) {
-  const number = Math.round(Number(value) || 4);
-  return Math.max(1, Math.min(60, number));
-}
-
-function uniqueBlockingName(clip, selectedKeyIndex, frame) {
-  const root = `block_${String(selectedKeyIndex + 1).padStart(2, '0')}_${frame}f`;
-  let name = root;
-  let suffix = 2;
-  while (clip.poses[name] || clip.timeline.some((key) => key.name === name)) name = `${root}_${suffix++}`;
-  return name;
-}
-
-function captureNextBlockingKey(clip, selectedKeyIndex, pose, options = {}) {
-  if (!clip?.timeline?.length || !clip?.poses) throw new Error('Capture requires an Action Studio clip');
-  const index = Math.max(0, Math.min(Math.round(Number(selectedKeyIndex) || 0), clip.timeline.length - 1));
-  const current = clip.timeline[index];
-  const frameStep = boundedFrameStep(options.frameStep);
-  const frame = current.frame + frameStep;
-  const next = clip.timeline[index + 1];
-  if (next && next.frame <= frame) {
-    clip.timeline.forEach((key) => {
-      if (key.frame > current.frame) key.frame += frameStep;
-    });
-  }
-  const name = uniqueBlockingName(clip, index, frame);
-  clip.timeline.splice(index + 1, 0, {
-    name,
-    frame,
-    frames: frameStep,
-    ease: options.ease || 'out',
-    tag: options.tag || 'blocking',
-    impact: false,
-    cancel: false,
-  });
-  clip.poses[name] = normalizePose(pose || clip.poses[current.name]);
-  return { name, frame, frameStep };
-}
-
-function ghostLineStyle(style) {
-  return {
-    lineColor: style.color,
-    glowColor: style.color,
-    contourColor: style.color,
-    headColor: style.color,
-    jointColor: style.color,
-    lineOpacity: style.opacity,
-    headOpacity: style.opacity,
-    glowOpacity: 0,
-    contourOpacity: style.opacity * 0.82,
-    jointOpacity: style.opacity * 0.72,
-  };
-}
-
-function ghostSwordStyle(style) {
-  return {
-    outlineColor: style.color,
-    skeletonColor: style.color,
-    glowColor: style.color,
-    jointColor: style.color,
-    outlineOpacity: style.opacity,
-    skeletonOpacity: style.opacity * 0.8,
-    glowOpacity: 0,
-    jointOpacity: style.opacity * 0.6,
-  };
-}
-
-function createGhostRig(THREE, scene, kind, mountCalibration) {
-  const style = GHOST_STYLES[kind];
-  const character = createDefaultCharacter(THREE, { lineStyle: ghostLineStyle(style) });
-  const sword = createDebugSword(THREE, { style: ghostSwordStyle(style) });
-  mountDebugSword(character, sword, mountCalibration);
-  character.object3d.name = `BLOCKING_${kind.toUpperCase()}_GHOST`;
-  character.setRigNodesVisible(false);
-  character.setRigGlowVisible(false);
-  sword.setNodesVisible(false);
-  sword.setGlowVisible(false);
-  character.object3d.visible = false;
-  scene.add(character.object3d);
-  return { character, sword, keyName: null };
-}
-
-function createTrajectory(THREE, scene, id, style) {
-  const line = new THREE.Line(
-    new THREE.BufferGeometry(),
-    new THREE.LineBasicMaterial({
-      color: style.color,
-      transparent: true,
-      opacity: 0.8,
-      depthWrite: false,
-      depthTest: false,
-    }),
-  );
-  line.name = `BLOCKING_TRAJECTORY_${id.toUpperCase()}`;
-  line.frustumCulled = false;
-  line.renderOrder = 8;
-  const keys = new THREE.Points(
-    new THREE.BufferGeometry(),
-    new THREE.PointsMaterial({
-      color: style.color,
-      transparent: true,
-      opacity: 0.92,
-      size: id === 'swordTip' ? 0.07 : 0.055,
-      sizeAttenuation: true,
-      depthWrite: false,
-      depthTest: false,
-    }),
-  );
-  keys.name = `BLOCKING_TRAJECTORY_KEYS_${id.toUpperCase()}`;
-  keys.frustumCulled = false;
-  keys.renderOrder = 9;
-  scene.add(line, keys);
-  return { line, keys, sampleCount: 0, keyCount: 0 };
-}
-
-function replacePoints(object, THREE, points) {
-  object.geometry.dispose();
-  object.geometry = new THREE.BufferGeometry().setFromPoints(points);
-}
-
-function sampleFrames(clip, maximumSamples = 121) {
-  const first = clip.timeline[0].frame;
-  const duration = Math.max(first, clip.durationFrames);
-  const step = Math.max(1, Math.ceil(Math.max(1, duration - first) / maximumSamples));
-  const frames = new Set(clip.timeline.map((key) => key.frame));
-  for (let frame = first; frame <= duration; frame += step) frames.add(frame);
-  frames.add(duration);
-  return [...frames].sort((a, b) => a - b);
-}
-
-function createStudioBlockingWorkflow(THREE, options) {
-  const {
-    scene,
-    camera,
-    getClip,
-    getSelectedKeyIndex,
-    getMountCalibration,
-    onCapture,
-  } = options;
-  const mount = getMountCalibration();
-  const ghosts = {
-    previous: createGhostRig(THREE, scene, 'previous', mount),
-    next: createGhostRig(THREE, scene, 'next', mount),
-  };
-  const probe = {
-    character: createDefaultCharacter(THREE, {
-      lineStyle: { lineOpacity: 0, headOpacity: 0, glowOpacity: 0, contourOpacity: 0, jointOpacity: 0 },
-    }),
-    sword: createDebugSword(THREE, {
-      style: { outlineOpacity: 0, skeletonOpacity: 0, glowOpacity: 0, jointOpacity: 0 },
-    }),
-  };
-  mountDebugSword(probe.character, probe.sword, mount);
-  const trajectories = Object.fromEntries(Object.entries(TRAJECTORY_STYLES).map(([id, style]) => [
-    id,
-    createTrajectory(THREE, scene, id, style),
-  ]));
-  const scratch = {
-    handL: new THREE.Vector3(),
-    handR: new THREE.Vector3(),
-    swordTip: new THREE.Vector3(),
-  };
-  let trajectorySampleCount = 0;
-  let refreshQueued = false;
-
-  function enabled(id, fallback = true) {
-    const control = document.getElementById(id);
-    return control ? control.checked : fallback;
-  }
-
-  function showGhost(kind, key) {
-    const ghost = ghosts[kind];
-    const clip = getClip();
-    const visible = Boolean(key) && enabled(`blockingGhost${kind === 'previous' ? 'Previous' : 'Next'}`);
-    ghost.character.object3d.visible = visible;
-    ghost.keyName = visible ? key.name : null;
-    if (!visible) return;
-    applyMountCalibration(ghost.sword.object3d, getMountCalibration());
-    ghost.character.applyPose(clip.poses[key.name]);
-    ghost.character.object3d.updateMatrixWorld(true);
-    ghost.character.update(0, camera);
-    ghost.sword.update();
-  }
-
-  function setTrajectoryVisible(visible) {
-    Object.values(trajectories).forEach((track) => {
-      track.line.visible = visible && track.sampleCount > 1;
-      track.keys.visible = visible && track.keyCount > 0;
-    });
-  }
-
-  function rebuildTrajectories() {
-    const clip = getClip();
-    const visible = enabled('blockingTrajectories');
-    if (!clip?.timeline?.length) {
-      setTrajectoryVisible(false);
-      return;
-    }
-    applyMountCalibration(probe.sword.object3d, getMountCalibration());
-    const sampled = { handL: [], handR: [], swordTip: [] };
-    const keyPoints = { handL: [], handR: [], swordTip: [] };
-    const keyFrames = new Set(clip.timeline.map((key) => key.frame));
-    const frames = sampleFrames(clip);
-    frames.forEach((frame) => {
-      const evaluation = evaluateClip(clip, frame);
-      probe.character.applyPose(evaluation.pose);
-      probe.character.object3d.updateMatrixWorld(true);
-      probe.sword.update();
-      probe.character.rig.bones['hand.l'].getWorldPosition(scratch.handL);
-      probe.character.rig.bones['hand.r'].getWorldPosition(scratch.handR);
-      probe.sword.trailTip.getWorldPosition(scratch.swordTip);
-      Object.keys(sampled).forEach((id) => {
-        const point = scratch[id].clone();
-        sampled[id].push(point);
-        if (keyFrames.has(frame)) keyPoints[id].push(point.clone());
-      });
-    });
-    Object.keys(trajectories).forEach((id) => {
-      const track = trajectories[id];
-      replacePoints(track.line, THREE, sampled[id]);
-      replacePoints(track.keys, THREE, keyPoints[id]);
-      track.sampleCount = sampled[id].length;
-      track.keyCount = keyPoints[id].length;
-    });
-    trajectorySampleCount = frames.length;
-    setTrajectoryVisible(visible);
-  }
-
-  function refresh() {
-    const clip = getClip();
-    if (!clip?.timeline?.length) return;
-    const index = Math.max(0, Math.min(getSelectedKeyIndex(), clip.timeline.length - 1));
-    showGhost('previous', clip.timeline[index - 1]);
-    showGhost('next', clip.timeline[index + 1]);
-    rebuildTrajectories();
-    const status = document.getElementById('blockingStatus');
-    if (status) {
-      const previous = clip.timeline[index - 1]?.name || '—';
-      const next = clip.timeline[index + 1]?.name || '—';
-      status.textContent = `Selected ${clip.timeline[index].name} · ghost ${previous} ← / → ${next} · ${trajectorySampleCount} path samples`;
-    }
-  }
-
-  function scheduleRefresh() {
-    if (refreshQueued) return;
-    refreshQueued = true;
-    window.requestAnimationFrame(() => {
-      refreshQueued = false;
-      refresh();
-    });
-  }
-
-  function update() {
-    Object.values(ghosts).forEach((ghost) => {
-      if (!ghost.character.object3d.visible) return;
-      ghost.character.update(0, camera);
-      ghost.sword.update();
-    });
-  }
-
-  ['blockingGhostPrevious', 'blockingGhostNext', 'blockingTrajectories'].forEach((id) => {
-    document.getElementById(id)?.addEventListener('change', refresh);
-  });
-  document.getElementById('captureNextKey')?.addEventListener('click', () => {
-    const step = boundedFrameStep(document.getElementById('blockingFrameStep')?.value);
-    onCapture?.(step);
-  });
-
-  return {
-    refresh,
-    scheduleRefresh,
-    update,
-    setStatus(message, error = false) {
-      const status = document.getElementById('blockingStatus');
-      if (!status) return;
-      status.textContent = message;
-      status.classList.toggle('error', error);
-    },
-    get diagnostics() {
-      return {
-        previousKey: ghosts.previous.keyName,
-        nextKey: ghosts.next.keyName,
-        trajectorySampleCount,
-        trajectories: Object.fromEntries(Object.entries(trajectories).map(([id, track]) => [id, {
-          label: TRAJECTORY_STYLES[id].label,
-          samples: track.sampleCount,
-          keys: track.keyCount,
-          visible: track.line.visible,
-        }])),
-      };
-    },
-  };
-}
-return Object.freeze({ captureNextBlockingKey, createStudioBlockingWorkflow });
-})();
-
-// src/animation/legacy-punch-import.js
-const __actionStudioModule40 = (() => {
-const { LEGACY_NON_HUMANOID_POSE_KEYS, POSE_KEYS } = __actionStudioModule10;
-const { createAnimationClip } = __actionStudioModule21;
-
-function importLegacyPunchSnapshot(snapshot = {}) {
-  const phases = snapshot.phases || snapshot.PHASES || {};
-  const ignoredKeys = new Set();
-  const poses = {};
-  for (const [name, sourcePose] of Object.entries(phases)) {
-    poses[name] = {};
-    for (const key of POSE_KEYS) {
-      if (sourcePose && sourcePose[key] !== undefined) poses[name][key] = sourcePose[key];
-    }
-    for (const key of LEGACY_NON_HUMANOID_POSE_KEYS) {
-      if (sourcePose && sourcePose[key] !== undefined) ignoredKeys.add(key);
-    }
-  }
-  return {
-    clip: createAnimationClip({
-      id: snapshot.id || snapshot.name || 'imported_punch_action',
-      name: snapshot.name || 'Imported Punch Action',
-      fps: snapshot.fps || 60,
-      timeline: snapshot.seq || snapshot.SEQ,
-      poses,
-      metadata: { importedFrom: 'punch-studio', legacyVersion: snapshot.version ?? null },
-    }),
-    report: { ignoredPoseKeys: [...ignoredKeys].sort() },
-  };
-}
-return Object.freeze({ importLegacyPunchSnapshot });
-})();
-
-// tools/action-studio/studio-project.js
-const __actionStudioModule41 = (() => {
-const { createAnimationClip } = __actionStudioModule21;
-const { ACTION_WINDOW_TYPES, createActionDefinition } = __actionStudioModule29;
-
-const ACTION_STUDIO_PROJECT_FORMAT = 'action-studio-project';
-
-function cloneSerializable(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function createStudioProject({ clip, action, weaponMount }) {
-  return {
-    format: ACTION_STUDIO_PROJECT_FORMAT,
-    version: 1,
-    clip: cloneSerializable(clip),
-    action: cloneSerializable(action),
-    weaponMount: cloneSerializable(weaponMount),
-  };
-}
-
-function serializeStudioProject(project) {
-  return JSON.stringify(project, null, 2);
-}
-
-function studioProjectFilename(project, date = new Date()) {
-  const source = project?.clip?.id || project?.clip?.name || project?.action?.id || 'action-studio-project';
-  const safeName = String(source)
-    .trim()
-    .replace(/[^a-z0-9._-]+/gi, '-')
-    .replace(/^-+|-+$/g, '') || 'action-studio-project';
-  const stamp = date instanceof Date && Number.isFinite(date.getTime())
-    ? date.toISOString().replace(/[:.]/g, '-').replace('T', '_').replace('Z', '')
-    : 'snapshot';
-  return `${safeName}_${stamp}.json`;
-}
-
-function createStudioAutosave(project, reason = 'edit', savedAt = new Date().toISOString()) {
-  return {
-    format: 'action-studio-autosave',
-    version: 1,
-    savedAt,
-    reason: String(reason || 'edit'),
-    project: cloneSerializable(project),
-  };
-}
-
-function readStoredJson(storage, key, fallback) {
-  try {
-    const stored = JSON.parse(storage.getItem(key) || 'null');
-    return stored == null ? fallback : stored;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeStoredJson(storage, key, value) {
-  storage.setItem(key, JSON.stringify(value));
-  return value;
-}
-
-function buildComboProjectData(queue, weaponMount) {
-  const timeline = [];
-  const poses = {};
-  const windows = Object.fromEntries(ACTION_WINDOW_TYPES.map((type) => [type, []]));
-  let endFrame = 0;
-
-  queue.forEach((entry, clipIndex) => {
-    const sourceClip = createAnimationClip(entry.project.clip);
-    const sourceAction = createActionDefinition(entry.project.action, sourceClip.durationFrames);
-    const firstFrame = sourceClip.timeline[0].frame;
-    const offset = clipIndex === 0 ? -firstFrame : endFrame + 4 - firstFrame;
-    sourceClip.timeline.forEach((key) => {
-      const name = `combo_${clipIndex + 1}_${key.name}`;
-      timeline.push({ ...key, name, frame: key.frame + offset });
-      poses[name] = sourceClip.poses[key.name];
-    });
-    ACTION_WINDOW_TYPES.forEach((type) => {
-      sourceAction.windows[type].forEach((window) => windows[type].push({
-        ...window,
-        startFrame: window.startFrame + offset,
-        endFrame: window.endFrame + offset,
-      }));
-    });
-    endFrame = sourceClip.durationFrames + offset;
-  });
-
-  const comboClip = createAnimationClip({ id: 'combo_preview', name: 'Combo Preview', timeline, poses });
-  return {
-    clip: comboClip,
-    action: createActionDefinition({
-      id: comboClip.id,
-      clipId: comboClip.id,
-      category: 'combo-preview',
-      windows,
-    }, comboClip.durationFrames),
-    weaponMount: cloneSerializable(weaponMount),
-  };
-}
-return Object.freeze({ ACTION_STUDIO_PROJECT_FORMAT, cloneSerializable, createStudioProject, serializeStudioProject, studioProjectFilename, createStudioAutosave, readStoredJson, writeStoredJson, buildComboProjectData });
-})();
-
-// tools/action-studio/studio-project-io-controller.js
-const __actionStudioModule39 = (() => {
-const { importLegacyPunchSnapshot } = __actionStudioModule40;
-const { createStudioAutosave, readStoredJson, serializeStudioProject, studioProjectFilename, writeStoredJson } = __actionStudioModule41;
-
-const ACTION_STUDIO_AUTOSAVE_KEY = 'ACTION_STUDIO_AUTOSAVE_V1';
-
-function describeSavedAt(value) {
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleString() : 'unknown time';
-}
-
-function createStudioProjectIoController(options) {
-  const {
-    getProject,
-    applyProject,
-    onStatus,
-    storage = localStorage,
-  } = options;
-  let autosaveTimer = 0;
-
-  function setStatus(message, error = false) {
-    onStatus?.(message, error);
-  }
-
-  function updateAutosaveStatus() {
-    const host = document.getElementById('autosaveStatus');
-    if (!host) return;
-    const autosave = readStoredJson(storage, ACTION_STUDIO_AUTOSAVE_KEY, null);
-    host.textContent = autosave?.project
-      ? `Auto backup · ${describeSavedAt(autosave.savedAt)} · ${autosave.reason}`
-      : 'Auto backup starts after your first edit or Capture.';
-  }
-
-  function syncText() {
-    const text = serializeStudioProject(getProject());
-    const textarea = document.getElementById('projectJson');
-    textarea.value = text;
-    return text;
-  }
-
-  function saveAutosave(reason = 'edit') {
-    const autosave = createStudioAutosave(getProject(), reason);
-    writeStoredJson(storage, ACTION_STUDIO_AUTOSAVE_KEY, autosave);
-    updateAutosaveStatus();
-    return autosave;
-  }
-
-  function scheduleAutosave(reason = 'edit', delay = 320) {
-    window.clearTimeout(autosaveTimer);
-    autosaveTimer = window.setTimeout(() => saveAutosave(reason), delay);
-  }
-
-  function importData(input, sourceLabel = 'JSON text') {
-    let data = input;
-    if (data?.format === 'action-studio-autosave' && data.project) data = data.project;
-    if (data?.format === 'action-studio-project' && data.clip) {
-      applyProject(data);
-    } else if (data?.format === 'action-studio-clip' || (data?.timeline && data?.poses)) {
-      applyProject({ clip: data });
-    } else if (data?.seq || data?.SEQ || data?.phases || data?.PHASES) {
-      const result = importLegacyPunchSnapshot(data);
-      applyProject({ clip: result.clip });
-      setStatus(`Imported legacy Punch snapshot from ${sourceLabel}. Ignored editor-only keys: ${result.report.ignoredPoseKeys.join(', ') || 'none'}.`);
-      return result;
-    } else {
-      throw new Error('Unknown project shape');
-    }
-    setStatus(`Imported Action Studio project from ${sourceLabel}.`);
-    return data;
-  }
-
-  function importText(text, sourceLabel) {
-    try {
-      return importData(JSON.parse(text), sourceLabel);
-    } catch (error) {
-      setStatus(`Import failed: ${error.message}`, true);
-      return null;
-    }
-  }
-
-  document.getElementById('exportProject')?.addEventListener('click', () => {
-    const text = syncText();
-    document.getElementById('projectJson').select();
-    navigator.clipboard?.writeText(text).catch(() => {});
-    setStatus('Project JSON copied and shown below.');
-  });
-  document.getElementById('downloadProject')?.addEventListener('click', () => {
-    const project = getProject();
-    const text = serializeStudioProject(project);
-    const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = studioProjectFilename(project);
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    syncText();
-    saveAutosave('download JSON snapshot');
-    setStatus(`Downloaded ${anchor.download}.`);
-  });
-  document.getElementById('importProject')?.addEventListener('click', () => {
-    importText(document.getElementById('projectJson').value, 'JSON text');
-  });
-  document.getElementById('openProjectFile')?.addEventListener('click', () => {
-    document.getElementById('projectFileInput').click();
-  });
-  document.getElementById('projectFileInput')?.addEventListener('change', async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    importText(await file.text(), file.name);
-    event.target.value = '';
-  });
-  document.getElementById('restoreAutosave')?.addEventListener('click', () => {
-    const autosave = readStoredJson(storage, ACTION_STUDIO_AUTOSAVE_KEY, null);
-    if (!autosave?.project) {
-      setStatus('No Action Studio auto backup exists yet.', true);
-      return;
-    }
-    applyProject(autosave.project);
-    syncText();
-    setStatus(`Restored auto backup from ${describeSavedAt(autosave.savedAt)}.`);
-  });
-
-  updateAutosaveStatus();
-  return { syncText, saveAutosave, scheduleAutosave, importData, updateAutosaveStatus };
-}
-return Object.freeze({ ACTION_STUDIO_AUTOSAVE_KEY, createStudioProjectIoController });
-})();
-
-// src/animation/quaternius-animation-retarget.js
-const __actionStudioModule44 = (() => {
-const { sanitizeAnimationTargetName } = __actionStudioModule6;
-
-const QUATERNIUS_BONE_RETARGETS = Object.freeze([
-  Object.freeze({ source: 'root', target: 'root', position: true }),
-  Object.freeze({ source: 'pelvis', target: 'hips', position: true }),
-  Object.freeze({ source: 'spine_01', target: 'spine' }),
-  Object.freeze({ source: 'spine_03', target: 'chest' }),
-  Object.freeze({ source: 'Head', target: 'head' }),
-  Object.freeze({ source: 'upperarm_l', target: 'upperarm.l' }),
-  Object.freeze({ source: 'lowerarm_l', target: 'lowerarm.l' }),
-  Object.freeze({ source: 'hand_l', target: 'wrist.l' }),
-  Object.freeze({ source: 'upperarm_r', target: 'upperarm.r' }),
-  Object.freeze({ source: 'lowerarm_r', target: 'lowerarm.r' }),
-  Object.freeze({ source: 'hand_r', target: 'wrist.r' }),
-  Object.freeze({ source: 'thigh_l', target: 'upperleg.l' }),
-  Object.freeze({ source: 'calf_l', target: 'lowerleg.l' }),
-  Object.freeze({ source: 'foot_l', target: 'foot.l' }),
-  Object.freeze({ source: 'ball_l', target: 'toes.l' }),
-  Object.freeze({ source: 'thigh_r', target: 'upperleg.r' }),
-  Object.freeze({ source: 'calf_r', target: 'lowerleg.r' }),
-  Object.freeze({ source: 'foot_r', target: 'foot.r' }),
-  Object.freeze({ source: 'ball_r', target: 'toes.r' }),
-]);
-
-function loadGlb(loader, url) {
-  return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
-}
-
-function disposeScene(scene) {
-  scene?.traverse?.((object3d) => {
-    if (!object3d.isMesh) return;
-    object3d.geometry?.dispose?.();
-    const materials = Array.isArray(object3d.material) ? object3d.material : [object3d.material];
-    materials.forEach((material) => material?.dispose?.());
-  });
-}
-
-function createTargetProxy(THREE, rig) {
-  const root = new THREE.Object3D();
-  const bones = {};
-  for (const definition of rig.definition.bones) {
-    const bone = new THREE.Object3D();
-    const rest = rig.restTransforms[definition.id];
-    bone.name = sanitizeAnimationTargetName(definition.id);
-    bone.position.fromArray(rest.position);
-    bone.quaternion.fromArray(rest.quaternion);
-    bone.scale.fromArray(rest.scale);
-    (definition.parent ? bones[definition.parent] : root).add(bone);
-    bones[definition.id] = bone;
-  }
-  root.updateMatrixWorld(true);
-  return { root, bones };
-}
-
-function restoreTargetProxy(proxy, rig) {
-  for (const [boneId, rest] of Object.entries(rig.restTransforms)) {
-    const bone = proxy.bones[boneId];
-    bone.position.fromArray(rest.position);
-    bone.quaternion.fromArray(rest.quaternion);
-    bone.scale.fromArray(rest.scale);
-  }
-  proxy.root.updateMatrixWorld(true);
-}
-
-function worldSnapshot(THREE, object3d) {
-  return {
-    position: object3d.getWorldPosition(new THREE.Vector3()),
-    quaternion: object3d.getWorldQuaternion(new THREE.Quaternion()),
-  };
-}
-
-function motionScale(sourceRest, targetRest) {
-  const sourceHeight = sourceRest.Head.position.distanceTo(sourceRest.root.position);
-  const targetHeight = targetRest.head.position.distanceTo(targetRest.root.position);
-  if (sourceHeight < 0.001 || targetHeight < 0.001) return 1;
-  return Math.max(0.5, Math.min(1.5, targetHeight / sourceHeight));
-}
-
-function sampleTimes(duration, fps) {
-  const step = 1 / Math.max(1, Number(fps) || 30);
-  const times = [];
-  for (let time = 0; time < duration - step * 0.25; time += step) times.push(time);
-  if (!times.length || Math.abs(times.at(-1) - duration) > 1e-5) times.push(duration);
-  return times;
-}
-
-function retargetQuaterniusClip(THREE, gltf, rig, options = {}) {
-  if (!THREE?.AnimationMixer || !THREE?.AnimationClip) {
-    throw new Error('Quaternius retargeting requires the Three.js animation runtime');
-  }
-  const sourceScene = gltf?.scene;
-  const sourceClip = gltf?.animations?.[0];
-  if (!sourceScene || !sourceClip) throw new Error('Quaternius GLB is missing its source hierarchy or animation');
-  const retargets = options.boneRetargets || QUATERNIUS_BONE_RETARGETS;
-
-  sourceScene.updateMatrixWorld(true);
-  const sourceNodes = {};
-  retargets.forEach(({ source }) => { sourceNodes[source] = sourceScene.getObjectByName(source); });
-  const missing = retargets.filter(({ source }) => !sourceNodes[source]).map(({ source }) => source);
-  if (missing.length) throw new Error(`${sourceClip.name} is missing Quaternius bones: ${missing.join(', ')}`);
-
-  const targetProxy = createTargetProxy(THREE, rig);
-  const sourceRest = {};
-  const targetRest = {};
-  retargets.forEach(({ source, target }) => {
-    sourceRest[source] = worldSnapshot(THREE, sourceNodes[source]);
-    targetRest[target] = worldSnapshot(THREE, targetProxy.bones[target]);
-  });
-  const translationScale = motionScale(sourceRest, targetRest);
-  const times = sampleTimes(sourceClip.duration, options.fps || 30);
-  const samples = new Map(retargets.map(({ target, position }) => [target, {
-    quaternion: [],
-    position: position ? [] : null,
-  }]));
-  const mixer = new THREE.AnimationMixer(sourceScene);
-  const action = mixer.clipAction(sourceClip).reset();
-  action.setLoop(THREE.LoopOnce, 1);
-  action.clampWhenFinished = true;
-  action.play();
-  const sourceWorldQuaternion = new THREE.Quaternion();
-  const sourceWorldPosition = new THREE.Vector3();
-  const rotationDelta = new THREE.Quaternion();
-  const desiredWorldQuaternion = new THREE.Quaternion();
-  const parentWorldQuaternion = new THREE.Quaternion();
-  const desiredWorldPosition = new THREE.Vector3();
-
-  times.forEach((time) => {
-    mixer.setTime(time);
-    sourceScene.updateMatrixWorld(true);
-    restoreTargetProxy(targetProxy, rig);
-    retargets.forEach(({ source, target, position }) => {
-      const sourceBone = sourceNodes[source];
-      const targetBone = targetProxy.bones[target];
-      sourceBone.getWorldQuaternion(sourceWorldQuaternion);
-      rotationDelta.copy(sourceWorldQuaternion).multiply(sourceRest[source].quaternion.clone().invert());
-      desiredWorldQuaternion.copy(rotationDelta).multiply(targetRest[target].quaternion);
-      targetBone.parent.getWorldQuaternion(parentWorldQuaternion);
-      targetBone.quaternion.copy(parentWorldQuaternion.invert().multiply(desiredWorldQuaternion)).normalize();
-      if (position) {
-        sourceBone.getWorldPosition(sourceWorldPosition);
-        desiredWorldPosition.copy(sourceWorldPosition)
-          .sub(sourceRest[source].position)
-          .multiplyScalar(translationScale)
-          .add(targetRest[target].position);
-        targetBone.position.copy(targetBone.parent.worldToLocal(desiredWorldPosition));
-      }
-      targetBone.updateMatrixWorld(true);
-      samples.get(target).quaternion.push(...targetBone.quaternion.toArray());
-      if (position) samples.get(target).position.push(...targetBone.position.toArray());
-    });
-  });
-  action.stop();
-
-  const source = String(options.source || 'quaternius').toLowerCase();
-  const clipPrefix = String(options.clipPrefix || source.toUpperCase());
-  const clipName = `${clipPrefix}/${sourceClip.name || options.id || 'Action'}`;
-  const tracks = [];
-  retargets.forEach(({ target, position }) => {
-    const targetName = sanitizeAnimationTargetName(target);
-    tracks.push(new THREE.QuaternionKeyframeTrack(
-      `${targetName}.quaternion`, times, samples.get(target).quaternion,
-    ));
-    if (position) {
-      tracks.push(new THREE.VectorKeyframeTrack(
-        `${targetName}.position`, times, samples.get(target).position,
-      ));
-    }
-  });
-  const clip = new THREE.AnimationClip(clipName, sourceClip.duration, tracks);
-  clip.userData = {
-    source,
-    sourceClip: sourceClip.name,
-    retargetFps: options.fps || 30,
-    translationScale,
-  };
-  return clip;
-}
-
-const loadQuaterniusAnimationLibrary = async (loader, options = {}) => {
-  if (!loader?.load) throw new Error('loadQuaterniusAnimationLibrary requires a GLTFLoader instance');
-  const THREE = options.THREE;
-  const rig = options.rig;
-  const files = options.files || [];
-  if (!THREE || !rig?.definition || !rig?.restTransforms) {
-    throw new Error('loadQuaterniusAnimationLibrary requires THREE and the target procedural rig');
-  }
-  if (!files.length) throw new Error('loadQuaterniusAnimationLibrary requires one or more animation files');
-  const baseUrl = String(options.baseUrl || '').replace(/\/?$/, '/');
-  const loaded = await Promise.all(files.map(async (entry) => {
-    const gltf = await loadGlb(loader, `${baseUrl}${entry.file}`);
-    try {
-      return retargetQuaterniusClip(THREE, gltf, rig, {
-        id: entry.id,
-        fps: options.fps || 30,
-        source: options.source,
-        clipPrefix: options.clipPrefix,
-      });
-    } finally {
-      disposeScene(gltf.scene);
-    }
-  }));
-  return {
-    clips: new Map(loaded.map((clip) => [clip.name, clip])),
-    files,
-    duplicates: [],
-    source: String(options.source || 'quaternius').toLowerCase(),
-    retargetFps: options.fps || 30,
-  };
-};
-return Object.freeze({ QUATERNIUS_BONE_RETARGETS, retargetQuaterniusClip, loadQuaterniusAnimationLibrary });
-})();
-
-// src/animation/ual1-animation-library.js
-const __actionStudioModule43 = (() => {
-const { QUATERNIUS_BONE_RETARGETS, loadQuaterniusAnimationLibrary, retargetQuaterniusClip } = __actionStudioModule44;
-
-const UAL1_ANIMATION_FILES = Object.freeze([
-  Object.freeze({ id: 'Sword_Attack', file: 'Sword_Attack.glb' }),
-  Object.freeze({ id: 'Sword_Idle', file: 'Sword_Idle.glb' }),
-]);
-
-const UAL1_BONE_RETARGETS = QUATERNIUS_BONE_RETARGETS;
-
-const DEFAULT_BASE_URL = '../../assets/UAL1_Animation_Split_Package/Animation_Only/No_Root_Motion/';
-
-function retargetUal1Clip(THREE, gltf, rig, options = {}) {
-  return retargetQuaterniusClip(THREE, gltf, rig, {
-    ...options,
-    source: 'ual1',
-    clipPrefix: 'UAL1',
-  });
-}
-
-const loadUal1AnimationLibrary = (loader, options = {}) => loadQuaterniusAnimationLibrary(loader, {
-  ...options,
-  files: UAL1_ANIMATION_FILES,
-  baseUrl: options.baseUrl || DEFAULT_BASE_URL,
-  source: 'ual1',
-  clipPrefix: 'UAL1',
-});
-return Object.freeze({ UAL1_ANIMATION_FILES, UAL1_BONE_RETARGETS, retargetUal1Clip, loadUal1AnimationLibrary });
-})();
-
-// src/animation/ual2-animation-library.js
-const __actionStudioModule45 = (() => {
-const { sanitizeAnimationTargetName } = __actionStudioModule6;
-
-const UAL2_ANIMATION_FILES = Object.freeze([
-  Object.freeze({ id: 'Sword_Regular_A', file: 'Sword_Regular_A.glb' }),
-  Object.freeze({ id: 'Sword_Regular_B', file: 'Sword_Regular_B.glb' }),
-  Object.freeze({ id: 'Sword_Regular_C', file: 'Sword_Regular_C.glb' }),
-  Object.freeze({ id: 'Sword_Regular_Combo', file: 'Sword_Regular_Combo.glb' }),
-  Object.freeze({ id: 'Sword_Heavy_Combo', file: 'Sword_Heavy_Combo.glb' }),
-  Object.freeze({ id: 'Sword_Dash', file: 'Sword_Dash.glb' }),
-  Object.freeze({ id: 'Sword_Block', file: 'Sword_Block.glb' }),
-  Object.freeze({ id: 'Hit_Knockback', file: 'Hit_Knockback.glb' }),
-]);
-
-const UAL2_BONE_RETARGETS = Object.freeze([
-  Object.freeze({ source: 'root', target: 'root', position: true }),
-  Object.freeze({ source: 'pelvis', target: 'hips', position: true }),
-  Object.freeze({ source: 'spine_01', target: 'spine' }),
-  Object.freeze({ source: 'spine_03', target: 'chest' }),
-  Object.freeze({ source: 'Head', target: 'head' }),
-  Object.freeze({ source: 'upperarm_l', target: 'upperarm.l' }),
-  Object.freeze({ source: 'lowerarm_l', target: 'lowerarm.l' }),
-  Object.freeze({ source: 'hand_l', target: 'wrist.l' }),
-  Object.freeze({ source: 'upperarm_r', target: 'upperarm.r' }),
-  Object.freeze({ source: 'lowerarm_r', target: 'lowerarm.r' }),
-  Object.freeze({ source: 'hand_r', target: 'wrist.r' }),
-  Object.freeze({ source: 'thigh_l', target: 'upperleg.l' }),
-  Object.freeze({ source: 'calf_l', target: 'lowerleg.l' }),
-  Object.freeze({ source: 'foot_l', target: 'foot.l' }),
-  Object.freeze({ source: 'ball_l', target: 'toes.l' }),
-  Object.freeze({ source: 'thigh_r', target: 'upperleg.r' }),
-  Object.freeze({ source: 'calf_r', target: 'lowerleg.r' }),
-  Object.freeze({ source: 'foot_r', target: 'foot.r' }),
-  Object.freeze({ source: 'ball_r', target: 'toes.r' }),
-]);
-
-const DEFAULT_BASE_URL = '../../assets/UAL2_Sword_Combat_Package/Animation_Only/No_Root_Motion/';
-
-function loadGlb(loader, url) {
-  return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
-}
-
-function disposeScene(scene) {
-  scene?.traverse?.((object3d) => {
-    if (!object3d.isMesh) return;
-    object3d.geometry?.dispose?.();
-    const materials = Array.isArray(object3d.material) ? object3d.material : [object3d.material];
-    materials.forEach((material) => material?.dispose?.());
-  });
-}
-
-function createTargetProxy(THREE, rig) {
-  const root = new THREE.Object3D();
-  const bones = {};
-  for (const definition of rig.definition.bones) {
-    const bone = new THREE.Object3D();
-    const rest = rig.restTransforms[definition.id];
-    bone.name = sanitizeAnimationTargetName(definition.id);
-    bone.position.fromArray(rest.position);
-    bone.quaternion.fromArray(rest.quaternion);
-    bone.scale.fromArray(rest.scale);
-    (definition.parent ? bones[definition.parent] : root).add(bone);
-    bones[definition.id] = bone;
-  }
-  root.updateMatrixWorld(true);
-  return { root, bones };
-}
-
-function restoreTargetProxy(proxy, rig) {
-  for (const [boneId, rest] of Object.entries(rig.restTransforms)) {
-    const bone = proxy.bones[boneId];
-    bone.position.fromArray(rest.position);
-    bone.quaternion.fromArray(rest.quaternion);
-    bone.scale.fromArray(rest.scale);
-  }
-  proxy.root.updateMatrixWorld(true);
-}
-
-function worldSnapshot(THREE, object3d) {
-  return {
-    position: object3d.getWorldPosition(new THREE.Vector3()),
-    quaternion: object3d.getWorldQuaternion(new THREE.Quaternion()),
-  };
-}
-
-function motionScale(sourceRest, targetRest) {
-  const sourceHeight = sourceRest.Head.position.distanceTo(sourceRest.root.position);
-  const targetHeight = targetRest.head.position.distanceTo(targetRest.root.position);
-  if (sourceHeight < 0.001 || targetHeight < 0.001) return 1;
-  return Math.max(0.5, Math.min(1.5, targetHeight / sourceHeight));
-}
-
-function sampleTimes(duration, fps) {
-  const step = 1 / Math.max(1, Number(fps) || 30);
-  const times = [];
-  for (let time = 0; time < duration - step * 0.25; time += step) times.push(time);
-  if (!times.length || Math.abs(times.at(-1) - duration) > 1e-5) times.push(duration);
-  return times;
-}
-
-function retargetUal2Clip(THREE, gltf, rig, options = {}) {
-  if (!THREE?.AnimationMixer || !THREE?.AnimationClip) {
-    throw new Error('UAL2 retargeting requires the Three.js animation runtime');
-  }
-  const sourceScene = gltf?.scene;
-  const sourceClip = gltf?.animations?.[0];
-  if (!sourceScene || !sourceClip) throw new Error('UAL2 GLB is missing its source hierarchy or animation');
-
-  sourceScene.updateMatrixWorld(true);
-  const sourceNodes = {};
-  UAL2_BONE_RETARGETS.forEach(({ source }) => { sourceNodes[source] = sourceScene.getObjectByName(source); });
-  const missing = UAL2_BONE_RETARGETS.filter(({ source }) => !sourceNodes[source]).map(({ source }) => source);
-  if (missing.length) throw new Error(`UAL2 clip ${sourceClip.name} is missing bones: ${missing.join(', ')}`);
-
-  const targetProxy = createTargetProxy(THREE, rig);
-  const sourceRest = {};
-  const targetRest = {};
-  UAL2_BONE_RETARGETS.forEach(({ source, target }) => {
-    sourceRest[source] = worldSnapshot(THREE, sourceNodes[source]);
-    targetRest[target] = worldSnapshot(THREE, targetProxy.bones[target]);
-  });
-  const translationScale = motionScale(sourceRest, targetRest);
-  const times = sampleTimes(sourceClip.duration, options.fps || 30);
-  const samples = new Map(UAL2_BONE_RETARGETS.map(({ target, position }) => [target, {
-    quaternion: [],
-    position: position ? [] : null,
-  }]));
-  const mixer = new THREE.AnimationMixer(sourceScene);
-  const action = mixer.clipAction(sourceClip).reset();
-  action.setLoop(THREE.LoopOnce, 1);
-  action.clampWhenFinished = true;
-  action.play();
-  const sourceWorldQuaternion = new THREE.Quaternion();
-  const sourceWorldPosition = new THREE.Vector3();
-  const rotationDelta = new THREE.Quaternion();
-  const desiredWorldQuaternion = new THREE.Quaternion();
-  const parentWorldQuaternion = new THREE.Quaternion();
-  const desiredWorldPosition = new THREE.Vector3();
-
-  times.forEach((time) => {
-    mixer.setTime(time);
-    sourceScene.updateMatrixWorld(true);
-    restoreTargetProxy(targetProxy, rig);
-    UAL2_BONE_RETARGETS.forEach(({ source, target, position }) => {
-      const sourceBone = sourceNodes[source];
-      const targetBone = targetProxy.bones[target];
-      sourceBone.getWorldQuaternion(sourceWorldQuaternion);
-      rotationDelta.copy(sourceWorldQuaternion).multiply(sourceRest[source].quaternion.clone().invert());
-      desiredWorldQuaternion.copy(rotationDelta).multiply(targetRest[target].quaternion);
-      targetBone.parent.getWorldQuaternion(parentWorldQuaternion);
-      targetBone.quaternion.copy(parentWorldQuaternion.invert().multiply(desiredWorldQuaternion)).normalize();
-      if (position) {
-        sourceBone.getWorldPosition(sourceWorldPosition);
-        desiredWorldPosition.copy(sourceWorldPosition)
-          .sub(sourceRest[source].position)
-          .multiplyScalar(translationScale)
-          .add(targetRest[target].position);
-        targetBone.position.copy(targetBone.parent.worldToLocal(desiredWorldPosition));
-      }
-      targetBone.updateMatrixWorld(true);
-      samples.get(target).quaternion.push(...targetBone.quaternion.toArray());
-      if (position) samples.get(target).position.push(...targetBone.position.toArray());
-    });
-  });
-  action.stop();
-
-  const clipName = `UAL2/${sourceClip.name || options.id || 'Sword_Action'}`;
-  const tracks = [];
-  UAL2_BONE_RETARGETS.forEach(({ target, position }) => {
-    const targetName = sanitizeAnimationTargetName(target);
-    tracks.push(new THREE.QuaternionKeyframeTrack(
-      `${targetName}.quaternion`, times, samples.get(target).quaternion,
-    ));
-    if (position) {
-      tracks.push(new THREE.VectorKeyframeTrack(
-        `${targetName}.position`, times, samples.get(target).position,
-      ));
-    }
-  });
-  const clip = new THREE.AnimationClip(clipName, sourceClip.duration, tracks);
-  clip.userData = {
-    source: 'ual2',
-    sourceClip: sourceClip.name,
-    retargetFps: options.fps || 30,
-    translationScale,
-  };
-  return clip;
-}
-
-const loadUal2AnimationLibrary = async (loader, options = {}) => {
-  if (!loader?.load) throw new Error('loadUal2AnimationLibrary requires a GLTFLoader instance');
-  const THREE = options.THREE;
-  const rig = options.rig;
-  if (!THREE || !rig?.definition || !rig?.restTransforms) {
-    throw new Error('loadUal2AnimationLibrary requires THREE and the target procedural rig');
-  }
-  const baseUrl = String(options.baseUrl || DEFAULT_BASE_URL).replace(/\/?$/, '/');
-  // Which of the pack's clips this page needs.
-  //
-  // UAL2_ANIMATION_FILES is the CATALOGUE - what the pack contains - and stays complete, because
-  // knowing what is available is what makes a second weapon's sourcing a lookup rather than a
-  // search. What a page LOADS is a different question, and until this option existed the two were
-  // the same answer: all eight clips, 1.5MB, of which the game plays two.
-  //
-  // Ids may arrive bare ('Sword_Regular_A') or prefixed as the retargeted clip is named
-  // ('UAL2/Sword_Regular_A'), because callers hold the prefixed form - it is what a weapon's
-  // timings record names - and should not have to strip it to ask for a file.
-  const wanted = options.clipIds ? new Set(options.clipIds.map(String)) : null;
-  const requested = wanted
-    ? UAL2_ANIMATION_FILES.filter((entry) => wanted.has(entry.id) || wanted.has(`UAL2/${entry.id}`))
-    : UAL2_ANIMATION_FILES;
-  if (wanted && requested.length === 0) {
-    throw new Error(`loadUal2AnimationLibrary was asked for clips it does not have: ${[...wanted].join(', ')}`);
-  }
-  const loaded = await Promise.all(requested.map(async (entry) => {
-    const gltf = await loadGlb(loader, `${baseUrl}${entry.file}`);
-    try {
-      return retargetUal2Clip(THREE, gltf, rig, { id: entry.id, fps: options.fps || 30 });
-    } finally {
-      disposeScene(gltf.scene);
-    }
-  }));
-  return {
-    clips: new Map(loaded.map((clip) => [clip.name, clip])),
-    files: requested,
-    catalogue: UAL2_ANIMATION_FILES,
-    duplicates: [],
-    source: 'ual2',
-    retargetFps: options.fps || 30,
-  };
-};
-return Object.freeze({ UAL2_ANIMATION_FILES, UAL2_BONE_RETARGETS, retargetUal2Clip, loadUal2AnimationLibrary });
-})();
-
 // src/animation/skyrim-animation-retarget.js
-const __actionStudioModule47 = (() => {
+const __actionStudioModule20 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
 
 function aliases(...names) {
@@ -13974,8 +9402,8 @@ return Object.freeze({ SKYRIM_BONE_RETARGETS, resolveSkyrimSourceNodes, validate
 })();
 
 // src/animation/skyrim-weapon-bind-calibration.js
-const __actionStudioModule48 = (() => {
-const { resolveSkyrimSourceNodes } = __actionStudioModule47;
+const __actionStudioModule19 = (() => {
+const { resolveSkyrimSourceNodes } = __actionStudioModule20;
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -14124,8 +9552,4724 @@ function measureSkyrimWeaponFrameErrorDegrees(THREE, sourceWeapon, targetSocket,
 return Object.freeze({ multiplyQuaternionArrays, invertQuaternionArray, quaternionAngularErrorDegrees, deriveSkyrimWeaponBindCorrection, computeSkyrimWeaponBindCalibration, composeSkyrimWeaponMountCalibration, measureSkyrimWeaponFrameErrorDegrees });
 })();
 
-// src/animation/parry-contact-deflect-runtime-clip.js
+// tools/action-studio/studio-game-mount-preview.js
+const __actionStudioModule18 = (() => {
+// Show the blade at the angle the GAME holds it, without letting that angle become the author's.
+//
+// MEASURED, on 2hm_idle, against the haft direction the clip itself carries (both hands are on the
+// haft in the source, so R hand -> L hand IS the haft; ours is the weapon's own +Y; both read in an
+// anatomical frame so neither file's axis convention is trusted):
+//
+//   studio's own mount     40.8 deg off the clip's haft
+//   game's mount           22.9 deg off
+//
+// src/game/bootstrap.js mounts a Skyrim-driven fighter with DEFAULT_KAYKIT_SWORD_MOUNT composed
+// with that clip's G2.4.5 weapon bind; the studio mounts once at startup with the author's dialled
+// calibration and never composes. The two differ by 112.1 degrees.
+//
+// WHY THIS IS AN OVERLAY AND NOT A SWAP. `mountCalibration` in the entry is the AUTHOR'S base: the
+// Weapon Mount dial renders it, Save writes it, project JSON carries it, and setProject writes it
+// back on every project load, autosave restore and combo build. Worse, Bake Pose Keys solves poses
+// against the sword's world grip and writes the result into clip.poses - authored data that ships.
+// A composed mount living in that variable would make the dial lie, compose a second time on the
+// first nudge of any axis, and silently bake poses against a blade the author never chose.
+//
+// So: the base stays in the entry, this writes only the Object3D, it is idempotent, and it hands
+// the base back on demand (withBaseMount) for anything that reads real geometry.
+const { applyMountCalibration } = __actionStudioModule3;
+const { composeSkyrimWeaponMountCalibration } = __actionStudioModule19;
+
+const GAME_MOUNT_PREVIEW_STAGE = 'the-blade-at-the-angle-the-game-holds-it';
+
+// composeSkyrimWeaponMountCalibration throws without a correction quaternion, and most clips have
+// none - every authored template, every KayKit and UAL clip, and the virtual production-parry clips
+// the Skyrim library derives. Asked rather than assumed, following the Guard Runtime's own guard.
+function readWeaponBind(clip) {
+  const bind = clip?.userData?.weaponBindCalibration;
+  return Array.isArray(bind?.correctionQuaternion) ? bind : null;
+}
+
+function createStudioGameMountPreview(THREE, { getWeapon, getBaseMount, getBoundClip }) {
+  const toggle = document.getElementById('gameMount');
+  const status = document.getElementById('gameMountStatus');
+  // What is on the blade right now, so update() can stay idempotent without re-writing a transform
+  // sixty times a second.
+  let applied = null;
+
+  function write(calibration, label) {
+    const weapon = getWeapon();
+    if (!weapon?.object3d) return;
+    applyMountCalibration(weapon.object3d, calibration);
+    weapon.object3d.updateMatrixWorld?.(true);
+    applied = label;
+  }
+
+  function baseMount() {
+    return getBaseMount();
+  }
+
+  return {
+    get applied() { return applied; },
+
+    // Called each frame, after the weapon has followed the hand and before anything reads its
+    // sockets - the off-hand grip IK aims at SECONDARY_GRIP, so the blade has to be where it will
+    // be drawn before the arm is solved.
+    update() {
+      const bind = toggle?.checked ? readWeaponBind(getBoundClip()) : null;
+      if (!bind) {
+        if (applied !== 'author') write(baseMount(), 'author');
+        if (status && toggle) {
+          status.textContent = toggle.checked
+            ? 'game mount · not applied · this clip carries no Skyrim weapon bind'
+            : 'game mount · off · the blade wears the mount dial';
+        }
+        return;
+      }
+      write(composeSkyrimWeaponMountCalibration(THREE, baseMount(), bind), 'game');
+      if (status) {
+        status.textContent = `game mount · on · ${bind.correctionAngleDegrees.toFixed(1)}° `
+          + 'composed onto the dial, as src/game/bootstrap.js mounts it';
+      }
+    },
+
+    // Anything that reads the blade as GEOMETRY rather than as a picture runs in here. Bake Pose
+    // Keys is the one that matters: it solves against the sword's world grip and writes the answer
+    // into clip.poses, so a pose baked under a preview mount would be permanently wrong.
+    withBaseMount(run) {
+      const previous = applied;
+      write(baseMount(), 'author');
+      try {
+        return run();
+      } finally {
+        if (previous === 'game') this.update();
+      }
+    },
+
+    // The stage weapon selector builds a new sword; whatever was on the old one is not on this one.
+    invalidate() {
+      applied = null;
+    },
+  };
+}
+return Object.freeze({ GAME_MOUNT_PREVIEW_STAGE, readWeaponBind, createStudioGameMountPreview });
+})();
+
+// src/animation/two-bone-ik.js
+const __actionStudioModule23 = (() => {
+// Two-bone IK: put the end of a limb on a point, by rotating two joints.
+//
+// Analytic, not iterative. A two-bone chain has one degree of freedom left once the effector's
+// position is fixed - the limb can spin about the line from shoulder to target - and that freedom
+// is spent HERE by keeping the plane the arm is already in. That is deliberate: the plane comes
+// from the retargeted animation, so the elbow keeps pointing where the animator put it, and this
+// solver never has to invent a pole vector it would have no evidence for.
+//
+// The chain is (root, mid, effector). Only root and mid are written. Everything from mid outward -
+// the wrist, the hand, the socket the weapon or shield hangs on - is treated as rigid and rides
+// along, which is what makes it correct to aim a SOCKET rather than a bone: the second segment's
+// length is measured to the effector, wherever it is.
+//
+// TWO REFUSALS, both of which return applied:false and restore the pose rather than doing their
+// best. A solver that quietly does its best is how a limb ends up somewhere nobody chose:
+//
+//   out of reach     the target is further than the two segments can span. Reaching for it would
+//                    lock the arm straight and point it at something it cannot hold.
+//   over budget      the correction exceeds maxCorrectionDegrees at either joint. The budget is
+//                    the caller's statement of how much of the animation it is willing to overwrite.
+
+function rotateBoneInWorld(THREE, bone, deltaWorldQuaternion) {
+  const parentWorld = bone.parent
+    ? bone.parent.getWorldQuaternion(new THREE.Quaternion())
+    : new THREE.Quaternion();
+  const boneWorld = bone.getWorldQuaternion(new THREE.Quaternion());
+  const desired = deltaWorldQuaternion.clone().multiply(boneWorld);
+  bone.quaternion.copy(parentWorld.invert().multiply(desired)).normalize();
+}
+
+function worldPosition(THREE, object3d) {
+  return object3d.getWorldPosition(new THREE.Vector3());
+}
+
+// The plane the arm bends in. Normally the one it is already in; when the arm is straight there is
+// no such plane, so the target picks one - bending toward what we are reaching for is the only
+// choice with a reason behind it.
+function bendAxis(THREE, fromMid, toMid, target, mid) {
+  const axis = new THREE.Vector3().crossVectors(fromMid, toMid);
+  if (axis.lengthSq() > 1e-10) return axis.normalize();
+  const fallback = new THREE.Vector3().crossVectors(fromMid, target.clone().sub(mid));
+  if (fallback.lengthSq() > 1e-10) return fallback.normalize();
+  // Fully degenerate: shoulder, effector and target are collinear. Any perpendicular will do.
+  const arbitrary = Math.abs(fromMid.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+  return new THREE.Vector3().crossVectors(fromMid, arbitrary).normalize();
+}
+
+/**
+ * Rotate `root` and `mid` so that `effector` lands on `target`.
+ *
+ * @param {object} THREE Three.js namespace (Quaternion, Vector3, MathUtils).
+ * @param {object} options
+ * @param {object} options.root   the shoulder-side bone, rotated second
+ * @param {object} options.mid    the elbow-side bone, rotated first
+ * @param {object} options.effector the object whose world position must reach the target
+ * @param {object} options.target THREE.Vector3, in world space
+ * @param {number} [options.maxCorrectionDegrees] per-joint budget; over it, nothing is written
+ * @param {object} [options.updateRoot] what to updateMatrixWorld on between steps; defaults to root
+ */
+function solveTwoBoneIk(THREE, options = {}) {
+  const { root, mid, effector, target } = options;
+  if (!root || !mid || !effector || !target) throw new Error('solveTwoBoneIk needs root, mid, effector and target');
+  const budget = Number.isFinite(options.maxCorrectionDegrees) ? options.maxCorrectionDegrees : Infinity;
+  const updateRoot = options.updateRoot || root;
+
+  const before = { root: root.quaternion.clone(), mid: mid.quaternion.clone() };
+  const restore = () => {
+    root.quaternion.copy(before.root);
+    mid.quaternion.copy(before.mid);
+    updateRoot.updateMatrixWorld(true);
+  };
+
+  const shoulder = worldPosition(THREE, root);
+  const elbow = worldPosition(THREE, mid);
+  const handStart = worldPosition(THREE, effector);
+  const upper = shoulder.distanceTo(elbow);
+  const fore = elbow.distanceTo(handStart);
+  const gapBefore = handStart.distanceTo(target);
+  const report = { applied: false, gapBefore, gapAfter: gapBefore, upper, fore, rootDegrees: 0, midDegrees: 0 };
+
+  if (upper < 1e-6 || fore < 1e-6) return { ...report, reason: 'degenerate-chain' };
+
+  const span = upper + fore;
+  const distance = shoulder.distanceTo(target);
+  if (distance > span) return { ...report, reason: 'out-of-reach', reach: span, distance };
+
+  // 1. The elbow, by the law of cosines: the interior angle that makes the chain span `distance`.
+  const toShoulder = shoulder.clone().sub(elbow);
+  const toHand = handStart.clone().sub(elbow);
+  const axis = bendAxis(THREE, toShoulder, toHand, target, elbow);
+  const currentAngle = toShoulder.angleTo(toHand);
+  const clampedDistance = Math.max(Math.abs(upper - fore) + 1e-6, Math.min(span - 1e-6, distance));
+  const cosine = (upper * upper + fore * fore - clampedDistance * clampedDistance) / (2 * upper * fore);
+  const desiredAngle = Math.acos(Math.max(-1, Math.min(1, cosine)));
+  const midDelta = desiredAngle - currentAngle;
+
+  // 2. The shoulder, swinging the now-correctly-bent arm onto the target.
+  rotateBoneInWorld(THREE, mid, new THREE.Quaternion().setFromAxisAngle(axis, midDelta));
+  updateRoot.updateMatrixWorld(true);
+  const handBent = worldPosition(THREE, effector);
+  const from = handBent.clone().sub(shoulder);
+  const to = target.clone().sub(shoulder);
+  if (from.lengthSq() < 1e-12 || to.lengthSq() < 1e-12) {
+    restore();
+    return { ...report, reason: 'degenerate-target' };
+  }
+  const swing = new THREE.Quaternion().setFromUnitVectors(from.clone().normalize(), to.clone().normalize());
+  const rootDegrees = THREE.MathUtils.radToDeg(2 * Math.acos(Math.min(1, Math.abs(swing.w))));
+  const midDegrees = Math.abs(THREE.MathUtils.radToDeg(midDelta));
+
+  if (midDegrees > budget || rootDegrees > budget) {
+    restore();
+    return { ...report, reason: 'over-budget', rootDegrees, midDegrees, budget };
+  }
+
+  rotateBoneInWorld(THREE, root, swing);
+  updateRoot.updateMatrixWorld(true);
+  const gapAfter = worldPosition(THREE, effector).distanceTo(target);
+  return { applied: true, gapBefore, gapAfter, upper, fore, rootDegrees, midDegrees, reason: null };
+}
+return Object.freeze({ solveTwoBoneIk });
+})();
+
+// src/animation/off-hand-grip-ik.js
+const __actionStudioModule22 = (() => {
+// The off hand goes on the hilt.
+//
+// WHY THIS IS NEEDED, measured rather than assumed (handoff/46): a retargeted Skyrim two-handed
+// clip keeps the POSE - wrist to wrist comes out 1.32x the source's - but not the GRIP. This rig
+// hangs its equipment sockets 15.1% of head-to-root off the wrist where Skyrim's sit at 6.4% and
+// 4.9%, so two grip points 0.12 apart in the clip end up 0.43 apart here, and the retarget cannot
+// correct it because handslot.l and handslot.r receive rotation only.
+//
+// Fixing THAT means moving every weapon and every shield on every clip. This does not do that. It
+// closes the gap where it shows, by asking the off arm to reach the weapon's own second grip node,
+// and it is deliberately the smaller of the two changes: two bones, no equipment moved, nothing the
+// guard gates measure.
+//
+// OWNERSHIP, which is the part that needs stating rather than discovering. src/combat/
+// shield-arm-hold.js already owns this exact chain - upperarm.l, lowerarm.l, wrist.l, hand.l,
+// handslot.l - whenever a shield is up. Two writers on one arm is not a merge, it is a bug, so the
+// rule here is a refusal: if anything is socketed on HAND_L, the off hand is busy and this does
+// nothing. A fighter holds a greatsword with two hands or a sword and a shield. Not both.
+const { solveTwoBoneIk } = __actionStudioModule23;
+
+const OFF_HAND_GRIP_STAGE = 'the-off-hand-goes-on-the-hilt';
+
+const OFF_HAND_GRIP_SCOPE = Object.freeze({
+  stage: OFF_HAND_GRIP_STAGE,
+  // Written. Everything past the elbow rides along rigid, which is what makes it correct to aim the
+  // SOCKET rather than a bone.
+  bones: Object.freeze(['upperarm.l', 'lowerarm.l']),
+  effectorSocket: 'HAND_L',
+  targetSocket: 'SECONDARY_GRIP',
+  // Never written, and each for its own reason: the right arm and the torso carry the swing, the
+  // legs and root carry the stance, and the off hand's own wrist keeps the animator's hand angle -
+  // a palm turned by an IK solver reads as a broken wrist long before the position looks wrong.
+  forbiddenBones: Object.freeze([
+    'root', 'hips', 'spine', 'chest',
+    'wrist.l', 'hand.l', 'handslot.l',
+    'upperarm.r', 'lowerarm.r', 'wrist.r', 'hand.r', 'handslot.r',
+    'upperleg.l', 'upperleg.r', 'lowerleg.l', 'lowerleg.r', 'foot.l', 'foot.r', 'toes.l', 'toes.r',
+  ]),
+  // The budget, measured rather than guessed - the first value here was 45 and it refused all 31
+  // frames of 2hm_idle. That clip needs 47.7 degrees at the shoulder and 20.1 at the elbow, most of
+  // which is absorbing the socket offset above rather than anything about the animation. 60 leaves
+  // room for a hold carried a little differently without letting an arm be thrown anywhere.
+  maxCorrectionDegrees: 60,
+  conflictsWith: 'SHIELD_ARM_HOLD_BONES',
+  policy: 'refuse when the off hand is holding something; never stretch; never write past the elbow',
+});
+
+/**
+ * Put the off hand on the mounted weapon's second grip, for one frame.
+ *
+ * The caller samples the animation and updates world matrices first; this runs after, on the posed
+ * rig, and updates the matrices again itself.
+ */
+function applyOffHandGripIk(THREE, options = {}) {
+  const { character, weapon } = options;
+  if (!character?.rig?.bones || !character?.sockets) throw new Error('applyOffHandGripIk requires a procedural character');
+  if (!weapon?.sockets?.SECONDARY_GRIP) throw new Error('applyOffHandGripIk requires a weapon with a SECONDARY_GRIP');
+
+  const effector = character.sockets[OFF_HAND_GRIP_SCOPE.effectorSocket];
+  // The ownership rule, checked rather than documented: a shield or buckler is socketed here.
+  const occupied = (effector.children || []).filter((child) => child !== weapon.object3d);
+  if (occupied.length > 0) {
+    return { applied: false, reason: 'off-hand-occupied', occupants: occupied.map((child) => child.name || 'unnamed') };
+  }
+
+  const target = weapon.sockets[OFF_HAND_GRIP_SCOPE.targetSocket].getWorldPosition(new THREE.Vector3());
+  const budget = Number.isFinite(options.maxCorrectionDegrees)
+    ? options.maxCorrectionDegrees
+    : OFF_HAND_GRIP_SCOPE.maxCorrectionDegrees;
+
+  return solveTwoBoneIk(THREE, {
+    root: character.rig.bones['upperarm.l'],
+    mid: character.rig.bones['lowerarm.l'],
+    effector,
+    target,
+    maxCorrectionDegrees: budget,
+    updateRoot: character.object3d,
+  });
+}
+return Object.freeze({ OFF_HAND_GRIP_STAGE, OFF_HAND_GRIP_SCOPE, applyOffHandGripIk });
+})();
+
+// tools/action-studio/studio-off-hand-grip-controls.js
+const __actionStudioModule21 = (() => {
+// The studio's off-hand grip toggle: two hands on one haft, on the stage figure.
+//
+// The solving is src/animation/off-hand-grip-ik.js; this is only the page's half - the checkbox,
+// when it defaults on, and saying in one line what happened. It lives here rather than in
+// action-studio.js because that entry is held to a line budget as a composition root, and this is
+// a control with its own state and its own vocabulary of refusals.
+const { OFF_HAND_GRIP_SCOPE, applyOffHandGripIk } = __actionStudioModule22;
+
+// Said in the terms an author can act on. "out-of-reach" is the honest answer for the authored
+// poses this page opens with - the seven-key chop leaves gaps up to 1.26 (handoff/44) - and it is
+// not a fault to fix, it is a pose the off hand cannot hold.
+const REFUSALS = Object.freeze({
+  'out-of-reach': 'the hilt is beyond the off arm in this pose · play a two-handed clip',
+  'off-hand-occupied': 'the off hand is holding something · a shield keeps the arm',
+  'over-budget': `the reach needs more than ${OFF_HAND_GRIP_SCOPE.maxCorrectionDegrees}° at a joint`,
+});
+
+// Defaulted per weapon rather than remembered, because it is a property of what is being held: a
+// longsword's off hand is free, a greatsword's is not. The checkbox is still there to argue with.
+function defaultOffHandGrip(weaponId) {
+  return weaponId === 'greatsword';
+}
+
+function createStudioOffHandGripController(THREE, { getCharacter, getWeapon, stageWeaponId }) {
+  const toggle = document.getElementById('offHandGrip');
+  const status = document.getElementById('offHandGripStatus');
+  if (toggle) {
+    toggle.checked = defaultOffHandGrip(stageWeaponId);
+    toggle.addEventListener('change', () => {
+      if (!toggle.checked && status) {
+        status.textContent = 'off-hand grip · off · the arm plays as the clip retargeted it';
+      }
+    });
+  }
+
+  return {
+    // Called on the posed rig, after the weapon has followed the right hand: the target is the
+    // weapon's own SECONDARY_GRIP, so it has to be where it will be drawn before the arm is solved.
+    update() {
+      if (!toggle?.checked) return null;
+      const result = applyOffHandGripIk(THREE, { character: getCharacter(), weapon: getWeapon() });
+      if (status) {
+        status.textContent = result.applied
+          ? `off-hand grip · reached · shoulder ${result.rootDegrees.toFixed(1)}° `
+            + `elbow ${result.midDegrees.toFixed(1)}° · closed ${result.gapBefore.toFixed(3)} `
+            + `(budget ${OFF_HAND_GRIP_SCOPE.maxCorrectionDegrees}°)`
+          : `off-hand grip · not applied · ${REFUSALS[result.reason] || result.reason}`;
+      }
+      return result;
+    },
+    syncToWeapon(weaponId) {
+      if (toggle) toggle.checked = defaultOffHandGrip(weaponId);
+    },
+  };
+}
+return Object.freeze({ defaultOffHandGrip, createStudioOffHandGripController });
+})();
+
+// tools/action-studio/studio-stage-weapon-overlays.js
+const __actionStudioModule17 = (() => {
+// Everything that writes the stage weapon or the arm holding it, in the one order that is correct.
+//
+// Two overlays run each frame after the weapon has followed the hand, and they are NOT independent:
+//
+//   1. the game mount   moves the blade to the angle src/game/bootstrap.js would hold it at
+//   2. the off-hand IK  puts the off hand on the blade's SECONDARY_GRIP
+//
+// (2) aims at a socket that (1) moves. Run them the other way round and the off hand solves against
+// a blade that is about to turn 112 degrees under it. That ordering lived implicitly in the entry's
+// tick() until this module existed; here it is a single statement with a reason attached.
+//
+// They are composed rather than merged: each is separately testable, and each has its own refusals.
+const { createStudioGameMountPreview } = __actionStudioModule18;
+const { createStudioOffHandGripController } = __actionStudioModule21;
+
+function createStudioStageWeaponOverlays(THREE, context) {
+  const gameMount = createStudioGameMountPreview(THREE, context);
+  const offHandGrip = createStudioOffHandGripController(THREE, context);
+  return {
+    get appliedMount() { return gameMount.applied; },
+    update() {
+      gameMount.update();
+      offHandGrip.update();
+    },
+    // The stage weapon selector builds a new sword: nothing that was on the old one is on this one,
+    // and whether the off hand is free is a property of what is now held.
+    syncToWeapon(weaponId) {
+      gameMount.invalidate();
+      offHandGrip.syncToWeapon(weaponId);
+    },
+    // For anything that reads the blade as geometry rather than as a picture - Bake Pose Keys
+    // solves against its world grip and writes the answer into clip.poses.
+    withBaseMount(run) {
+      return gameMount.withBaseMount(run);
+    },
+  };
+}
+return Object.freeze({ createStudioStageWeaponOverlays });
+})();
+
+// src/character/default-character-mount.js
+const __actionStudioModule24 = (() => {
+const DEFAULT_KAYKIT_SWORD_MOUNT = Object.freeze({
+  position: Object.freeze({ x: 0, y: 0, z: 0 }),
+  rotation: Object.freeze({ x: 0, y: 0, z: Math.PI }),
+  scale: Object.freeze({ x: 1, y: 1, z: 1 }),
+});
+return Object.freeze({ DEFAULT_KAYKIT_SWORD_MOUNT });
+})();
+
+// src/animation/animation-clip.js
+const __actionStudioModule25 = (() => {
+const { normalizePose, evaluateEase, interpolatePose } = __actionStudioModule9;
+
+const SUPPORTED_EASES = Object.freeze(['lin', 'in', 'out', 'in-out']);
+
+function safeKeyName(value, index) {
+  const name = String(value ?? '').trim();
+  return name || `key_${index}`;
+}
+
+function uniqueName(name, used) {
+  if (!used.has(name)) {
+    used.add(name);
+    return name;
+  }
+  let suffix = 2;
+  while (used.has(`${name}_${suffix}`)) suffix += 1;
+  const result = `${name}_${suffix}`;
+  used.add(result);
+  return result;
+}
+
+function inferTag(name, impact) {
+  if (impact) return 'impact';
+  return String(name).toLowerCase();
+}
+
+function normalizeTimeline(input = []) {
+  const source = Array.isArray(input) && input.length ? input : [{ name: 'idle', frame: 0 }];
+  const used = new Set();
+  let accumulatedFrame = 0;
+  const normalized = source.map((raw = {}, index) => {
+    const explicitFrame = Number(raw.frame);
+    const segmentFrames = Math.max(1, Math.round(Number(raw.frames) || (index === 0 ? 1 : 6)));
+    if (index === 0) accumulatedFrame = Number.isFinite(explicitFrame) ? Math.max(0, Math.round(explicitFrame)) : 0;
+    else accumulatedFrame = Number.isFinite(explicitFrame)
+      ? Math.max(0, Math.round(explicitFrame))
+      : accumulatedFrame + segmentFrames;
+    const name = uniqueName(safeKeyName(raw.name, index), used);
+    const impact = Boolean(raw.impact);
+    const ease = SUPPORTED_EASES.includes(raw.ease) ? raw.ease : (index === 0 ? 'lin' : 'out');
+    return {
+      name,
+      frame: accumulatedFrame,
+      frames: segmentFrames,
+      ease,
+      impact,
+      cancel: Boolean(raw.cancel),
+      tag: raw.tag == null || String(raw.tag).trim() === '' ? inferTag(name, impact) : String(raw.tag),
+    };
+  });
+
+  normalized.sort((a, b) => a.frame - b.frame);
+  let previousFrame = normalized[0].frame;
+  normalized[0].frames = 0;
+  for (let index = 1; index < normalized.length; index += 1) {
+    normalized[index].frame = Math.max(previousFrame + 1, normalized[index].frame);
+    normalized[index].frames = normalized[index].frame - previousFrame;
+    previousFrame = normalized[index].frame;
+  }
+  return normalized;
+}
+
+function createAnimationClip(input = {}) {
+  const timeline = normalizeTimeline(input.timeline || input.seq);
+  const sourcePoses = input.poses || input.phases || {};
+  const poses = {};
+  let previousPose = normalizePose();
+  for (const key of timeline) {
+    previousPose = normalizePose(sourcePoses[key.name] || previousPose);
+    poses[key.name] = previousPose;
+  }
+  const fps = Number.isFinite(Number(input.fps)) && Number(input.fps) > 0 ? Number(input.fps) : 60;
+  return {
+    format: 'action-studio-clip',
+    version: 1,
+    id: String(input.id || input.name || 'untitled_action'),
+    name: String(input.name || input.id || 'Untitled Action'),
+    fps,
+    timeline,
+    poses,
+    durationFrames: timeline[timeline.length - 1].frame,
+    metadata: input.metadata && typeof input.metadata === 'object' ? structuredCloneSafe(input.metadata) : {},
+  };
+}
+
+function structuredCloneSafe(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function evaluateClip(clip, frame, options = {}) {
+  if (!clip || !Array.isArray(clip.timeline) || !clip.timeline.length) return null;
+  const timeline = clip.timeline;
+  const currentFrame = Math.max(timeline[0].frame, Math.min(Number(frame) || 0, clip.durationFrames));
+  const first = timeline[0];
+  if (timeline.length === 1 || currentFrame <= first.frame) {
+    return {
+      frame: currentFrame,
+      pose: normalizePose(clip.poses[first.name]),
+      from: first.name,
+      to: first.name,
+      progress: 1,
+      easedProgress: 1,
+      key: first,
+      isImpact: Boolean(first.impact),
+    };
+  }
+
+  for (let index = 1; index < timeline.length; index += 1) {
+    const previous = timeline[index - 1];
+    const next = timeline[index];
+    if (currentFrame <= next.frame) {
+      const progress = (currentFrame - previous.frame) / Math.max(1, next.frame - previous.frame);
+      const easedProgress = evaluateEase(progress, next.ease);
+      const lags = next.impact ? undefined : options.lags;
+      return {
+        frame: currentFrame,
+        pose: interpolatePose(clip.poses[previous.name], clip.poses[next.name], easedProgress, { lags }),
+        from: previous.name,
+        to: next.name,
+        progress,
+        easedProgress,
+        key: next,
+        isImpact: Boolean(next.impact && currentFrame > previous.frame),
+      };
+    }
+  }
+
+  const last = timeline[timeline.length - 1];
+  return {
+    frame: currentFrame,
+    pose: normalizePose(clip.poses[last.name]),
+    from: last.name,
+    to: last.name,
+    progress: 1,
+    easedProgress: 1,
+    key: last,
+    isImpact: Boolean(last.impact),
+  };
+}
+
+function clipMarkerSummary(clip) {
+  return {
+    impacts: clip.timeline.filter((key) => key.impact).map((key) => key.frame),
+    cancels: clip.timeline.filter((key) => key.cancel).map((key) => key.frame),
+  };
+}
+return Object.freeze({ SUPPORTED_EASES, normalizeTimeline, createAnimationClip, evaluateClip, clipMarkerSummary });
+})();
+
+// src/animation/clip-player.js
+const __actionStudioModule27 = (() => {
+const { evaluateClip } = __actionStudioModule25;
+
+class ClipPlayer {
+  constructor(clip = null) {
+    this.clip = clip;
+    this.frame = 0;
+    this.playing = false;
+    this.loop = false;
+    this.speed = 1;
+  }
+
+  setClip(clip, { reset = true } = {}) {
+    this.clip = clip;
+    if (reset) this.seek(0);
+    return this.evaluate();
+  }
+
+  play({ restart = false } = {}) {
+    if (!this.clip) return null;
+    if (restart || this.frame >= this.clip.durationFrames) this.frame = 0;
+    this.playing = true;
+    return this.evaluate();
+  }
+
+  pause() {
+    this.playing = false;
+    return this.evaluate();
+  }
+
+  seek(frame) {
+    const max = this.clip ? this.clip.durationFrames : 0;
+    this.frame = Math.max(0, Math.min(Number(frame) || 0, max));
+    return this.evaluate();
+  }
+
+  update(deltaSeconds) {
+    if (!this.clip || !this.playing) return this.evaluate();
+    this.frame += Math.max(0, Number(deltaSeconds) || 0) * this.clip.fps * this.speed;
+    if (this.frame >= this.clip.durationFrames) {
+      if (this.loop && this.clip.durationFrames > 0) this.frame %= this.clip.durationFrames;
+      else {
+        this.frame = this.clip.durationFrames;
+        this.playing = false;
+      }
+    }
+    return this.evaluate();
+  }
+
+  evaluate(options) {
+    return this.clip ? evaluateClip(this.clip, this.frame, options) : null;
+  }
+}
+return Object.freeze({ ClipPlayer });
+})();
+
+// src/animation/animation-binding.js
+const __actionStudioModule28 = (() => {
+const ACTION_MOTION_SOURCES = Object.freeze(['authored', 'kaykit', 'ual2', 'ual1', 'skyrim']);
+
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function normalizeAnimationBinding(input = {}, fallbackClipId = '') {
+  const requestedSource = String(input.source || 'authored');
+  const source = ACTION_MOTION_SOURCES.includes(requestedSource) ? requestedSource : 'authored';
+  return {
+    source,
+    clipId: String(input.clipId || (source === 'authored' ? fallbackClipId : '')),
+    speed: Math.max(0.001, finiteNumber(input.speed, 1)),
+    startOffsetSeconds: Math.max(0, finiteNumber(input.startOffsetSeconds, 0)),
+    inPlace: input.inPlace !== false,
+    loop: input.loop === true,
+    blendInSeconds: Math.max(0, finiteNumber(input.blendInSeconds, 0.08)),
+    blendOutSeconds: Math.max(0, finiteNumber(input.blendOutSeconds, 0.12)),
+  };
+}
+
+function createFittedAnimationBinding(options = {}) {
+  const fps = Math.max(1, finiteNumber(options.fps, 30));
+  const actionSeconds = Math.max(0, finiteNumber(options.durationFrames, 0)) / fps;
+  const animationSeconds = Math.max(0, finiteNumber(options.animationDurationSeconds, 0));
+  const speed = actionSeconds > 0 && animationSeconds > 0 ? animationSeconds / actionSeconds : 1;
+  const requestedSource = String(options.source || 'kaykit');
+  const source = ACTION_MOTION_SOURCES.includes(requestedSource) && requestedSource !== 'authored'
+    ? requestedSource
+    : 'kaykit';
+  return normalizeAnimationBinding({
+    ...options,
+    source,
+    speed,
+    startOffsetSeconds: 0,
+    loop: false,
+  });
+}
+
+function animationTimeAtFrame(bindingInput, frame, fps, animationDurationSeconds) {
+  const binding = normalizeAnimationBinding(bindingInput);
+  const safeFps = Math.max(1, finiteNumber(fps, 30));
+  const timelineSeconds = Math.max(0, finiteNumber(frame, 0)) / safeFps;
+  const rawTime = binding.startOffsetSeconds + timelineSeconds * binding.speed;
+  const duration = finiteNumber(animationDurationSeconds, Number.POSITIVE_INFINITY);
+  if (!Number.isFinite(duration) || duration <= 0) return rawTime;
+  if (binding.loop) return ((rawTime % duration) + duration) % duration;
+  return Math.min(rawTime, duration);
+}
+return Object.freeze({ ACTION_MOTION_SOURCES, normalizeAnimationBinding, createFittedAnimationBinding, animationTimeAtFrame });
+})();
+
+// src/animation/action-motion-player.js
+const __actionStudioModule26 = (() => {
+const { ClipPlayer } = __actionStudioModule27;
+const { animationTimeAtFrame, normalizeAnimationBinding } = __actionStudioModule28;
+
+class ActionMotionPlayer {
+  constructor(options = {}) {
+    this.posePlayer = options.posePlayer || new ClipPlayer();
+    this.adapter = options.adapter || {};
+    this.action = null;
+    this.appliedSource = null;
+  }
+
+  get clip() { return this.posePlayer.clip; }
+  get frame() { return this.posePlayer.frame; }
+  get playing() { return this.posePlayer.playing; }
+  get loop() { return this.posePlayer.loop; }
+  set loop(value) { this.posePlayer.loop = Boolean(value); }
+  get speed() { return this.posePlayer.speed; }
+  set speed(value) { this.posePlayer.speed = Number(value) || 1; }
+  get binding() {
+    return normalizeAnimationBinding(this.action?.animationBinding, this.clip?.id || '');
+  }
+
+  setProject(clip, action, options = {}) {
+    this.action = action || null;
+    return this.posePlayer.setClip(clip, options);
+  }
+
+  setClip(clip, options = {}) {
+    return this.posePlayer.setClip(clip, options);
+  }
+
+  setAction(action) {
+    this.action = action || null;
+    return this.evaluate();
+  }
+
+  play(options) { return this.decorate(this.posePlayer.play(options)); }
+  pause() { return this.decorate(this.posePlayer.pause()); }
+  seek(frame) { return this.decorate(this.posePlayer.seek(frame)); }
+  update(deltaSeconds) { return this.decorate(this.posePlayer.update(deltaSeconds)); }
+  evaluate(options) { return this.decorate(this.posePlayer.evaluate(options)); }
+
+  decorate(evaluation) {
+    if (!evaluation) return null;
+    const binding = this.binding;
+    const external = binding.source !== 'authored';
+    const hasAnimation = external
+      && binding.clipId
+      && (this.adapter.hasAnimation ? this.adapter.hasAnimation(binding.clipId) : Boolean(this.adapter.sampleAnimation));
+    const animationDurationSeconds = hasAnimation && this.adapter.getAnimationDuration
+      ? this.adapter.getAnimationDuration(binding.clipId)
+      : 0;
+    return {
+      ...evaluation,
+      motion: {
+        source: binding.source,
+        clipId: binding.clipId,
+        binding,
+        available: Boolean(hasAnimation),
+        pending: external && !hasAnimation,
+        timeSeconds: external
+          ? animationTimeAtFrame(binding, evaluation.frame, this.clip?.fps, animationDurationSeconds)
+          : evaluation.frame / Math.max(1, this.clip?.fps || 30),
+      },
+    };
+  }
+
+  apply(evaluation = this.evaluate()) {
+    if (!evaluation) return null;
+    const { motion } = evaluation;
+    if (motion.source !== 'authored' && motion.available && this.adapter.sampleAnimation) {
+      this.adapter.sampleAnimation(motion.clipId, motion.timeSeconds, motion.binding);
+      this.appliedSource = motion.source;
+      return { ...evaluation, motion: { ...motion, appliedSource: motion.source } };
+    }
+    if (this.appliedSource && this.appliedSource !== 'authored') this.adapter.stopAnimation?.();
+    this.adapter.applyPose?.(evaluation.pose);
+    this.appliedSource = 'authored';
+    return { ...evaluation, motion: { ...motion, appliedSource: 'authored' } };
+  }
+}
+return Object.freeze({ ActionMotionPlayer });
+})();
+
+// src/animation/motion-guide-schema.js
+const __actionStudioModule30 = (() => {
+const MOTION_GUIDE_PRESETS = Object.freeze(['advancing_vertical_chop']);
+const MOTION_GUIDE_LEAD_FEET = Object.freeze(['L', 'R']);
+
+const DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE = Object.freeze({
+  format: 'whole-body-motion-guide',
+  version: 3,
+  preset: 'advancing_vertical_chop',
+  leadFoot: 'L',
+  stepDistance: 0.58,
+  crouchDepth: 30,
+  forwardLean: 16,
+  windupHeight: 1.45,
+  windupPullback: 0.2,
+  windupLoad: 0.85,
+  plantFrame: 16,
+  impactFrame: 19,
+  durationFrames: 36,
+  impactHeight: 1.18,
+  cutPlaneOffset: 0,
+  coupling: 0.85,
+  windupTarget: true,
+  footLock: true,
+  twoHandGrip: true,
+  secondaryGripWeight: 1,
+  visible: true,
+});
+
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function normalizeMotionGuide(input = {}) {
+  const preset = MOTION_GUIDE_PRESETS.includes(input.preset)
+    ? input.preset
+    : DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.preset;
+  const durationFrames = Math.round(clamp(finiteNumber(
+    input.durationFrames,
+    DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.durationFrames,
+  ), 24, 72));
+  const impactFrame = Math.round(clamp(finiteNumber(
+    input.impactFrame,
+    DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.impactFrame,
+  ), 10, durationFrames - 7));
+  const plantFrame = Math.round(clamp(finiteNumber(
+    input.plantFrame,
+    DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.plantFrame,
+  ), 8, impactFrame - 1));
+  return {
+    format: 'whole-body-motion-guide',
+    version: 3,
+    preset,
+    leadFoot: MOTION_GUIDE_LEAD_FEET.includes(input.leadFoot) ? input.leadFoot : 'L',
+    stepDistance: clamp(finiteNumber(input.stepDistance, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.stepDistance), 0, 1.2),
+    crouchDepth: clamp(finiteNumber(input.crouchDepth, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.crouchDepth), 0, 60),
+    forwardLean: clamp(finiteNumber(input.forwardLean, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.forwardLean), 0, 40),
+    windupHeight: clamp(finiteNumber(input.windupHeight, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.windupHeight), 0.9, 2),
+    windupPullback: clamp(finiteNumber(input.windupPullback, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.windupPullback), 0, 0.5),
+    windupLoad: clamp(finiteNumber(input.windupLoad, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.windupLoad), 0, 1),
+    plantFrame,
+    impactFrame,
+    durationFrames,
+    impactHeight: clamp(finiteNumber(input.impactHeight, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.impactHeight), 0.5, 2),
+    cutPlaneOffset: clamp(finiteNumber(input.cutPlaneOffset, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.cutPlaneOffset), -35, 35),
+    coupling: clamp(finiteNumber(input.coupling, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.coupling), 0, 1),
+    windupTarget: input.windupTarget !== false,
+    footLock: input.footLock !== false,
+    twoHandGrip: input.twoHandGrip !== false,
+    secondaryGripWeight: clamp(finiteNumber(
+      input.secondaryGripWeight,
+      DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE.secondaryGripWeight,
+    ), 0, 1),
+    visible: input.visible !== false,
+  };
+}
+
+function createAdvancingVerticalChopGuide(overrides = {}) {
+  return normalizeMotionGuide({ ...DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE, ...overrides });
+}
+
+function isWholeBodyMotionGuide(value) {
+  return value?.format === 'whole-body-motion-guide'
+    && value?.preset === 'advancing_vertical_chop';
+}
+return Object.freeze({ MOTION_GUIDE_PRESETS, MOTION_GUIDE_LEAD_FEET, DEFAULT_ADVANCING_VERTICAL_CHOP_GUIDE, normalizeMotionGuide, createAdvancingVerticalChopGuide, isWholeBodyMotionGuide });
+})();
+
+// src/animation/two-hand-grip.js
+const __actionStudioModule32 = (() => {
+// @ts-check
+// The off hand on the hilt, as seven authored arm poses.
+//
+// WHAT THIS IS, because the name does not say it: a two-handed grip in this repository is not a
+// clip and not a constraint. It is seven hand-authored left-arm poses - shoulder, elbow, wrist and
+// a small upper-arm stretch - blended over whatever the right arm is already doing. The numbers
+// live in the pose vocabulary of pose-schema.js, where aL_sx is the left shoulder's X rotation in
+// degrees and aL_ex the elbow's bend, and two adapters turn them into bone rotations:
+// pose-applier.js for the line rig, kaykit-pose-adapter.js for the KayKit one (upperarm.l,
+// lowerarm.l, wrist.l).
+//
+// WHERE IT CAME FROM: whole-body-motion-solver.js, where it was private to one clip baker - the
+// advancing vertical chop that Action Studio's templates use. It is here because the greatsword
+// needs it and a second caller should not have to import a clip baker to get an arm.
+//
+// WHAT IT IS NOT: solved. Nothing in here knows where a hilt is. These angles were tuned by eye
+// against ONE weapon in ONE move until the hand looked like it was holding something, and the
+// aL_stretch of 1.03-1.05 is the tell - the upper arm is lengthened by three to five percent to
+// make the hand reach. An open-loop pose is fine when the target barely moves, and measured, the
+// target barely moves: the longsword's secondary_grip sits at +0.1350 above the mount origin and
+// the greatsword's at +0.0881, 0.047 apart. It is NOT fine as a general answer, which is why
+// two-hand-grip-reach.test.js measures the gap rather than trusting this paragraph.
+
+/**
+ * The authored left arm, one entry per phase of a swing.
+ * @type {Readonly<Record<string, Readonly<Record<string, number>>>>}
+ */
+const TWO_HAND_LEFT_ARM = Object.freeze({
+  ready: Object.freeze({ aL_sx: -84, aL_sy: -2, aL_sz: 16, aL_ex: 86, aL_wx: -6, aL_wy: -18, aL_wz: 4, aL_stretch: 1.03 }),
+  windup: Object.freeze({ aL_sx: -142, aL_sy: 6, aL_sz: 10, aL_ex: 62, aL_wx: -18, aL_wy: -10, aL_wz: 0, aL_stretch: 1.05 }),
+  commit: Object.freeze({ aL_sx: -118, aL_sy: 4, aL_sz: 8, aL_ex: 46, aL_wx: -8, aL_wy: -12, aL_wz: 0, aL_stretch: 1.04 }),
+  plant: Object.freeze({ aL_sx: -94, aL_sy: 3, aL_sz: 6, aL_ex: 33, aL_wx: 0, aL_wy: -10, aL_wz: 0, aL_stretch: 1.03 }),
+  impact: Object.freeze({ aL_sx: -64, aL_sy: 4, aL_sz: 4, aL_ex: 16, aL_wx: 12, aL_wy: -8, aL_wz: 0, aL_stretch: 1.02 }),
+  follow: Object.freeze({ aL_sx: -36, aL_sy: 6, aL_sz: 4, aL_ex: 28, aL_wx: 18, aL_wy: -8, aL_wz: 0, aL_stretch: 1.02 }),
+  recover: Object.freeze({ aL_sx: -84, aL_sy: -2, aL_sz: 16, aL_ex: 86, aL_wx: -6, aL_wy: -18, aL_wz: 4, aL_stretch: 1.03 }),
+});
+
+const TWO_HAND_GRIP_PHASES = Object.freeze(['ready', 'windup', 'commit', 'plant', 'impact', 'follow', 'recover']);
+
+// The frames the clip baker places those seven at, under the default motion guide. Data here rather
+// than a call, because importing the baker to ask would make this module depend on the thing it was
+// taken out of - and two-hand-grip.test.js asserts these against advancingVerticalChopFrames() so
+// the copy cannot drift.
+const AUTHORED_PHASE_FRAMES = Object.freeze({
+  ready: 0, windup: 8, commit: 13, plant: 16, impact: 19, follow: 25, recover: 36,
+});
+
+const LEFT_ARM_KEYS = Object.freeze(Object.keys(TWO_HAND_LEFT_ARM.ready));
+
+function finite(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, finite(value)));
+}
+
+/**
+ * Where the seven phases fall on ONE WEAPON'S measured swing.
+ *
+ * Four of them are anchored to landmarks the timings record already produces, so they are that
+ * weapon's own numbers rather than the chop's: plant is where the blade goes live, impact is the
+ * measured contact, follow is where it stops being live, recover is the end. The two that have no
+ * landmark - windup and commit - keep their authored share of the run-up, 8/16 and 13/16 of the
+ * way from ready to plant, read off AUTHORED_PHASE_FRAMES rather than chosen here.
+ *
+ * A greatsword swinging slower therefore stretches the whole arm motion rather than desynchronising
+ * from its own blade, which is the property that makes this reusable at all.
+ *
+ * @param {{activeStartSeconds?: number, activeEndSeconds?: number, durationSeconds?: number, contactSeconds?: number}} profile
+ */
+function twoHandGripLandmarkSeconds(profile = {}) {
+  const plant = Math.max(0, finite(profile.activeStartSeconds));
+  const runUp = (frame) => plant * (frame / AUTHORED_PHASE_FRAMES.plant);
+  const raw = {
+    ready: 0,
+    windup: runUp(AUTHORED_PHASE_FRAMES.windup),
+    commit: runUp(AUTHORED_PHASE_FRAMES.commit),
+    plant,
+    impact: finite(profile.contactSeconds, plant),
+    follow: finite(profile.activeEndSeconds, plant),
+    recover: finite(profile.durationSeconds, plant),
+  };
+  // Monotonic by construction rather than by assumption. A weapon whose contact was measured
+  // outside its own active window would otherwise run the arm backwards, and silently.
+  let previous = -Infinity;
+  const seconds = {};
+  for (const phase of TWO_HAND_GRIP_PHASES) {
+    previous = Math.max(previous, raw[phase]);
+    seconds[phase] = previous;
+  }
+  return Object.freeze(seconds);
+}
+
+/**
+ * The authored left arm at one moment of a swing, interpolated between the two phases it falls
+ * between. Before ready and after recover it holds the end pose rather than extrapolating.
+ * @param {number} elapsedSeconds
+ * @param {Readonly<Record<string, number>>} landmarks from twoHandGripLandmarkSeconds
+ */
+function twoHandLeftArmAtSeconds(elapsedSeconds, landmarks) {
+  const elapsed = Math.max(0, finite(elapsedSeconds));
+  let lower = TWO_HAND_GRIP_PHASES[0];
+  let upper = TWO_HAND_GRIP_PHASES[0];
+  for (const phase of TWO_HAND_GRIP_PHASES) {
+    if (landmarks[phase] <= elapsed) { lower = phase; upper = phase; } else { upper = phase; break; }
+  }
+  if (lower === upper) return TWO_HAND_LEFT_ARM[lower];
+  const span = landmarks[upper] - landmarks[lower];
+  const alpha = span > 0 ? clamp01((elapsed - landmarks[lower]) / span) : 0;
+  const from = TWO_HAND_LEFT_ARM[lower];
+  const to = TWO_HAND_LEFT_ARM[upper];
+  return Object.freeze(Object.fromEntries(LEFT_ARM_KEYS.map((key) => [key, from[key] + (to[key] - from[key]) * alpha])));
+}
+
+/**
+ * Blend an authored left arm into a pose. Weight 0 leaves the pose one-handed, 1 takes the authored
+ * arm outright, and anything between is a partial commitment to the hilt.
+ * @param {Record<string, number>} pose
+ * @param {Readonly<Record<string, number>>} leftArm
+ * @param {number} weight
+ */
+function applyTwoHandGrip(pose, leftArm, weight = 1) {
+  const blend = clamp01(weight);
+  if (blend === 0 || !leftArm) return pose;
+  return Object.fromEntries(Object.entries(pose).map(([key, value]) => [
+    key,
+    key in leftArm ? value + (leftArm[key] - value) * blend : value,
+  ]));
+}
+
+const DEG_TO_RAD = Math.PI / 180;
+// The left arm's three bones, and the side sign kaykit-pose-adapter.js applies to the Z rotations.
+// Mirrored here rather than shared, because that adapter resets the rig to its rest pose first and
+// this one must not: it composes onto whatever a clip has just written.
+const LEFT_ARM_BONES = Object.freeze({ upper: 'upperarm.l', lower: 'lowerarm.l', wrist: 'wrist.l' });
+const LEFT_SIDE_SIGN = -1;
+
+/**
+ * Write an authored left arm onto a KayKit rig, on top of whatever pose it is already in.
+ *
+ * PRECONDITION, and it is not optional: the rig must have been posed this frame - by a clip sample
+ * or by the pose adapter - because these are RELATIVE rotations. Called twice against the same
+ * sampled frame it applies twice. That is the same contract guard-quaternion-correction.js works
+ * under, and the same reason it exists: an overlay is how this rig adds an arm to a clip that does
+ * not animate one.
+ *
+ * Returns what it actually wrote, so a caller can report it rather than assume it.
+ *
+ * @param {{bones: Record<string, {rotateX: Function, rotateY: Function, rotateZ: Function, scale: {y: number}}>}} rig
+ * @param {Readonly<Record<string, number>>} leftArm
+ * @param {number} weight
+ */
+function applyTwoHandGripToKayKitRig(rig, leftArm, weight = 1) {
+  const blend = clamp01(weight);
+  if (blend === 0 || !leftArm) return Object.freeze({ applied: false, weight: 0, degrees: null });
+  const bones = rig?.bones || {};
+  for (const name of Object.values(LEFT_ARM_BONES)) {
+    if (!bones[name]) throw new Error(`two-hand grip needs ${name}; this rig does not have it`);
+  }
+  const shoulder = {
+    x: finite(leftArm.aL_sx) * blend,
+    y: finite(leftArm.aL_sy) * blend,
+    z: finite(leftArm.aL_sz) * blend * LEFT_SIDE_SIGN,
+  };
+  const elbowX = -finite(leftArm.aL_ex) * blend;
+  const wrist = {
+    x: finite(leftArm.aL_wx) * blend,
+    y: finite(leftArm.aL_wy) * blend,
+    z: finite(leftArm.aL_wz) * blend * LEFT_SIDE_SIGN,
+  };
+  const upper = bones[LEFT_ARM_BONES.upper];
+  upper.rotateX(shoulder.x * DEG_TO_RAD);
+  upper.rotateY(shoulder.y * DEG_TO_RAD);
+  upper.rotateZ(shoulder.z * DEG_TO_RAD);
+  bones[LEFT_ARM_BONES.lower].rotateX(elbowX * DEG_TO_RAD);
+  const wristBone = bones[LEFT_ARM_BONES.wrist];
+  wristBone.rotateX(wrist.x * DEG_TO_RAD);
+  wristBone.rotateY(wrist.y * DEG_TO_RAD);
+  wristBone.rotateZ(wrist.z * DEG_TO_RAD);
+  // The stretch is a scale, so it interpolates from 1 rather than from 0.
+  const stretch = 1 + (finite(leftArm.aL_stretch, 1) - 1) * blend;
+  upper.scale.y *= Math.max(0.2, stretch);
+  return Object.freeze({ applied: true, weight: blend, degrees: Object.freeze({ shoulder, elbowX, wrist, stretch }) });
+}
+return Object.freeze({ TWO_HAND_LEFT_ARM, TWO_HAND_GRIP_PHASES, AUTHORED_PHASE_FRAMES, twoHandGripLandmarkSeconds, twoHandLeftArmAtSeconds, applyTwoHandGrip, applyTwoHandGripToKayKitRig });
+})();
+
+// src/animation/whole-body-motion-solver.js
+const __actionStudioModule31 = (() => {
+const { createAnimationClip } = __actionStudioModule25;
+const { normalizeMotionGuide } = __actionStudioModule30;
+const { normalizePose } = __actionStudioModule9;
+const { TWO_HAND_LEFT_ARM, applyTwoHandGrip } = __actionStudioModule32;
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function withLegs(pose, leadFoot, values) {
+  const lead = leadFoot === 'L' ? 'lL' : 'lR';
+  const rear = leadFoot === 'L' ? 'lR' : 'lL';
+  return {
+    ...pose,
+    [`${lead}_hx`]: values.leadHx,
+    [`${lead}_hz`]: values.leadHz,
+    [`${lead}_kx`]: values.leadKx,
+    [`${lead}_ax`]: values.leadAx || 0,
+    [`${lead}_contact`]: values.leadContact,
+    [`${rear}_hx`]: values.rearHx,
+    [`${rear}_hz`]: values.rearHz,
+    [`${rear}_kx`]: values.rearKx,
+    [`${rear}_ax`]: values.rearAx || 0,
+    [`${rear}_contact`]: values.rearContact,
+  };
+}
+
+// The seven-phase left arm moved to two-hand-grip.js when the greatsword needed it: a second caller
+// should not have to import a clip baker to get an arm. Same numbers, same blend - the baked clip
+// is byte-identical across the move, which is the only thing that makes it a move rather than a
+// change.
+function withTwoHandGrip(pose, guide, phase) {
+  if (!guide.twoHandGrip) return pose;
+  return applyTwoHandGrip(pose, TWO_HAND_LEFT_ARM[phase], guide.secondaryGripWeight);
+}
+
+function withPlantedLeadFoot(plant, pose, guide) {
+  if (!guide.footLock) return pose;
+  const lead = guide.leadFoot === 'L' ? 'lL' : 'lR';
+  const lockedKeys = [
+    'root_pz', 'root_x', 'squat', 'pelvis_y',
+    `${lead}_hx`, `${lead}_hy`, `${lead}_hz`, `${lead}_kx`,
+    `${lead}_ax`, `${lead}_ty`, `${lead}_stretch`, `${lead}_contact`,
+  ];
+  return { ...pose, ...Object.fromEntries(lockedKeys.map((key) => [key, plant[key]])) };
+}
+
+function advancingVerticalChopFrames(guideInput = {}) {
+  const guide = normalizeMotionGuide(guideInput);
+  const windupFrame = Math.max(4, guide.plantFrame - 8);
+  const commitFrame = Math.max(windupFrame + 2, guide.plantFrame - 3);
+  const followFrame = Math.min(guide.durationFrames - 4, guide.impactFrame + 6);
+  return {
+    ready: 0,
+    windup: windupFrame,
+    commit: commitFrame,
+    plant: guide.plantFrame,
+    impact: guide.impactFrame,
+    follow: followFrame,
+    recover: guide.durationFrames,
+  };
+}
+
+function bakeAdvancingVerticalChopClip(guideInput = {}) {
+  const guide = normalizeMotionGuide(guideInput);
+  const frame = advancingVerticalChopFrames(guide);
+  const c = guide.coupling;
+  const plane = guide.cutPlaneOffset;
+  const step = guide.stepDistance;
+  const lean = guide.forwardLean;
+  const crouch = guide.crouchDepth;
+  const windupHeight = clamp01((guide.windupHeight - 0.95) / 1.2);
+  const windupPullback = clamp01(guide.windupPullback / 0.65);
+  const windupCoupling = c * guide.windupLoad;
+  const ready = normalizePose({
+    squat: 18,
+    spine_x: 4,
+    head_x: 2,
+    aL_sx: -24,
+    aL_sy: -8,
+    aL_sz: 12,
+    aL_ex: 54,
+    aR_sx: -72,
+    aR_sy: -10,
+    aR_sz: 12,
+    aR_ex: 72,
+    aR_wy: 18,
+    lL_hx: -12,
+    lL_hz: 8,
+    lL_kx: 20,
+    lR_hx: -12,
+    lR_hz: 8,
+    lR_kx: 20,
+    lL_contact: 1,
+    lR_contact: 1,
+  });
+  const windup = normalizePose(withLegs({
+    ...ready,
+    root_pz: -(step * 0.03 * windupCoupling + guide.windupPullback * 0.16 * windupCoupling),
+    root_x: -lean * (0.18 + windupPullback * 0.24) * windupCoupling,
+    squat: 18 + crouch * (0.58 + windupPullback * 0.34) * windupCoupling,
+    spine_x: 4 - lean * (0.42 + windupPullback * 0.42) * windupCoupling,
+    pelvis_y: -plane * 0.12 * c,
+    head_x: 2 + lean * 0.3 * windupCoupling,
+    head_y: plane * 0.12 * c,
+    aR_sx: -118 - 48 * windupHeight - 16 * windupPullback,
+    aR_sy: -8 + plane * 0.35 - windupPullback * 4,
+    aR_sz: 6 + windupPullback * 6,
+    aR_ex: 82 - windupHeight * 15 - windupPullback * 10,
+    aR_wx: -16 - windupHeight * 16 - windupPullback * 8,
+    aR_wy: 8,
+    aL_sx: -50 - 18 * c,
+    aL_sy: 16 - plane * 0.2,
+    aL_sz: 22,
+    aL_ex: 78,
+  }, guide.leadFoot, {
+    leadHx: 12 + 12 * c,
+    leadHz: 10,
+    leadKx: 38 + 18 * c,
+    leadContact: 0,
+    rearHx: -24,
+    rearHz: 10,
+    rearKx: 36 + crouch * 0.45,
+    rearContact: 1,
+  }));
+  const commit = normalizePose(withLegs({
+    ...windup,
+    root_pz: step * 0.42,
+    root_x: lean * 0.55 * c,
+    squat: 14 + crouch * 0.72 * c,
+    spine_x: 4 + lean * 0.45 * c,
+    pelvis_y: plane * 0.16 * c,
+    head_x: 2 - lean * 0.22 * c,
+    head_y: -plane * 0.1 * c,
+    aR_sx: -126,
+    aR_sy: -5 + plane * 0.42,
+    aR_sz: 5,
+    aR_ex: 48,
+    aR_wx: -10,
+    aL_sx: 10 + 28 * c,
+    aL_sy: -16 - plane * 0.2,
+    aL_sz: 18,
+    aL_ex: 42,
+  }, guide.leadFoot, {
+    leadHx: 26,
+    leadHz: 12,
+    leadKx: 44,
+    leadContact: 0,
+    rearHx: -8,
+    rearHz: 8,
+    rearKx: 22,
+    rearContact: 1,
+  }));
+  const plant = normalizePose(withLegs({
+    ...commit,
+    root_pz: guide.footLock ? step : step * 0.76,
+    root_x: lean * 0.78 * c,
+    squat: 12 + crouch * 0.52 * c,
+    spine_x: 5 + lean * 0.68 * c,
+    aR_sx: -98,
+    aR_sy: plane * 0.48,
+    aR_ex: 31,
+    aR_wx: 0,
+  }, guide.leadFoot, {
+    leadHx: -18,
+    leadHz: 12,
+    leadKx: 24,
+    leadAx: 5,
+    leadContact: 1,
+    rearHx: 16,
+    rearHz: 8,
+    rearKx: 18,
+    rearContact: 1,
+  }));
+  const impact = normalizePose(withLegs({
+    ...plant,
+    root_pz: step,
+    root_x: lean * c,
+    squat: 10 + crouch * 0.42 * c,
+    spine_x: 6 + lean * 0.82 * c,
+    pelvis_y: plane * 0.2 * c,
+    head_x: 2 - lean * 0.4 * c,
+    head_y: -plane * 0.14 * c,
+    aR_sx: -66,
+    aR_sy: 4 + plane * 0.55,
+    aR_sz: 2,
+    aR_ex: 12,
+    aR_wx: 14,
+    aR_wy: -8,
+    aL_sx: 34 + 24 * c,
+    aL_sy: -24 - plane * 0.18,
+    aL_ex: 30,
+  }, guide.leadFoot, {
+    leadHx: -13,
+    leadHz: 12,
+    leadKx: 16,
+    leadAx: 4,
+    leadContact: 1,
+    rearHx: 24,
+    rearHz: 8,
+    rearKx: 12,
+    rearContact: 1,
+  }));
+  const follow = normalizePose(withLegs({
+    ...impact,
+    root_pz: step * 1.06,
+    root_x: lean * 0.72 * c,
+    squat: 14 + crouch * 0.3 * c,
+    spine_x: 6 + lean * 0.5 * c,
+    head_x: 2 - lean * 0.25 * c,
+    aR_sx: -35,
+    aR_sy: 6 + plane * 0.5,
+    aR_ex: 24,
+    aR_wx: 20,
+    aL_sx: 22 + 16 * c,
+    aL_ex: 42,
+  }, guide.leadFoot, {
+    leadHx: -10,
+    leadHz: 10,
+    leadKx: 15,
+    leadContact: 1,
+    rearHx: 17,
+    rearHz: 8,
+    rearKx: 18,
+    rearContact: 1,
+  }));
+  const recover = normalizePose({ ...ready, root_pz: step * 0.7 });
+  const plantedImpact = normalizePose(withPlantedLeadFoot(plant, impact, guide));
+  const plantedFollow = normalizePose(withPlantedLeadFoot(plant, follow, guide));
+  const poses = {
+    ready: normalizePose(withTwoHandGrip(ready, guide, 'ready')),
+    windup: normalizePose(withTwoHandGrip(windup, guide, 'windup')),
+    commit: normalizePose(withTwoHandGrip(commit, guide, 'commit')),
+    plant: normalizePose(withTwoHandGrip(plant, guide, 'plant')),
+    impact: normalizePose(withTwoHandGrip(plantedImpact, guide, 'impact')),
+    follow_through: normalizePose(withTwoHandGrip(plantedFollow, guide, 'follow')),
+    recover: normalizePose(withTwoHandGrip(recover, guide, 'recover')),
+  };
+
+  return createAnimationClip({
+    id: 'advancing_vertical_chop',
+    name: 'Advancing Vertical Chop',
+    fps: 60,
+    timeline: [
+      { name: 'ready', frame: frame.ready, ease: 'lin', tag: 'ready' },
+      { name: 'windup', frame: frame.windup, ease: 'out', tag: 'windup' },
+      { name: 'commit', frame: frame.commit, ease: 'in', tag: 'commit' },
+      { name: 'plant', frame: frame.plant, ease: 'out', tag: 'lead-foot-plant' },
+      { name: 'impact', frame: frame.impact, ease: 'in', tag: 'vertical-impact', impact: true },
+      { name: 'follow_through', frame: frame.follow, ease: 'out', tag: 'follow-through' },
+      { name: 'recover', frame: frame.recover, ease: 'out', tag: 'recover', cancel: true },
+    ],
+    poses,
+    metadata: { motionGuide: guide },
+  });
+}
+return Object.freeze({ advancingVerticalChopFrames, bakeAdvancingVerticalChopClip });
+})();
+
+// src/combat/action-definition.js
+const __actionStudioModule33 = (() => {
+const { normalizeAnimationBinding } = __actionStudioModule28;
+
+const ACTION_WINDOW_TYPES = Object.freeze([
+  'active',
+  'cancel',
+  'movement',
+  'weaponTrail',
+  'parry',
+]);
+
+const ACTION_AUTHORITY_NOTE =
+  'Authoring hints only. Authoritative combat simulation resolves hit, block, parry and counter outcomes.';
+
+function normalizeFrameWindow(input = {}, maxFrame = Number.POSITIVE_INFINITY) {
+  const rawStart = Number(input.startFrame ?? input.start ?? 0);
+  const rawEnd = Number(input.endFrame ?? input.end ?? rawStart);
+  const startFrame = Math.max(0, Math.min(Number.isFinite(rawStart) ? rawStart : 0, maxFrame));
+  const endFrame = Math.max(startFrame, Math.min(Number.isFinite(rawEnd) ? rawEnd : startFrame, maxFrame));
+  return {
+    startFrame,
+    endFrame,
+    label: input.label == null ? '' : String(input.label),
+  };
+}
+
+function createActionDefinition(input = {}, maxFrame = Number.POSITIVE_INFINITY) {
+  const sourceWindows = input.windows && typeof input.windows === 'object' ? input.windows : {};
+  const windows = {};
+  for (const type of ACTION_WINDOW_TYPES) {
+    const list = Array.isArray(sourceWindows[type]) ? sourceWindows[type] : [];
+    windows[type] = list.map((window) => normalizeFrameWindow(window, maxFrame));
+  }
+  const clipId = String(input.clipId || input.id || 'untitled_action');
+  return {
+    format: 'action-definition',
+    version: 2,
+    id: String(input.id || 'untitled_action'),
+    clipId,
+    category: String(input.category || 'attack'),
+    animationBinding: normalizeAnimationBinding(input.animationBinding, clipId),
+    windows,
+    authority: ACTION_AUTHORITY_NOTE,
+  };
+}
+
+function isFrameInWindow(action, type, frame) {
+  if (!ACTION_WINDOW_TYPES.includes(type)) return false;
+  const value = Number(frame) || 0;
+  return action.windows[type].some((window) => value >= window.startFrame && value <= window.endFrame);
+}
+return Object.freeze({ ACTION_WINDOW_TYPES, ACTION_AUTHORITY_NOTE, normalizeFrameWindow, createActionDefinition, isFrameInWindow });
+})();
+
+// src/animation/action-templates.js
+const __actionStudioModule29 = (() => {
+const { createAnimationClip } = __actionStudioModule25;
+const { createAdvancingVerticalChopGuide } = __actionStudioModule30;
+const { normalizePose } = __actionStudioModule9;
+const { advancingVerticalChopFrames, bakeAdvancingVerticalChopClip } = __actionStudioModule31;
+const { createActionDefinition } = __actionStudioModule33;
+
+const T_POSE = Object.freeze(normalizePose({ aL_sz: 90, aR_sz: 90 }));
+
+const IDLE_POSE = Object.freeze(normalizePose({
+  squat: 18,
+  spine_x: 4,
+  head_y: 7,
+  head_x: 2,
+  aL_sx: -18,
+  aL_sy: -8,
+  aL_sz: 14,
+  aL_ex: 54,
+  aR_sx: -28,
+  aR_sy: 18,
+  aR_sz: 10,
+  aR_ex: 62,
+  aR_wy: 12,
+  lL_hx: -10,
+  lL_hz: 8,
+  lL_kx: 15,
+  lR_hx: -10,
+  lR_hz: 8,
+  lR_kx: 15,
+}));
+
+function makeTemplate(input, actionInput) {
+  const clip = createAnimationClip(input);
+  const action = createActionDefinition({ ...actionInput, id: clip.id, clipId: clip.id }, clip.durationFrames);
+  return { clip, action };
+}
+
+function createTPoseTemplate() {
+  return makeTemplate({
+    id: 't_pose',
+    name: 'T-Pose',
+    timeline: [{ name: 't_pose', frame: 0, tag: 'reference' }],
+    poses: { t_pose: T_POSE },
+  }, { category: 'reference' });
+}
+
+function createIdleTemplate() {
+  return makeTemplate({
+    id: 'idle',
+    name: 'Idle',
+    timeline: [{ name: 'idle', frame: 0, tag: 'idle' }],
+    poses: { idle: IDLE_POSE },
+  }, { category: 'idle' });
+}
+
+function createSlashTestTemplate() {
+  const ready = normalizePose({ ...IDLE_POSE, aR_sx: -72, aR_sy: -18, aR_sz: 18, aR_ex: 72, aR_wy: 24 });
+  return makeTemplate({
+    id: 'slash_test',
+    name: 'Slash Test',
+    timeline: [
+      { name: 'ready', frame: 0, ease: 'lin', tag: 'idle' },
+      { name: 'windup', frame: 6, ease: 'out', tag: 'windup' },
+      { name: 'slash_start', frame: 10, ease: 'in', tag: 'slash_start' },
+      { name: 'slash_active', frame: 14, ease: 'in', tag: 'slash_active', impact: true },
+      { name: 'follow_through', frame: 19, ease: 'out', tag: 'follow_through' },
+      { name: 'recover', frame: 26, ease: 'out', tag: 'recover', cancel: true },
+    ],
+    poses: {
+      ready,
+      windup: { ...ready, root_y: -30, root_x: -4, spine_y: -18, aR_sx: -58, aR_sy: -82, aR_ex: 96, aR_wx: -22, aL_ex: 78 },
+      slash_start: { ...ready, root_y: -12, root_x: 3, root_pz: 0.08, spine_y: -8, aR_sx: -90, aR_sy: -52, aR_ex: 42, aR_wy: 34 },
+      slash_active: { ...ready, root_y: 26, root_x: 6, root_pz: 0.22, spine_y: 22, aR_sx: -102, aR_sy: 38, aR_ex: 7, aR_wy: -18, aR_wz: 12, lR_hx: 8, lR_kx: 5 },
+      follow_through: { ...ready, root_y: 42, root_x: 3, root_pz: 0.18, spine_y: 30, aR_sx: -86, aR_sy: 104, aR_ex: 24, aR_wy: -38 },
+      recover: ready,
+    },
+  }, {
+    category: 'attack',
+    windows: {
+      active: [{ startFrame: 12, endFrame: 15, label: 'suggested hit window' }],
+      cancel: [{ startFrame: 22, endFrame: 26, label: 'combo cancel' }],
+      movement: [{ startFrame: 8, endFrame: 17, label: 'forward lunge' }],
+      weaponTrail: [{ startFrame: 9, endFrame: 19, label: 'sword trail' }],
+    },
+  });
+}
+
+function createGuardTemplate() {
+  const hold = normalizePose({ ...IDLE_POSE, root_y: -5, aR_sx: -104, aR_sy: -12, aR_ex: 92, aR_wx: -25, aL_sx: -88, aL_ex: 96 });
+  return makeTemplate({
+    id: 'guard',
+    name: 'Guard',
+    timeline: [
+      { name: 'guard_enter', frame: 0, tag: 'guard_enter' },
+      { name: 'guard_hold', frame: 7, tag: 'guard_hold' },
+      { name: 'guard_exit', frame: 18, tag: 'guard_exit', cancel: true },
+    ],
+    poses: { guard_enter: IDLE_POSE, guard_hold: hold, guard_exit: IDLE_POSE },
+  }, { category: 'guard', windows: { cancel: [{ startFrame: 15, endFrame: 18 }] } });
+}
+
+function createParryTemplate() {
+  const contact = normalizePose({ ...IDLE_POSE, root_y: -12, aR_sx: -112, aR_sy: -38, aR_ex: 58, aR_wx: 20, aL_sx: -82, aL_ex: 86 });
+  return makeTemplate({
+    id: 'parry',
+    name: 'Parry',
+    timeline: [
+      { name: 'parry_start', frame: 0, tag: 'parry_start' },
+      { name: 'parry_contact', frame: 5, tag: 'parry_contact', impact: true },
+      { name: 'parry_recover', frame: 13, tag: 'parry_recover', cancel: true },
+    ],
+    poses: { parry_start: IDLE_POSE, parry_contact: contact, parry_recover: IDLE_POSE },
+  }, {
+    category: 'parry',
+    windows: {
+      parry: [{ startFrame: 3, endFrame: 6, label: 'suggested perfect-parry window' }],
+      cancel: [{ startFrame: 10, endFrame: 13, label: 'counter transition' }],
+      weaponTrail: [{ startFrame: 2, endFrame: 7 }],
+    },
+  });
+}
+
+function createCounterTemplate() {
+  const strike = normalizePose({ ...IDLE_POSE, root_y: 22, root_pz: 0.24, aR_sx: -106, aR_sy: 32, aR_ex: 4, aR_wy: -20 });
+  return makeTemplate({
+    id: 'counter',
+    name: 'Counter',
+    timeline: [
+      { name: 'counter_start', frame: 0, tag: 'counter_start' },
+      { name: 'counter_strike', frame: 6, tag: 'counter_strike' },
+      { name: 'counter_impact', frame: 10, tag: 'counter_impact', impact: true },
+      { name: 'counter_recover', frame: 18, tag: 'counter_recover', cancel: true },
+    ],
+    poses: { counter_start: IDLE_POSE, counter_strike: { ...strike, root_y: -8, aR_sy: -42 }, counter_impact: strike, counter_recover: IDLE_POSE },
+  }, {
+    category: 'counter',
+    windows: {
+      active: [{ startFrame: 8, endFrame: 11 }],
+      cancel: [{ startFrame: 15, endFrame: 18 }],
+      weaponTrail: [{ startFrame: 5, endFrame: 12 }],
+    },
+  });
+}
+
+function createAdvancingVerticalChopTemplate(guideInput = {}) {
+  const guide = createAdvancingVerticalChopGuide(guideInput);
+  const clip = bakeAdvancingVerticalChopClip(guide);
+  const frame = advancingVerticalChopFrames(guide);
+  const action = createActionDefinition({
+    id: clip.id,
+    clipId: clip.id,
+    category: 'heavy-attack',
+    windows: {
+      active: [{ startFrame: frame.impact - 1, endFrame: frame.impact + 2, label: 'vertical chop impact' }],
+      cancel: [{ startFrame: frame.follow + 3, endFrame: frame.recover, label: 'recover cancel' }],
+      movement: [{ startFrame: frame.commit, endFrame: frame.impact + 1, label: 'advancing step' }],
+      weaponTrail: [{ startFrame: frame.commit, endFrame: frame.follow, label: 'vertical sword trail' }],
+    },
+  }, clip.durationFrames);
+  return { clip, action };
+}
+
+const ACTION_TEMPLATE_FACTORIES = Object.freeze({
+  t_pose: createTPoseTemplate,
+  idle: createIdleTemplate,
+  slash_test: createSlashTestTemplate,
+  guard: createGuardTemplate,
+  parry: createParryTemplate,
+  counter: createCounterTemplate,
+  advancing_vertical_chop: createAdvancingVerticalChopTemplate,
+});
+return Object.freeze({ T_POSE, IDLE_POSE, createTPoseTemplate, createIdleTemplate, createSlashTestTemplate, createGuardTemplate, createParryTemplate, createCounterTemplate, createAdvancingVerticalChopTemplate, ACTION_TEMPLATE_FACTORIES });
+})();
+
+// tools/action-studio/studio-preview-runtime.js
+const __actionStudioModule34 = (() => {
+function createPreviewDummy(THREE) {
+  const group = new THREE.Group();
+  group.name = 'PREVIEW_DUMMY';
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(0.62, 1.32, 0.46),
+    new THREE.MeshStandardMaterial({ color: 0x7b314d, roughness: 0.82, metalness: 0 }),
+  );
+  body.position.y = 0.82;
+  group.add(body);
+  const head = new THREE.Mesh(
+    new THREE.BoxGeometry(0.52, 0.52, 0.52),
+    new THREE.MeshStandardMaterial({ color: 0xb74a68, roughness: 0.7 }),
+  );
+  head.position.y = 1.72;
+  group.add(head);
+  group.position.z = 2.15;
+  return group;
+}
+
+const COMBAT_FEEL_PROFILES = Object.freeze({
+  light: Object.freeze({
+    label: 'Light Slash',
+    hitstop: 0.03,
+    shake: 0.18,
+    knockback: 0.22,
+    attackerRecoil: 0.035,
+    cameraKick: 0.045,
+    cameraSide: 0.25,
+    cameraDown: 0.12,
+    flash: 0.22,
+    sparkScale: 0.42,
+    reactionDuration: 0.22,
+  }),
+  heavy: Object.freeze({
+    label: 'Heavy Slash',
+    hitstop: 0.065,
+    shake: 0.38,
+    knockback: 0.68,
+    attackerRecoil: 0.075,
+    cameraKick: 0.105,
+    cameraSide: 0.18,
+    cameraDown: 0.42,
+    flash: 0.44,
+    sparkScale: 0.85,
+    reactionDuration: 0.38,
+  }),
+  block: Object.freeze({
+    label: 'Block',
+    hitstop: 0.04,
+    shake: 0.24,
+    knockback: 0.08,
+    attackerRecoil: 0.11,
+    cameraKick: 0.075,
+    cameraSide: 0.72,
+    cameraDown: 0.08,
+    flash: 0.34,
+    sparkScale: 0.62,
+    reactionDuration: 0.2,
+  }),
+  parry: Object.freeze({
+    label: 'Perfect Parry',
+    hitstop: 0.085,
+    shake: 0.46,
+    knockback: 0.14,
+    attackerRecoil: 0.19,
+    cameraKick: 0.13,
+    cameraSide: 0.9,
+    cameraDown: 0.12,
+    flash: 0.62,
+    sparkScale: 1.15,
+    reactionDuration: 0.3,
+  }),
+});
+
+function createSparkBurst(THREE) {
+  const positions = [];
+  const rayCount = 18;
+  for (let index = 0; index < rayCount; index += 1) {
+    const angle = (index / rayCount) * Math.PI * 2;
+    const tilt = ((index % 5) - 2) * 0.12;
+    const length = 0.12 + (index % 4) * 0.035;
+    positions.push(0, 0, 0);
+    positions.push(
+      Math.cos(angle) * length,
+      Math.sin(angle) * length * 0.72 + tilt,
+      Math.sin(angle * 1.7) * length * 0.45,
+    );
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const material = new THREE.LineBasicMaterial({
+    color: 0xffd36b,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  const burst = new THREE.LineSegments(geometry, material);
+  burst.visible = false;
+  burst.frustumCulled = false;
+  return burst;
+}
+
+function createStudioPreviewRuntime(THREE, options) {
+  const {
+    canvas,
+    character,
+    impactFlash,
+    isDummyEnabled,
+  } = options;
+  // The weapon can be swapped while the studio is running (the stage weapon selector), so this is
+  // held rather than destructured: a captured reference would keep drawing the trail of a sword
+  // that is no longer in the hand.
+  let sword = options.sword;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.shadowMap.enabled = true;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0f19);
+  scene.fog = new THREE.Fog(0x0a0f19, 7, 16);
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 60);
+  const cameraTarget = new THREE.Vector3(0, 1.05, 0);
+  let cameraTheta = 0.45;
+  let cameraPhi = 1.12;
+  let cameraRadius = 5.1;
+  let gameCameraOn = false;
+  let savedCamera = null;
+
+  scene.add(new THREE.HemisphereLight(0xb9d2ff, 0x11131d, 1.15));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
+  keyLight.position.set(4, 7, 5);
+  keyLight.castShadow = true;
+  scene.add(keyLight);
+  const rimLight = new THREE.DirectionalLight(0x55e6c1, 0.7);
+  rimLight.position.set(-4, 3, -4);
+  scene.add(rimLight);
+  scene.add(new THREE.GridHelper(18, 18, 0x33425f, 0x1b263a));
+  scene.add(character.object3d);
+
+  const dummy = createPreviewDummy(THREE);
+  scene.add(dummy);
+  const sparkBurst = createSparkBurst(THREE);
+  scene.add(sparkBurst);
+  const weaponTrail = new THREE.Line(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0x55e6c1, transparent: true, opacity: 0.92 }),
+  );
+  weaponTrail.frustumCulled = false;
+  scene.add(weaponTrail);
+  const trailPoint = new THREE.Vector3();
+  let trailPoints = [];
+
+  const feel = { ...COMBAT_FEEL_PROFILES.light };
+  let activeFeelProfile = 'light';
+  let impactFeel = { ...feel };
+  let hitstopRemaining = 0;
+  let releasePending = false;
+  let shakeRemaining = 0;
+  let cameraImpulseRemaining = 0;
+  let reactionElapsed = 0;
+  let attackerReactionElapsed = 0;
+  let sparkRemaining = 0;
+  const cameraImpulseDuration = 0.18;
+  const sparkDuration = 0.16;
+  const dummyBaseZ = 2.15;
+  const attackerBasePosition = character.object3d.position.clone();
+  const cameraRight = new THREE.Vector3();
+  const cameraUp = new THREE.Vector3();
+  const cameraForward = new THREE.Vector3();
+  const cameraOffset = new THREE.Vector3();
+
+  function placeCamera() {
+    camera.position.set(
+      cameraTarget.x + cameraRadius * Math.sin(cameraPhi) * Math.sin(cameraTheta),
+      cameraTarget.y + cameraRadius * Math.cos(cameraPhi),
+      cameraTarget.z + cameraRadius * Math.sin(cameraPhi) * Math.cos(cameraTheta),
+    );
+    camera.lookAt(cameraTarget);
+  }
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    renderer.setSize(rect.width, rect.height, false);
+    camera.aspect = rect.width / Math.max(1, rect.height);
+    camera.updateProjectionMatrix();
+  }
+
+  function clearWeaponTrail() {
+    trailPoints = [];
+    weaponTrail.geometry.dispose();
+    weaponTrail.geometry = new THREE.BufferGeometry();
+  }
+
+  function recordWeaponTrail(enabled) {
+    if (!enabled) return;
+    sword.trailTip.getWorldPosition(trailPoint);
+    if (!trailPoints.length || trailPoints[trailPoints.length - 1].distanceToSquared(trailPoint) > 0.0002) {
+      trailPoints.push(trailPoint.clone());
+      if (trailPoints.length > 70) trailPoints.shift();
+      weaponTrail.geometry.dispose();
+      weaponTrail.geometry = new THREE.BufferGeometry().setFromPoints(trailPoints);
+    }
+  }
+
+  function applyFeelProfile(profileName) {
+    const key = String(profileName || '').toLowerCase();
+    const profile = COMBAT_FEEL_PROFILES[key];
+    if (!profile) throw new Error(`Unknown combat feel profile: ${profileName}`);
+    activeFeelProfile = key;
+    Object.assign(feel, profile);
+    return { name: key, ...feel };
+  }
+
+  function releaseImpact() {
+    releasePending = false;
+    shakeRemaining = cameraImpulseDuration;
+    cameraImpulseRemaining = cameraImpulseDuration;
+    reactionElapsed = 0.000001;
+    attackerReactionElapsed = 0.000001;
+    sparkRemaining = sparkDuration;
+    sparkBurst.visible = isDummyEnabled();
+    sparkBurst.position.set(0, 1.13, dummyBaseZ - 0.18);
+    sparkBurst.scale.setScalar(0.15);
+    sparkBurst.material.opacity = 1;
+    if (isDummyEnabled()) {
+      impactFlash.style.transition = 'none';
+      impactFlash.style.opacity = String(impactFeel.flash);
+      requestAnimationFrame(() => {
+        impactFlash.style.transition = 'opacity .14s ease-out';
+        impactFlash.style.opacity = '0';
+      });
+    }
+  }
+
+  function triggerImpact() {
+    impactFeel = { ...feel };
+    hitstopRemaining = Math.max(0, impactFeel.hitstop);
+    releasePending = true;
+    reactionElapsed = 0;
+    attackerReactionElapsed = 0;
+    shakeRemaining = 0;
+    cameraImpulseRemaining = 0;
+    sparkRemaining = 0;
+    sparkBurst.visible = false;
+    dummy.position.z = dummyBaseZ;
+    dummy.rotation.x = 0;
+    character.object3d.position.copy(attackerBasePosition);
+    if (hitstopRemaining <= 0) releaseImpact();
+  }
+
+  function consumeHitstop(deltaSeconds) {
+    if (hitstopRemaining > 0) {
+      hitstopRemaining = Math.max(0, hitstopRemaining - deltaSeconds);
+      return true;
+    }
+    if (releasePending) releaseImpact();
+    return false;
+  }
+
+  function reactionCurve(elapsed, duration) {
+    if (elapsed <= 0 || duration <= 0) return 0;
+    const t = Math.min(1, elapsed / duration);
+    return Math.pow(Math.sin(Math.PI * t), 0.72);
+  }
+
+  function update(deltaSeconds) {
+    dummy.visible = isDummyEnabled();
+    if (reactionElapsed > 0) {
+      reactionElapsed += deltaSeconds;
+      const amount = reactionCurve(reactionElapsed, impactFeel.reactionDuration);
+      dummy.position.z = dummyBaseZ + impactFeel.knockback * 0.72 * amount;
+      dummy.rotation.x = -impactFeel.knockback * 0.18 * amount;
+      if (reactionElapsed >= impactFeel.reactionDuration) {
+        reactionElapsed = 0;
+        dummy.position.z = dummyBaseZ;
+        dummy.rotation.x = 0;
+      }
+    } else {
+      dummy.position.z = dummyBaseZ;
+      dummy.rotation.x = 0;
+    }
+
+    if (attackerReactionElapsed > 0) {
+      attackerReactionElapsed += deltaSeconds;
+      const duration = Math.max(0.16, impactFeel.reactionDuration * 0.72);
+      const amount = reactionCurve(attackerReactionElapsed, duration);
+      character.object3d.position.copy(attackerBasePosition);
+      character.object3d.position.z -= impactFeel.attackerRecoil * amount;
+      if (attackerReactionElapsed >= duration) {
+        attackerReactionElapsed = 0;
+        character.object3d.position.copy(attackerBasePosition);
+      }
+    } else {
+      character.object3d.position.copy(attackerBasePosition);
+    }
+
+    if (sparkRemaining > 0) {
+      sparkRemaining = Math.max(0, sparkRemaining - deltaSeconds);
+      const t = 1 - sparkRemaining / sparkDuration;
+      const scale = impactFeel.sparkScale * (0.2 + t * 1.1);
+      sparkBurst.scale.setScalar(scale);
+      sparkBurst.material.opacity = Math.pow(1 - t, 1.8);
+      if (sparkRemaining <= 0) sparkBurst.visible = false;
+    }
+  }
+
+  function render() {
+    cameraOffset.set(0, 0, 0);
+    if (cameraImpulseRemaining > 0) {
+      const t = cameraImpulseRemaining / cameraImpulseDuration;
+      const kick = impactFeel.cameraKick * t * t;
+      cameraRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+      cameraUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+      cameraForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+      cameraOffset
+        .addScaledVector(cameraRight, kick * impactFeel.cameraSide)
+        .addScaledVector(cameraUp, -kick * impactFeel.cameraDown)
+        .addScaledVector(cameraForward, -kick * 0.55);
+    }
+    if (shakeRemaining > 0) {
+      const amount = impactFeel.shake * 0.022 * (shakeRemaining / cameraImpulseDuration);
+      cameraRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+      cameraUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+      cameraOffset
+        .addScaledVector(cameraRight, (Math.random() * 2 - 1) * amount)
+        .addScaledVector(cameraUp, (Math.random() * 2 - 1) * amount);
+    }
+    camera.position.add(cameraOffset);
+    renderer.render(scene, camera);
+    camera.position.sub(cameraOffset);
+  }
+
+  function advanceShake(deltaSeconds) {
+    shakeRemaining = Math.max(0, shakeRemaining - deltaSeconds);
+    cameraImpulseRemaining = Math.max(0, cameraImpulseRemaining - deltaSeconds);
+  }
+
+  function toggleGameCamera() {
+    gameCameraOn = !gameCameraOn;
+    if (gameCameraOn) {
+      savedCamera = { cameraTheta, cameraPhi, cameraRadius, fov: camera.fov };
+      cameraTheta = Math.PI;
+      cameraPhi = 0.82;
+      cameraRadius = 5.35;
+      camera.fov = 34;
+    } else if (savedCamera) {
+      ({ cameraTheta, cameraPhi, cameraRadius } = savedCamera);
+      camera.fov = savedCamera.fov;
+    }
+    camera.updateProjectionMatrix();
+    placeCamera();
+    return gameCameraOn;
+  }
+
+  function setFeel(key, value) {
+    if (!(key in feel)) throw new Error(`Unknown preview feel control: ${key}`);
+    feel[key] = Number(value);
+    return feel[key];
+  }
+
+  function handleFeelProfileEvent(event) {
+    const profileName = event?.detail?.profile;
+    if (!profileName) return;
+    try {
+      const applied = applyFeelProfile(profileName);
+      window.dispatchEvent(new CustomEvent('action-studio-feel-profile-applied', {
+        detail: applied,
+      }));
+    } catch (_error) {
+      // UI validation owns invalid profile names; ignore unrelated custom events.
+    }
+  }
+  window.addEventListener('action-studio-feel-profile', handleFeelProfileEvent);
+
+  let orbiting = false;
+  let pointerX = 0;
+  let pointerY = 0;
+  canvas.addEventListener('pointerdown', (event) => {
+    orbiting = true;
+    pointerX = event.clientX;
+    pointerY = event.clientY;
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener('pointerup', () => { orbiting = false; });
+  canvas.addEventListener('pointercancel', () => { orbiting = false; });
+  canvas.addEventListener('pointermove', (event) => {
+    if (!orbiting || gameCameraOn) return;
+    cameraTheta -= (event.clientX - pointerX) * 0.008;
+    cameraPhi = Math.max(0.3, Math.min(1.48, cameraPhi - (event.clientY - pointerY) * 0.008));
+    pointerX = event.clientX;
+    pointerY = event.clientY;
+    placeCamera();
+  });
+  canvas.addEventListener('wheel', (event) => {
+    event.preventDefault();
+    cameraRadius = Math.max(3.2, Math.min(10, cameraRadius + event.deltaY * 0.008));
+    placeCamera();
+  }, { passive: false });
+
+  placeCamera();
+  return {
+    scene,
+    camera,
+    renderer,
+    feel,
+    get activeFeelProfile() { return activeFeelProfile; },
+    get feelProfiles() { return COMBAT_FEEL_PROFILES; },
+    resize,
+    render,
+    update,
+    advanceShake,
+    toggleGameCamera,
+    clearWeaponTrail,
+    recordWeaponTrail,
+    setSword(next) { sword = next; clearWeaponTrail(); },
+    triggerImpact,
+    consumeHitstop,
+    setFeel,
+    applyFeelProfile,
+  };
+}
+return Object.freeze({ createStudioPreviewRuntime });
+})();
+
+// tools/action-studio/studio-combat-feel-controller.js
+const __actionStudioModule35 = (() => {
+function updateSlider(id, value, digits = 2, suffix = '') {
+  const input = document.getElementById(id);
+  const output = document.getElementById(`${id}Value`);
+  if (!input || !output) return;
+  input.value = String(value);
+  output.textContent = `${Number(value).toFixed(digits)}${suffix}`;
+}
+
+function createStudioCombatFeelController(preview) {
+  let externalImpactReleaseTimer = null;
+
+  function applyProfile(slot) {
+    const select = document.getElementById(`feelProfile${slot}`);
+    const name = select?.value || 'light';
+    const applied = preview.applyFeelProfile(name);
+    updateSlider('hitstop', applied.hitstop, applied.hitstop % 0.01 === 0 ? 2 : 3, 's');
+    updateSlider('shake', applied.shake);
+    updateSlider('knockback', applied.knockback);
+    const status = document.getElementById('feelProfileStatus');
+    if (status) status.textContent = `Active ${slot} · ${applied.label} · same animation, different impact response`;
+    document.getElementById('feelUseA')?.classList.toggle('on', slot === 'A');
+    document.getElementById('feelUseB')?.classList.toggle('on', slot === 'B');
+  }
+
+  function releaseExternalImpact(hitstopSeconds) {
+    preview.consumeHitstop(hitstopSeconds + 0.001);
+    preview.consumeHitstop(0);
+  }
+
+  function handleExternalImpact() {
+    if (externalImpactReleaseTimer !== null) clearTimeout(externalImpactReleaseTimer);
+    preview.triggerImpact();
+    const hitstopSeconds = Math.max(0, Number(preview.feel?.hitstop) || 0);
+    if (hitstopSeconds <= 0) {
+      releaseExternalImpact(0);
+      return;
+    }
+    externalImpactReleaseTimer = setTimeout(() => {
+      externalImpactReleaseTimer = null;
+      releaseExternalImpact(hitstopSeconds);
+    }, hitstopSeconds * 1000);
+  }
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('action-studio-external-impact', handleExternalImpact);
+  }
+
+  const controls = document.getElementById('feelAbControls');
+  if (!controls) return { applyProfile, handleExternalImpact };
+  document.getElementById('feelUseA')?.addEventListener('click', () => applyProfile('A'));
+  document.getElementById('feelUseB')?.addEventListener('click', () => applyProfile('B'));
+  document.getElementById('feelProfileA')?.addEventListener('change', () => {
+    if (document.getElementById('feelUseA')?.classList.contains('on')) applyProfile('A');
+  });
+  document.getElementById('feelProfileB')?.addEventListener('change', () => {
+    if (document.getElementById('feelUseB')?.classList.contains('on')) applyProfile('B');
+  });
+  applyProfile('A');
+  return { applyProfile, handleExternalImpact };
+}
+return Object.freeze({ createStudioCombatFeelController });
+})();
+
+// tools/action-studio/studio-motion-guide-overlay.js
+const __actionStudioModule36 = (() => {
+const { normalizeMotionGuide } = __actionStudioModule30;
+
+const GUIDE_COLORS = Object.freeze({
+  hand: 0xffc857,
+  windup: 0xff985c,
+  head: 0x59d8ff,
+  body: 0xff72a6,
+  foot: 0x65e6a5,
+  grip: 0xb99aff,
+  linkage: 0xa5b5d6,
+});
+
+function createMarker(THREE, name, color, radius = 0.045, target = false, dragTarget = '') {
+  const geometry = target
+    ? new THREE.TorusGeometry(radius * 1.55, radius * 0.32, 7, 20)
+    : new THREE.SphereGeometry(radius, 10, 8);
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: target ? 0.98 : 0.82,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const marker = new THREE.Mesh(geometry, material);
+  marker.name = name;
+  marker.renderOrder = 90;
+  marker.userData.motionGuideTarget = dragTarget;
+  return marker;
+}
+
+function createLink(THREE, name, color, opacity = 0.55) {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    depthTest: false,
+    depthWrite: false,
+  }));
+  line.name = name;
+  line.frustumCulled = false;
+  line.renderOrder = 89;
+  return line;
+}
+
+function setLink(line, start, end) {
+  const position = line.geometry.attributes.position;
+  position.setXYZ(0, start.x, start.y, start.z);
+  position.setXYZ(1, end.x, end.y, end.z);
+  position.needsUpdate = true;
+  line.geometry.computeBoundingSphere();
+}
+
+function createWholeBodyMotionGuideOverlay(THREE, {
+  scene,
+  camera,
+  canvas,
+  character,
+  sword: initialSword,
+}) {
+  // Held rather than captured, for the same reason as the preview runtime: the stage weapon can be
+  // swapped, and the off-hand guide reads the weapon's own secondary grip.
+  let sword = initialSword;
+  const group = new THREE.Group();
+  group.name = 'WHOLE_BODY_MOTION_GUIDES';
+  group.visible = false;
+  scene.add(group);
+
+  const markers = {
+    head: createMarker(THREE, 'GUIDE_HEAD_LINK', GUIDE_COLORS.head),
+    hand: createMarker(THREE, 'GUIDE_SWORD_HAND_LINK', GUIDE_COLORS.hand),
+    offHand: createMarker(THREE, 'GUIDE_OFF_HAND_LINK', GUIDE_COLORS.grip),
+    secondaryGrip: createMarker(THREE, 'GUIDE_SECONDARY_GRIP', GUIDE_COLORS.grip, 0.04, true),
+    hips: createMarker(THREE, 'GUIDE_BODY_LINK', GUIDE_COLORS.body, 0.055),
+    footL: createMarker(THREE, 'GUIDE_FOOT_L_LINK', GUIDE_COLORS.foot),
+    footR: createMarker(THREE, 'GUIDE_FOOT_R_LINK', GUIDE_COLORS.foot),
+    impactTarget: createMarker(THREE, 'GUIDE_IMPACT_TARGET', GUIDE_COLORS.hand, 0.09, true, 'impact'),
+    comTarget: createMarker(THREE, 'GUIDE_COM_TARGET', GUIDE_COLORS.body, 0.075, true, 'com'),
+    plantTarget: createMarker(THREE, 'GUIDE_PLANT_TARGET', GUIDE_COLORS.foot, 0.08, true, 'plant'),
+    windupTarget: createMarker(THREE, 'GUIDE_WINDUP_TARGET', GUIDE_COLORS.windup, 0.085, true, 'windup'),
+  };
+  markers.comTarget.rotation.y = Math.PI / 2;
+  markers.plantTarget.rotation.x = Math.PI / 2;
+  markers.windupTarget.rotation.y = Math.PI / 2;
+  const draggableMarkers = [markers.windupTarget, markers.impactTarget, markers.comTarget, markers.plantTarget];
+
+  const links = {
+    headBody: createLink(THREE, 'GUIDE_HEAD_BODY_LINK', GUIDE_COLORS.linkage, 0.32),
+    bodyHand: createLink(THREE, 'GUIDE_BODY_HAND_LINK', GUIDE_COLORS.linkage, 0.32),
+    bodyFootL: createLink(THREE, 'GUIDE_BODY_FOOT_L_LINK', GUIDE_COLORS.linkage, 0.26),
+    bodyFootR: createLink(THREE, 'GUIDE_BODY_FOOT_R_LINK', GUIDE_COLORS.linkage, 0.26),
+    headTarget: createLink(THREE, 'GUIDE_HEAD_TARGET_LINK', GUIDE_COLORS.head),
+    handTarget: createLink(THREE, 'GUIDE_HAND_TARGET_LINK', GUIDE_COLORS.hand, 0.72),
+    handWindup: createLink(THREE, 'GUIDE_HAND_WINDUP_LINK', GUIDE_COLORS.windup, 0.78),
+    bodyTarget: createLink(THREE, 'GUIDE_BODY_TARGET_LINK', GUIDE_COLORS.body),
+    footTarget: createLink(THREE, 'GUIDE_FOOT_TARGET_LINK', GUIDE_COLORS.foot, 0.72),
+    offHandGrip: createLink(THREE, 'GUIDE_OFF_HAND_GRIP_LINK', GUIDE_COLORS.grip, 0.82),
+  };
+  Object.values(markers).forEach((marker) => group.add(marker));
+  Object.values(links).forEach((line) => group.add(line));
+
+  const points = Object.fromEntries([
+    'origin', 'head', 'hand', 'offHand', 'secondaryGrip', 'hips', 'chest',
+    'footL', 'footR', 'windup', 'impact', 'com', 'plant',
+  ].map((key) => [key, new THREE.Vector3()]));
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const dragPlane = new THREE.Plane();
+  const dragPoint = new THREE.Vector3();
+  const planeNormal = new THREE.Vector3();
+  let guide = null;
+  let onGuideChange = null;
+  let dragging = null;
+  let hovered = null;
+  const diagnostics = { windupTargetError: 0, secondaryGripError: 0, draggingTarget: '' };
+
+  function setGuide(nextGuide) {
+    guide = nextGuide ? normalizeMotionGuide(nextGuide) : null;
+    group.visible = Boolean(guide?.visible);
+  }
+
+  function updateTargetPoints() {
+    const planeX = guide.cutPlaneOffset * 0.008;
+    points.windup.copy(points.origin).add(new THREE.Vector3(
+      planeX,
+      guide.windupHeight,
+      -guide.windupPullback,
+    ));
+    points.impact.copy(points.origin).add(new THREE.Vector3(
+      planeX,
+      guide.impactHeight,
+      Math.max(0.9, guide.stepDistance + 0.82),
+    ));
+    points.com.copy(points.origin).add(new THREE.Vector3(
+      planeX * 0.35,
+      0.93 - guide.crouchDepth * 0.003,
+      guide.stepDistance * (0.32 + guide.coupling * 0.42),
+    ));
+    points.plant.copy(points.origin).add(new THREE.Vector3(
+      guide.leadFoot === 'L' ? 0.18 : -0.18,
+      0.035,
+      guide.stepDistance,
+    ));
+  }
+
+  function update() {
+    group.visible = Boolean(guide?.visible);
+    if (!group.visible) return;
+    character.object3d.updateMatrixWorld(true);
+    character.object3d.getWorldPosition(points.origin);
+    character.rig.bones.head.getWorldPosition(points.head);
+    character.rig.bones['handslot.r'].getWorldPosition(points.hand);
+    character.rig.bones['handslot.l'].getWorldPosition(points.offHand);
+    character.rig.bones.hips.getWorldPosition(points.hips);
+    character.rig.bones.chest.getWorldPosition(points.chest);
+    character.rig.bones['foot.l'].getWorldPosition(points.footL);
+    character.rig.bones['foot.r'].getWorldPosition(points.footR);
+    sword.secondaryGrip.getWorldPosition(points.secondaryGrip);
+    updateTargetPoints();
+
+    markers.head.position.copy(points.head);
+    markers.hand.position.copy(points.hand);
+    markers.offHand.position.copy(points.offHand);
+    markers.secondaryGrip.position.copy(points.secondaryGrip);
+    markers.hips.position.copy(points.hips);
+    markers.footL.position.copy(points.footL);
+    markers.footR.position.copy(points.footR);
+    markers.windupTarget.position.copy(points.windup);
+    markers.impactTarget.position.copy(points.impact);
+    markers.comTarget.position.copy(points.com);
+    markers.plantTarget.position.copy(points.plant);
+
+    setLink(links.headBody, points.head, points.chest);
+    setLink(links.bodyHand, points.chest, points.hand);
+    setLink(links.bodyFootL, points.hips, points.footL);
+    setLink(links.bodyFootR, points.hips, points.footR);
+    setLink(links.headTarget, points.head, points.impact);
+    setLink(links.handTarget, points.hand, points.impact);
+    setLink(links.handWindup, points.hand, points.windup);
+    setLink(links.bodyTarget, points.hips, points.com);
+    setLink(links.footTarget, guide.leadFoot === 'L' ? points.footL : points.footR, points.plant);
+    setLink(links.offHandGrip, points.offHand, points.secondaryGrip);
+    diagnostics.windupTargetError = points.hand.distanceTo(points.windup);
+    diagnostics.secondaryGripError = points.offHand.distanceTo(points.secondaryGrip);
+    const showGrip = guide.twoHandGrip;
+    markers.offHand.visible = showGrip;
+    markers.secondaryGrip.visible = showGrip;
+    links.offHandGrip.visible = showGrip;
+    markers.windupTarget.visible = guide.windupTarget;
+    links.handWindup.visible = guide.windupTarget;
+  }
+
+  function setPointer(event) {
+    const rect = canvas.getBoundingClientRect();
+    pointer.set(
+      ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+      -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+    );
+    raycaster.setFromCamera(pointer, camera);
+  }
+
+  function pickTarget(event) {
+    if (!group.visible) return null;
+    setPointer(event);
+    return raycaster.intersectObjects(draggableMarkers, false)[0]?.object || null;
+  }
+
+  function setDragPlane(target) {
+    if (target === 'impact') planeNormal.set(0, 0, 1);
+    else if (target === 'com' || target === 'windup') planeNormal.set(1, 0, 0);
+    else planeNormal.set(0, 1, 0);
+    dragPlane.setFromNormalAndCoplanarPoint(planeNormal, markers[`${target}Target`].position);
+  }
+
+  function applyDrag(event) {
+    setPointer(event);
+    if (!raycaster.ray.intersectPlane(dragPlane, dragPoint)) return;
+    const next = { ...guide };
+    if (dragging === 'windup') {
+      next.windupHeight = dragPoint.y - points.origin.y;
+      next.windupPullback = points.origin.z - dragPoint.z;
+    } else if (dragging === 'impact') {
+      next.impactHeight = dragPoint.y - points.origin.y;
+      next.cutPlaneOffset = (dragPoint.x - points.origin.x) / 0.008;
+    } else if (dragging === 'plant') {
+      next.stepDistance = dragPoint.z - points.origin.z;
+      next.leadFoot = dragPoint.x >= points.origin.x ? 'L' : 'R';
+    } else if (dragging === 'com') {
+      next.crouchDepth = (0.93 - (dragPoint.y - points.origin.y)) / 0.003;
+      if (next.stepDistance > 0.05) {
+        next.coupling = (((dragPoint.z - points.origin.z) / next.stepDistance) - 0.32) / 0.42;
+      }
+    }
+    guide = normalizeMotionGuide(next);
+    updateTargetPoints();
+    onGuideChange?.({ ...guide }, { source: 'stage-drag', target: dragging });
+  }
+
+  canvas.addEventListener('pointerdown', (event) => {
+    const marker = pickTarget(event);
+    if (!marker) return;
+    dragging = marker.userData.motionGuideTarget;
+    diagnostics.draggingTarget = dragging;
+    setDragPlane(dragging);
+    marker.scale.setScalar(1.25);
+    canvas.style.cursor = 'grabbing';
+    canvas.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+
+  canvas.addEventListener('pointermove', (event) => {
+    if (dragging) {
+      applyDrag(event);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    const marker = pickTarget(event);
+    if (hovered && hovered !== marker) hovered.scale.setScalar(1);
+    hovered = marker;
+    if (hovered) hovered.scale.setScalar(1.12);
+    canvas.style.cursor = hovered ? 'grab' : '';
+  }, true);
+
+  function endDrag(event) {
+    if (!dragging) return;
+    draggableMarkers.forEach((marker) => marker.scale.setScalar(1));
+    dragging = null;
+    diagnostics.draggingTarget = '';
+    canvas.style.cursor = '';
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
+  canvas.addEventListener('pointerup', endDrag, true);
+  canvas.addEventListener('pointercancel', endDrag, true);
+
+  return {
+    group,
+    markers,
+    setGuide,
+    update,
+    setGuideChangeHandler(handler) { onGuideChange = typeof handler === 'function' ? handler : null; },
+    setSword(next) { sword = next; },
+    get guide() { return guide ? { ...guide } : null; },
+    get diagnostics() { return { ...diagnostics }; },
+  };
+}
+return Object.freeze({ createWholeBodyMotionGuideOverlay });
+})();
+
+// tools/action-studio/studio-motion-guide-editor.js
+const __actionStudioModule37 = (() => {
+const { createAdvancingVerticalChopTemplate } = __actionStudioModule29;
+const { createAdvancingVerticalChopGuide, isWholeBodyMotionGuide, normalizeMotionGuide } = __actionStudioModule30;
+
+const CONTROL_DEFINITIONS = Object.freeze([
+  { key: 'stepDistance', label: 'Step distance', min: 0, max: 1.2, step: 0.01, suffix: 'm' },
+  { key: 'crouchDepth', label: 'Crouch depth', min: 0, max: 60, step: 1, suffix: '°' },
+  { key: 'forwardLean', label: 'Forward lean', min: 0, max: 40, step: 1, suffix: '°' },
+  { key: 'windupHeight', label: 'Windup height', min: 0.9, max: 2, step: 0.01, suffix: 'm' },
+  { key: 'windupPullback', label: 'Windup pullback', min: 0, max: 0.5, step: 0.01, suffix: 'm' },
+  { key: 'windupLoad', label: 'Windup body load', min: 0, max: 1, step: 0.01, suffix: '' },
+  { key: 'impactHeight', label: 'Impact height', min: 0.5, max: 2, step: 0.01, suffix: 'm' },
+  { key: 'cutPlaneOffset', label: 'Cut-plane offset', min: -35, max: 35, step: 1, suffix: '°' },
+  { key: 'coupling', label: 'Readability coupling', min: 0, max: 1, step: 0.01, suffix: '' },
+  { key: 'secondaryGripWeight', label: 'Off-hand grip weight', min: 0, max: 1, step: 0.01, suffix: '' },
+]);
+
+function displayValue(value, definition) {
+  const decimals = Number(definition.step) < 1 ? 2 : 0;
+  return `${Number(value).toFixed(decimals)}${definition.suffix}`;
+}
+
+function renderSlider(definition, guide) {
+  return `<label class="motion-guide-control">
+    <span>${definition.label}</span><output data-guide-output="${definition.key}">${displayValue(guide[definition.key], definition)}</output>
+    <input data-guide-key="${definition.key}" type="range" min="${definition.min}" max="${definition.max}" step="${definition.step}" value="${guide[definition.key]}">
+  </label>`;
+}
+
+function constraintSummary(guide, report) {
+  const parts = [];
+  if (guide.windupTarget && report?.windupTarget) parts.push(`Windup ${Math.round(report.windupAfterError * 100)}cm`);
+  else parts.push(guide.windupTarget ? 'Windup pending bake' : 'Windup fit off');
+  parts.push(guide.footLock ? 'Lead foot locked' : 'Foot lock off');
+  if (guide.twoHandGrip && report?.twoHandGrip) parts.push(`2H grip ${Math.round(report.afterError * 100)}cm avg`);
+  else parts.push(guide.twoHandGrip ? '2H grip pending bake' : 'Single-hand mode');
+  return parts.join(' · ');
+}
+
+function createStudioMotionGuideEditor({
+  overlay,
+  applyProject,
+  bakeProject,
+  getFrame,
+  onStatus,
+}) {
+  const host = document.getElementById('wholeBodyMotionEditor');
+  let guide = null;
+  let dirty = false;
+  let constraintReport = null;
+
+  function renderInactive() {
+    host.innerHTML = `<p class="motion-guide-intro">Create an advancing vertical chop from linked hand, head, center-of-mass, and foot targets.</p>
+      <button id="createVerticalChop" class="primary motion-guide-create">Create Advancing Chop</button>`;
+    document.getElementById('createVerticalChop').addEventListener('click', () => {
+      guide = createAdvancingVerticalChopGuide();
+      bakeCurrentGuide(guide.plantFrame, 'Created an advancing vertical chop with draggable whole-body guides.');
+    });
+  }
+
+  function syncControlValues() {
+    if (!guide) return;
+    host.querySelectorAll('[data-guide-key]').forEach((control) => {
+      const value = guide[control.dataset.guideKey];
+      if (control.type === 'checkbox') control.checked = Boolean(value);
+      else control.value = value;
+    });
+    const leadFoot = document.getElementById('motionLeadFoot');
+    if (leadFoot) leadFoot.value = guide.leadFoot;
+    CONTROL_DEFINITIONS.forEach((definition) => {
+      const output = host.querySelector(`[data-guide-output="${definition.key}"]`);
+      if (output) output.textContent = displayValue(guide[definition.key], definition);
+    });
+  }
+
+  function markDirty(message = 'Guides changed · Bake Pose Keys to apply') {
+    dirty = true;
+    constraintReport = null;
+    const status = document.getElementById('wholeBodyMotionStatus');
+    if (status) {
+      status.textContent = message;
+      status.classList.add('pending');
+    }
+  }
+
+  function acceptGuide(nextGuide, message) {
+    guide = normalizeMotionGuide(nextGuide);
+    overlay.setGuide(guide);
+    syncControlValues();
+    markDirty(message);
+  }
+
+  function updateGuideFromControls() {
+    const next = { ...guide };
+    host.querySelectorAll('[data-guide-key]').forEach((control) => {
+      next[control.dataset.guideKey] = control.type === 'checkbox' ? control.checked : Number(control.value);
+    });
+    next.leadFoot = document.getElementById('motionLeadFoot').value;
+    acceptGuide(next);
+  }
+
+  function bakeCurrentGuide(frame, message) {
+    const baseProject = createAdvancingVerticalChopTemplate(guide);
+    const baked = bakeProject?.(baseProject, guide) || { project: baseProject, report: null };
+    applyProject(baked.project || baked, { seekFrame: frame });
+    constraintReport = baked.report || constraintReport;
+    dirty = false;
+    renderActive();
+    onStatus(`${message} ${constraintSummary(guide, constraintReport)}.`);
+  }
+
+  function renderActive() {
+    host.innerHTML = `<div class="motion-guide-legend" aria-label="Motion guide legend">
+        <span><i class="guide-windup"></i>Windup / load</span><span><i class="guide-hand"></i>Sword / impact</span>
+        <span><i class="guide-head"></i>Head / gaze</span>
+        <span><i class="guide-body"></i>Center of mass</span><span><i class="guide-foot"></i>Lead-foot plant</span>
+        <span><i class="guide-grip"></i>Off-hand grip</span>
+      </div>
+      <p class="motion-guide-drag-hint">Drag the orange windup ring to stage the overhead load. Yellow, pink, and green control impact, center of mass, and foot plant.</p>
+      <div class="motion-guide-grid">
+        <label class="motion-guide-select"><span>Lead foot</span><select id="motionLeadFoot"><option value="L"${guide.leadFoot === 'L' ? ' selected' : ''}>Left</option><option value="R"${guide.leadFoot === 'R' ? ' selected' : ''}>Right</option></select></label>
+        <label class="motion-guide-number"><span>Plant frame</span><input data-guide-key="plantFrame" type="number" min="8" max="${guide.impactFrame - 1}" step="1" value="${guide.plantFrame}"></label>
+        <label class="motion-guide-number"><span>Impact frame</span><input data-guide-key="impactFrame" type="number" min="10" max="${guide.durationFrames - 7}" step="1" value="${guide.impactFrame}"></label>
+        <label class="motion-guide-number"><span>Duration</span><input data-guide-key="durationFrames" type="number" min="24" max="72" step="1" value="${guide.durationFrames}"></label>
+        ${CONTROL_DEFINITIONS.map((definition) => renderSlider(definition, guide)).join('')}
+      </div>
+      <div class="motion-guide-toggles">
+        <label class="check"><input data-guide-key="windupTarget" type="checkbox"${guide.windupTarget ? ' checked' : ''}> Fit sword hand to windup target</label>
+        <label class="check"><input data-guide-key="footLock" type="checkbox"${guide.footLock ? ' checked' : ''}> Lock lead foot from plant through follow-through</label>
+        <label class="check"><input data-guide-key="twoHandGrip" type="checkbox"${guide.twoHandGrip ? ' checked' : ''}> Fit off-hand to sword secondary grip</label>
+        <label class="check"><input data-guide-key="visible" type="checkbox"${guide.visible ? ' checked' : ''}> Show linked targets in the stage</label>
+      </div>
+      <div class="button-grid two motion-guide-actions"><button id="resetVerticalChop">Reset guides</button><button id="bakeVerticalChop" class="primary">Bake Constraints + Pose Keys</button></div>
+      <div id="wholeBodyMotionStatus" class="status-line${dirty ? ' pending' : ''}">${dirty ? 'Guides changed · Bake Pose Keys to apply' : constraintSummary(guide, constraintReport)}</div>`;
+
+    host.querySelectorAll('[data-guide-key]').forEach((control) => {
+      control.addEventListener('input', updateGuideFromControls);
+      control.addEventListener('change', () => renderActive());
+    });
+    document.getElementById('motionLeadFoot').addEventListener('change', () => {
+      updateGuideFromControls();
+      renderActive();
+    });
+    document.getElementById('resetVerticalChop').addEventListener('click', () => {
+      acceptGuide(createAdvancingVerticalChopGuide());
+      renderActive();
+    });
+    document.getElementById('bakeVerticalChop').addEventListener('click', () => {
+      bakeCurrentGuide(getFrame(), 'Windup load, whole-body targets, foot lock, and grip constraint baked into Pose Keys.');
+    });
+  }
+
+  function setClip(clip) {
+    const storedGuide = clip?.metadata?.motionGuide;
+    guide = isWholeBodyMotionGuide(storedGuide) ? normalizeMotionGuide(storedGuide) : null;
+    constraintReport = clip?.metadata?.motionGuideBake || null;
+    dirty = false;
+    overlay.setGuide(guide);
+    if (guide) renderActive();
+    else renderInactive();
+  }
+
+  overlay.setGuideChangeHandler((nextGuide, details) => {
+    const label = details.target === 'windup'
+      ? 'Windup target'
+      : details.target === 'plant'
+        ? 'Plant target'
+        : details.target === 'impact'
+          ? 'Impact target'
+          : 'Center-of-mass target';
+    acceptGuide(nextGuide, `${label} moved · Bake Pose Keys to apply`);
+  });
+
+  return {
+    setClip,
+    get guide() { return guide ? { ...guide } : null; },
+    get dirty() { return dirty; },
+    get constraintReport() { return constraintReport ? { ...constraintReport } : null; },
+  };
+}
+return Object.freeze({ createStudioMotionGuideEditor });
+})();
+
+// tools/action-studio/studio-motion-constraint-baker.js
+const __actionStudioModule38 = (() => {
+const { createAnimationClip } = __actionStudioModule25;
+const { normalizeMotionGuide } = __actionStudioModule30;
+const { normalizePose } = __actionStudioModule9;
+
+const WINDUP_HAND_POSE_KEYS = Object.freeze([
+  ['root_pz', -0.32, 0.08, 0.07],
+  ['root_x', -25, 12, 5],
+  ['spine_x', -30, 18, 5],
+  ['squat', 8, 60, 5],
+  ['aR_sx', -180, 80, 24],
+  ['aR_sy', -140, 140, 24],
+  ['aR_sz', -110, 110, 20],
+  ['aR_ex', -15, 165, 22],
+  ['aR_wx', -120, 120, 18],
+  ['aR_wy', -120, 120, 18],
+  ['aR_wz', -120, 120, 18],
+  ['aR_stretch', 0.72, 1.55, 0.12],
+]);
+
+const WINDUP_BODY_POSE_KEYS = new Set(['root_pz', 'root_x', 'spine_x', 'squat']);
+
+const SECONDARY_GRIP_POSE_KEYS = Object.freeze([
+  ['aL_sx', -180, 80, 24],
+  ['aL_sy', -140, 140, 24],
+  ['aL_sz', -110, 110, 20],
+  ['aL_ex', -15, 165, 22],
+  ['aL_wx', -120, 120, 18],
+  ['aL_wy', -120, 120, 18],
+  ['aL_wz', -120, 120, 18],
+  ['aL_stretch', 0.72, 1.55, 0.12],
+]);
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function refinePose(seedPose, poseKeys, evaluate) {
+  const candidate = { ...seedPose };
+  poseKeys.forEach(([key, min, max]) => {
+    candidate[key] = clamp(candidate[key], min, max);
+  });
+  let bestError = evaluate(candidate);
+  let stepScale = 1;
+
+  for (let pass = 0; pass < 8; pass += 1) {
+    for (const [key, min, max, baseStep] of poseKeys) {
+      const startValue = candidate[key];
+      let axisValue = startValue;
+      let axisError = bestError;
+      for (const direction of [-1, 1]) {
+        candidate[key] = clamp(startValue + direction * baseStep * stepScale, min, max);
+        const error = evaluate(candidate);
+        if (error < axisError) {
+          axisError = error;
+          axisValue = candidate[key];
+        }
+      }
+      candidate[key] = axisValue;
+      bestError = axisError;
+    }
+    stepScale *= 0.56;
+  }
+  return { pose: candidate, error: bestError };
+}
+
+function optimizePose(sourcePose, weight, poseKeys, seeds, evaluate, keyWeight = null) {
+  const original = normalizePose(sourcePose);
+  const beforeError = evaluate(original);
+  const fitted = seeds(original)
+    .map((seed) => refinePose(seed, poseKeys, evaluate))
+    .reduce((best, result) => (result.error < best.error ? result : best));
+  const constrained = { ...original };
+  poseKeys.forEach(([key]) => {
+    const axisWeight = weight * (keyWeight ? keyWeight(key) : 1);
+    constrained[key] = original[key] + (fitted.pose[key] - original[key]) * axisWeight;
+  });
+  const afterError = evaluate(constrained);
+  return { pose: normalizePose(constrained), beforeError, afterError };
+}
+
+function evaluateGripDistance(character, sword, pose, leftPoint, gripPoint) {
+  character.applyPose(pose);
+  character.object3d.updateMatrixWorld(true);
+  sword.object3d.updateMatrixWorld(true);
+  character.rig.bones['handslot.l'].getWorldPosition(leftPoint);
+  sword.secondaryGrip.getWorldPosition(gripPoint);
+  return leftPoint.distanceTo(gripPoint);
+}
+
+function evaluateWindupDistance(character, pose, targetPoint, handPoint) {
+  character.applyPose(pose);
+  character.object3d.updateMatrixWorld(true);
+  character.rig.bones['handslot.r'].getWorldPosition(handPoint);
+  return handPoint.distanceTo(targetPoint);
+}
+
+function gripSeeds(original) {
+  const mirrored = {
+    ...original,
+    aL_sx: original.aR_sx,
+    aL_sy: original.aR_sy + 42,
+    aL_sz: -original.aR_sz,
+    aL_ex: original.aR_ex + 22,
+    aL_wx: original.aR_wx,
+    aL_wy: -original.aR_wy,
+    aL_wz: -original.aR_wz,
+    aL_stretch: 1.08,
+  };
+  return [
+    original,
+    mirrored,
+    { ...mirrored, aL_sx: mirrored.aL_sx - 48, aL_sy: mirrored.aL_sy + 54, aL_ex: 92 },
+  ];
+}
+
+function windupSeeds(original) {
+  return [
+    original,
+    { ...original, aR_sx: -164, aR_sy: -12, aR_sz: 10, aR_ex: 62, aR_wx: -26, aR_stretch: 1.08 },
+    { ...original, aR_sx: -142, aR_sy: -34, aR_sz: 22, aR_ex: 88, aR_wx: -38, aR_stretch: 1.12 },
+  ];
+}
+
+function setWindupTarget(character, guide, targetPoint) {
+  character.object3d.updateMatrixWorld(true);
+  targetPoint.set(
+    guide.cutPlaneOffset * 0.008,
+    guide.windupHeight,
+    -guide.windupPullback,
+  );
+  character.object3d.localToWorld(targetPoint);
+}
+
+function bakeStudioMotionConstraints(projectInput, { character, sword, guide: guideInput } = {}) {
+  const project = JSON.parse(JSON.stringify(projectInput));
+  const guide = normalizeMotionGuide(guideInput || project.clip?.metadata?.motionGuide);
+  const hasRig = Boolean(character?.rig && project.clip?.poses && project.clip?.timeline);
+  const Vector3 = character?.object3d?.position?.constructor;
+  const report = {
+    windupTarget: false,
+    windupOptimizedPoseCount: 0,
+    windupBeforeError: 0,
+    windupAfterError: 0,
+    twoHandGrip: false,
+    optimizedPoseCount: 0,
+    beforeError: 0,
+    afterError: 0,
+    maxError: 0,
+    poseErrors: [],
+  };
+
+  if (hasRig && Vector3 && guide.windupTarget && project.clip.poses.windup) {
+    const target = new Vector3();
+    const hand = new Vector3();
+    setWindupTarget(character, guide, target);
+    const evaluate = (pose) => evaluateWindupDistance(character, pose, target, hand);
+    const result = optimizePose(
+      project.clip.poses.windup,
+      1,
+      WINDUP_HAND_POSE_KEYS,
+      windupSeeds,
+      evaluate,
+      (key) => (WINDUP_BODY_POSE_KEYS.has(key) ? guide.windupLoad * guide.coupling : 1),
+    );
+    project.clip.poses.windup = result.pose;
+    report.windupTarget = true;
+    report.windupOptimizedPoseCount = 1;
+    report.windupBeforeError = result.beforeError;
+    report.windupAfterError = result.afterError;
+  }
+
+  if (hasRig && Vector3 && guide.twoHandGrip && guide.secondaryGripWeight > 0 && sword?.secondaryGrip) {
+    const points = { left: new Vector3(), grip: new Vector3() };
+    const errors = [];
+    for (const key of project.clip.timeline) {
+      const evaluate = (pose) => evaluateGripDistance(character, sword, pose, points.left, points.grip);
+      const result = optimizePose(
+        project.clip.poses[key.name],
+        guide.secondaryGripWeight,
+        SECONDARY_GRIP_POSE_KEYS,
+        gripSeeds,
+        evaluate,
+      );
+      project.clip.poses[key.name] = result.pose;
+      errors.push({ name: key.name, beforeError: result.beforeError, afterError: result.afterError });
+    }
+    const average = (key) => errors.reduce((total, entry) => total + entry[key], 0) / Math.max(1, errors.length);
+    report.twoHandGrip = true;
+    report.optimizedPoseCount = errors.length;
+    report.beforeError = average('beforeError');
+    report.afterError = average('afterError');
+    report.maxError = Math.max(...errors.map((entry) => entry.afterError));
+    report.poseErrors = errors;
+  }
+
+  project.clip.metadata = { ...project.clip.metadata, motionGuide: guide, motionGuideBake: report };
+  project.clip = createAnimationClip(project.clip);
+  return { project, report };
+}
+return Object.freeze({ WINDUP_HAND_POSE_KEYS, SECONDARY_GRIP_POSE_KEYS, bakeStudioMotionConstraints });
+})();
+
+// src/animation/whole-body-drag-solver.js
+const __actionStudioModule40 = (() => {
+const { normalizePose } = __actionStudioModule9;
+
+const WHOLE_BODY_DRAG_EFFECTORS = Object.freeze([
+  'handL', 'handR', 'footL', 'footR',
+]);
+
+const WHOLE_BODY_JOINT_EFFECTORS = Object.freeze([
+  'elbowL', 'elbowR', 'kneeL', 'kneeR',
+]);
+
+const EFFECTOR_CHAINS = Object.freeze({
+  handL: Object.freeze({ prefix: 'aL', kind: 'arm' }),
+  handR: Object.freeze({ prefix: 'aR', kind: 'arm' }),
+  footL: Object.freeze({ prefix: 'lL', kind: 'leg' }),
+  footR: Object.freeze({ prefix: 'lR', kind: 'leg' }),
+  elbowL: Object.freeze({ prefix: 'aL', kind: 'arm' }),
+  elbowR: Object.freeze({ prefix: 'aR', kind: 'arm' }),
+  kneeL: Object.freeze({ prefix: 'lL', kind: 'leg' }),
+  kneeR: Object.freeze({ prefix: 'lR', kind: 'leg' }),
+});
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function finite(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function point(value, label) {
+  const result = {
+    x: Number(value?.x),
+    y: Number(value?.y),
+    z: Number(value?.z),
+  };
+  if (!Number.isFinite(result.x) || !Number.isFinite(result.y) || !Number.isFinite(result.z)) {
+    throw new Error(`Whole-body drag evaluator returned an invalid ${label} point`);
+  }
+  return result;
+}
+
+function distanceSquared(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const dz = a.z - b.z;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+function armSpecs(prefix, maxStretch) {
+  return [
+    [`${prefix}_sx`, -180, 80, 24, 90],
+    [`${prefix}_sy`, -140, 140, 24, 90],
+    [`${prefix}_sz`, -110, 110, 20, 80],
+    [`${prefix}_ex`, -15, 165, 22, 85],
+    [`${prefix}_wx`, -120, 120, 16, 80],
+    [`${prefix}_wy`, -120, 120, 16, 80],
+    [`${prefix}_wz`, -120, 120, 16, 80],
+    [`${prefix}_stretch`, 0.72, maxStretch, 0.025, 0.08],
+  ];
+}
+
+function legSpecs(prefix, maxStretch) {
+  return [
+    [`${prefix}_hx`, -130, 130, 22, 90],
+    [`${prefix}_hy`, -100, 100, 18, 75],
+    [`${prefix}_hz`, -100, 100, 18, 75],
+    [`${prefix}_kx`, -15, 165, 22, 85],
+    [`${prefix}_ax`, -100, 100, 16, 70],
+    [`${prefix}_ty`, -100, 100, 16, 70],
+    [`${prefix}_stretch`, 0.72, maxStretch, 0.025, 0.08],
+  ];
+}
+
+function bodySpecs(reference, coupling, allowVerticalRoot) {
+  const scale = 0.28 + coupling * 0.72;
+  const specs = [
+    ['root_pz', clamp(reference.root_pz - 0.7, -1.2, 2), clamp(reference.root_pz + 0.7, -1.2, 2), 0.07 * scale, 0.5],
+    ['root_x', -65, 65, 7 * scale, 45],
+    ['root_y', -100, 100, 8 * scale, 60],
+    ['spine_x', -70, 70, 8 * scale, 45],
+    ['spine_y', -90, 90, 9 * scale, 55],
+    ['pelvis_y', -90, 90, 9 * scale, 55],
+    ['squat', 0, 80, 7 * scale, 45],
+  ];
+  if (allowVerticalRoot) {
+    specs.push([
+      'root_py',
+      clamp(reference.root_py - 0.55, -0.8, 0.8),
+      clamp(reference.root_py + 0.55, -0.8, 0.8),
+      0.055 * scale,
+      0.45,
+    ]);
+  }
+  return specs;
+}
+
+function uniqueSpecs(groups) {
+  const seen = new Set();
+  const result = [];
+  groups.flat().forEach((spec) => {
+    if (seen.has(spec[0])) return;
+    seen.add(spec[0]);
+    result.push(spec);
+  });
+  return result;
+}
+
+function regularization(pose, reference, specs) {
+  return specs.reduce((total, [key, _min, _max, _step, normalizer]) => {
+    const delta = (pose[key] - reference[key]) / Math.max(0.001, normalizer);
+    return total + delta * delta;
+  }, 0);
+}
+
+function improvePose(seedPose, specs, scorePose, passes, decay = 0.58) {
+  const candidate = { ...seedPose };
+  specs.forEach(([key, min, max]) => {
+    candidate[key] = clamp(finite(candidate[key], 0), min, max);
+  });
+  let bestScore = scorePose(candidate);
+
+  for (let pass = 0; pass < passes; pass += 1) {
+    const stepScale = decay ** pass;
+    for (const [key, min, max, baseStep] of specs) {
+      const startValue = candidate[key];
+      let bestValue = startValue;
+      for (const direction of [-1, 1]) {
+        candidate[key] = clamp(startValue + direction * baseStep * stepScale, min, max);
+        const score = scorePose(candidate);
+        if (score < bestScore) {
+          bestScore = score;
+          bestValue = candidate[key];
+        }
+      }
+      candidate[key] = bestValue;
+    }
+  }
+  return { pose: candidate, score: bestScore };
+}
+
+function createScore({
+  evaluatePose,
+  effector,
+  target,
+  pins,
+  secondaryTargets,
+  reference,
+  regularizedSpecs,
+  pinWeight,
+  regularizationWeight,
+}) {
+  return (pose) => {
+    const evaluated = evaluatePose(pose);
+    let score = distanceSquared(point(evaluated[effector], effector), target);
+    for (const [pinEffector, pinTarget] of Object.entries(pins)) {
+      score += distanceSquared(point(evaluated[pinEffector], pinEffector), pinTarget) * pinWeight;
+    }
+    for (const [secondaryEffector, constraint] of Object.entries(secondaryTargets)) {
+      score += distanceSquared(point(evaluated[secondaryEffector], secondaryEffector), constraint.target)
+        * constraint.weight;
+    }
+    score += regularization(pose, reference, regularizedSpecs) * regularizationWeight;
+    return score;
+  };
+}
+
+function solveWholeBodyDragPose(options = {}) {
+  const {
+    evaluatePose,
+    effector,
+    target: targetInput,
+    pinnedFeet = {},
+  } = options;
+  if (typeof evaluatePose !== 'function') throw new Error('Whole-body drag requires an evaluatePose function');
+  const chain = EFFECTOR_CHAINS[effector];
+  if (!chain) throw new Error(`Unknown whole-body drag effector: ${effector}`);
+
+  const coupling = clamp(finite(options.coupling, 0.85), 0, 1);
+  const maxStretch = clamp(finite(options.maxStretch, 1.05), 1, 1.12);
+  const passes = Math.round(clamp(finite(options.passes, 4), 1, 10));
+  const activationDistance = clamp(finite(options.activationDistance, 0.025), 0, 0.25);
+  const reference = normalizePose(options.referencePose || options.pose);
+  const seed = normalizePose(options.seedPose || options.pose || reference);
+  const target = point(targetInput, 'target');
+  const pins = {};
+  for (const pinEffector of ['footL', 'footR']) {
+    if (pinEffector === effector || !pinnedFeet?.[pinEffector]) continue;
+    pins[pinEffector] = point(pinnedFeet[pinEffector], `${pinEffector} pin`);
+  }
+  const secondaryTargets = {};
+  for (const [secondaryEffector, constraintInput] of Object.entries(options.secondaryTargets || {})) {
+    const constraint = constraintInput?.target ? constraintInput : { target: constraintInput };
+    secondaryTargets[secondaryEffector] = {
+      target: point(constraint.target, `${secondaryEffector} secondary target`),
+      weight: clamp(finite(constraint.weight, 2), 0, 10),
+    };
+  }
+
+  const localSpecs = chain.kind === 'arm'
+    ? armSpecs(chain.prefix, maxStretch)
+    : legSpecs(chain.prefix, maxStretch);
+  const supportSpecs = Object.keys(pins).map((pinEffector) => (
+    legSpecs(EFFECTOR_CHAINS[pinEffector].prefix, maxStretch)
+  ));
+  const allSupportSpecs = uniqueSpecs(supportSpecs);
+  const localScore = createScore({
+    evaluatePose,
+    effector,
+    target,
+    pins: {},
+    secondaryTargets: {},
+    reference,
+    regularizedSpecs: localSpecs,
+    pinWeight: 0,
+    regularizationWeight: 0.0015,
+  });
+  let result = improvePose(seed, localSpecs, localScore, passes);
+  if (Object.keys(secondaryTargets).length) {
+    const anchoredLocalScore = createScore({
+      evaluatePose,
+      effector,
+      target,
+      pins: {},
+      secondaryTargets,
+      reference,
+      regularizedSpecs: localSpecs,
+      pinWeight: 0,
+      regularizationWeight: 0.0015,
+    });
+    result = improvePose(result.pose, localSpecs, anchoredLocalScore, passes);
+  }
+  let evaluated = evaluatePose(result.pose);
+  let targetError = Math.sqrt(distanceSquared(point(evaluated[effector], effector), target));
+  const activatedWholeBody = options.allowWholeBody !== false
+    && coupling > 0.01
+    && targetError > activationDistance;
+
+  if (activatedWholeBody) {
+    const coupledBodySpecs = bodySpecs(reference, coupling, Object.keys(pins).length === 0);
+    const coupledSpecs = uniqueSpecs([localSpecs, coupledBodySpecs, allSupportSpecs]);
+    const coupledScore = createScore({
+      evaluatePose,
+      effector,
+      target,
+      pins,
+      secondaryTargets,
+      reference,
+      regularizedSpecs: coupledSpecs,
+      pinWeight: 0.65 + coupling * 0.55,
+      regularizationWeight: 0.002 + (1 - coupling) * 0.018,
+    });
+    result = improvePose(result.pose, coupledSpecs, coupledScore, passes);
+
+    if (allSupportSpecs.length) {
+      const settleSpecs = uniqueSpecs([localSpecs, allSupportSpecs]);
+      const settleScore = createScore({
+        evaluatePose,
+        effector,
+        target,
+        pins,
+        secondaryTargets,
+        reference,
+        regularizedSpecs: settleSpecs,
+        pinWeight: 7,
+        regularizationWeight: 0.001,
+      });
+      result = improvePose(result.pose, settleSpecs, settleScore, passes);
+    }
+  }
+
+  const pose = normalizePose(result.pose);
+  const finalEvaluation = evaluatePose(pose);
+  const referenceEvaluation = evaluatePose(reference);
+  targetError = Math.sqrt(distanceSquared(point(finalEvaluation[effector], effector), target));
+  const pinErrors = Object.fromEntries(Object.entries(pins).map(([pinEffector, pinTarget]) => [
+    pinEffector,
+    Math.sqrt(distanceSquared(point(finalEvaluation[pinEffector], pinEffector), pinTarget)),
+  ]));
+  const secondaryErrors = Object.fromEntries(Object.entries(secondaryTargets).map(([secondaryEffector, constraint]) => [
+    secondaryEffector,
+    Math.sqrt(distanceSquared(point(finalEvaluation[secondaryEffector], secondaryEffector), constraint.target)),
+  ]));
+
+  return {
+    pose,
+    targetError,
+    pinErrors,
+    secondaryErrors,
+    activatedWholeBody,
+    bodyLift: finalEvaluation.hips && referenceEvaluation.hips
+      ? point(finalEvaluation.hips, 'hips').y - point(referenceEvaluation.hips, 'reference hips').y
+      : 0,
+  };
+}
+return Object.freeze({ WHOLE_BODY_DRAG_EFFECTORS, WHOLE_BODY_JOINT_EFFECTORS, solveWholeBodyDragPose });
+})();
+
+// tools/action-studio/studio-axis-gizmo.js
+const __actionStudioModule41 = (() => {
+const DIRECT_POSE_AXES = Object.freeze({
+  x: Object.freeze({ color: 0xff4d5e, vector: Object.freeze({ x: 1, y: 0, z: 0 }) }),
+  y: Object.freeze({ color: 0x62df76, vector: Object.freeze({ x: 0, y: 1, z: 0 }) }),
+  z: Object.freeze({ color: 0x4c8dff, vector: Object.freeze({ x: 0, y: 0, z: 1 }) }),
+});
+
+function snapAxisDragDistance(distance, snapEnabled = false, snapStep = 0.05) {
+  const value = Number(distance) || 0;
+  const step = Math.max(0.001, Number(snapStep) || 0.05);
+  const snapped = Math.round(value / step) * step;
+  return snapEnabled ? Number(snapped.toFixed(10)) : value;
+}
+
+function axisConstrainedTarget(origin, axis, distance, options = {}) {
+  const length = Math.hypot(Number(axis?.x) || 0, Number(axis?.y) || 0, Number(axis?.z) || 0) || 1;
+  const direction = {
+    x: (Number(axis?.x) || 0) / length,
+    y: (Number(axis?.y) || 0) / length,
+    z: (Number(axis?.z) || 0) / length,
+  };
+  const constrainedDistance = snapAxisDragDistance(distance, options.snap, options.snapStep);
+  return {
+    distance: constrainedDistance,
+    target: {
+      x: (Number(origin?.x) || 0) + direction.x * constrainedDistance,
+      y: (Number(origin?.y) || 0) + direction.y * constrainedDistance,
+      z: (Number(origin?.z) || 0) + direction.z * constrainedDistance,
+    },
+  };
+}
+
+function createAxisHandle(THREE, axis, definition) {
+  const root = new THREE.Group();
+  root.name = `POSE_AXIS_${axis.toUpperCase()}`;
+  const material = new THREE.MeshBasicMaterial({
+    color: definition.color,
+    transparent: true,
+    opacity: 0.96,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.32, 8), material);
+  shaft.position.y = 0.16;
+  const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.13, 10), material);
+  arrow.position.y = 0.385;
+  const pickMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthTest: false, depthWrite: false });
+  const pickShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.42, 8), pickMaterial);
+  pickShaft.position.y = 0.21;
+  const pickArrow = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), pickMaterial);
+  pickArrow.position.y = 0.40;
+  const direction = new THREE.Vector3(definition.vector.x, definition.vector.y, definition.vector.z);
+  root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+  [shaft, arrow, pickShaft, pickArrow].forEach((object) => {
+    object.name = `POSE_AXIS_${axis.toUpperCase()}_${object.geometry.type}`;
+    object.renderOrder = 101;
+    object.userData.poseDragAxis = axis;
+    object.userData.poseDragAxisRoot = root;
+    root.add(object);
+  });
+  return { root, material, pickables: [shaft, arrow, pickShaft, pickArrow] };
+}
+
+function createStudioAxisGizmo(THREE, parent) {
+  const group = new THREE.Group();
+  group.name = 'POSE_AXIS_GIZMO';
+  group.visible = false;
+  parent.add(group);
+  const handles = Object.fromEntries(Object.entries(DIRECT_POSE_AXES).map(([axis, definition]) => [
+    axis,
+    createAxisHandle(THREE, axis, definition),
+  ]));
+  Object.values(handles).forEach((handle) => group.add(handle.root));
+  const pickables = Object.values(handles).flatMap((handle) => handle.pickables);
+  const worldQuaternion = new THREE.Quaternion();
+  const basis = new THREE.Vector3();
+  let hoveredAxis = null;
+  let activeAxis = null;
+
+  function updateAppearance() {
+    Object.entries(handles).forEach(([axis, handle]) => {
+      const emphasized = axis === activeAxis || axis === hoveredAxis;
+      handle.root.scale.setScalar(emphasized ? 1.13 : 1);
+      handle.material.opacity = emphasized ? 1 : 0.9;
+    });
+  }
+
+  return {
+    group,
+    handles,
+    setVisible(value) { group.visible = Boolean(value); },
+    setTransform(position, quaternion, space = 'world') {
+      group.position.copy(position);
+      if (space === 'local' && quaternion) group.quaternion.copy(quaternion);
+      else group.quaternion.identity();
+      group.updateMatrixWorld(true);
+    },
+    updateScale(camera) {
+      const distance = camera.position.distanceTo(group.position);
+      group.scale.setScalar(Math.max(0.72, Math.min(1.8, distance / 5.1)));
+    },
+    pick(raycaster) {
+      if (!group.visible) return null;
+      return raycaster.intersectObjects(pickables, false)[0]?.object?.userData?.poseDragAxis || null;
+    },
+    setHovered(axis) {
+      hoveredAxis = axis || null;
+      updateAppearance();
+    },
+    setActive(axis) {
+      activeAxis = axis || null;
+      updateAppearance();
+    },
+    getWorldAxis(axis, target) {
+      const definition = DIRECT_POSE_AXES[axis];
+      if (!definition) return target.set(0, 0, 0);
+      group.getWorldQuaternion(worldQuaternion);
+      return target.set(definition.vector.x, definition.vector.y, definition.vector.z)
+        .applyQuaternion(worldQuaternion)
+        .normalize();
+    },
+  };
+}
+return Object.freeze({ DIRECT_POSE_AXES, snapAxisDragDistance, axisConstrainedTarget, createStudioAxisGizmo });
+})();
+
+// tools/action-studio/studio-pose-drag-controller.js
+const __actionStudioModule39 = (() => {
+const { normalizePose } = __actionStudioModule9;
+const { solveWholeBodyDragPose } = __actionStudioModule40;
+const { applyPoseToProceduralKayKitRig } = __actionStudioModule8;
+const { axisConstrainedTarget, createStudioAxisGizmo } = __actionStudioModule41;
+
+const EFFECTORS = Object.freeze({
+  handL: Object.freeze({ bone: 'handslot.l', label: 'LEFT HAND', color: 0xb99aff, radius: 0.065 }),
+  handR: Object.freeze({ bone: 'handslot.r', label: 'RIGHT HAND · WEAPON', color: 0xff3b81, radius: 0.082 }),
+  footL: Object.freeze({ bone: 'foot.l', label: 'LEFT FOOT', color: 0x65e6a5, radius: 0.075 }),
+  footR: Object.freeze({ bone: 'foot.r', label: 'RIGHT FOOT', color: 0x59d8ff, radius: 0.075 }),
+  elbowL: Object.freeze({ bone: 'lowerarm.l', label: 'LEFT ELBOW', color: 0xd9b8ff, radius: 0.052, joint: true, anchor: 'handL' }),
+  elbowR: Object.freeze({ bone: 'lowerarm.r', label: 'RIGHT ELBOW', color: 0xff8fb5, radius: 0.052, joint: true, anchor: 'handR' }),
+  kneeL: Object.freeze({ bone: 'lowerleg.l', label: 'LEFT KNEE', color: 0xaaffcf, radius: 0.057, joint: true, anchor: 'footL' }),
+  kneeR: Object.freeze({ bone: 'lowerleg.r', label: 'RIGHT KNEE', color: 0x9ce9ff, radius: 0.057, joint: true, anchor: 'footR' }),
+});
+
+function createEffectorMarker(THREE, effector, definition) {
+  const geometry = definition.joint
+    ? new THREE.SphereGeometry(definition.radius, 10, 8)
+    : new THREE.OctahedronGeometry(definition.radius, 0);
+  const marker = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({
+      color: definition.color,
+      transparent: true,
+      opacity: definition.joint ? 0.78 : 0.95,
+      wireframe: Boolean(definition.joint),
+      depthTest: false,
+      depthWrite: false,
+    }),
+  );
+  marker.name = `POSE_DRAG_${effector.toUpperCase()}`;
+  marker.renderOrder = 96;
+  marker.userData.poseDragEffector = effector;
+  return marker;
+}
+
+function createPinRing(THREE, name, color) {
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.105, 0.012, 7, 24),
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.72,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  );
+  ring.name = name;
+  ring.rotation.x = Math.PI / 2;
+  ring.renderOrder = 94;
+  return ring;
+}
+
+function createTargetRing(THREE) {
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.105, 0.014, 7, 24),
+    new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.92,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  );
+  ring.name = 'POSE_DRAG_TARGET';
+  ring.renderOrder = 98;
+  ring.visible = false;
+  return ring;
+}
+
+function createLink(THREE) {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.68,
+    depthTest: false,
+    depthWrite: false,
+  }));
+  line.name = 'POSE_DRAG_ERROR_LINK';
+  line.frustumCulled = false;
+  line.renderOrder = 97;
+  line.visible = false;
+  return line;
+}
+
+function setLink(line, start, end) {
+  const position = line.geometry.attributes.position;
+  position.setXYZ(0, start.x, start.y, start.z);
+  position.setXYZ(1, end.x, end.y, end.z);
+  position.needsUpdate = true;
+  line.geometry.computeBoundingSphere();
+}
+
+function centimeters(value) {
+  return `${Math.round(Math.max(0, value) * 100)}cm`;
+}
+
+function signedCentimeters(value) {
+  return `${value >= 0 ? '+' : '-'}${Math.round(Math.abs(value) * 100)}cm`;
+}
+
+function createStudioPoseDragController(THREE, options) {
+  const {
+    scene,
+    camera,
+    canvas,
+    character,
+    prepareDrag,
+    applyPose,
+    finishDrag,
+  } = options;
+  const enabledControl = document.getElementById('poseDragEnabled');
+  const pinLeftControl = document.getElementById('posePinLeftFoot');
+  const pinRightControl = document.getElementById('posePinRightFoot');
+  const jointControl = document.getElementById('poseJointHandles');
+  const planeControl = document.getElementById('poseDragPlane');
+  const axisEnabledControl = document.getElementById('poseAxisGizmo');
+  const axisSpaceControl = document.getElementById('poseAxisSpace');
+  const axisReadout = document.getElementById('poseAxisReadout');
+  const couplingControl = document.getElementById('poseDragCoupling');
+  const couplingOutput = document.getElementById('poseDragCouplingValue');
+  const status = document.getElementById('poseDragStatus');
+
+  const group = new THREE.Group();
+  group.name = 'DIRECT_POSE_MANIPULATORS';
+  scene.add(group);
+  const axisGizmo = createStudioAxisGizmo(THREE, group);
+  const markers = Object.fromEntries(Object.entries(EFFECTORS).map(([effector, definition]) => [
+    effector,
+    createEffectorMarker(THREE, effector, definition),
+  ]));
+  const pinRings = {
+    footL: createPinRing(THREE, 'POSE_PIN_FOOT_L', EFFECTORS.footL.color),
+    footR: createPinRing(THREE, 'POSE_PIN_FOOT_R', EFFECTORS.footR.color),
+  };
+  const targetMarker = createTargetRing(THREE);
+  const errorLink = createLink(THREE);
+  Object.values(markers).forEach((marker) => group.add(marker));
+  Object.values(pinRings).forEach((ring) => group.add(ring));
+  group.add(targetMarker, errorLink);
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const dragPlane = new THREE.Plane();
+  const planeNormal = new THREE.Vector3();
+  const ringNormal = new THREE.Vector3(0, 0, 1);
+  const dragPoint = new THREE.Vector3();
+  const dragAxisWorld = new THREE.Vector3();
+  const axisStartPoint = new THREE.Vector3();
+  const axisStartTarget = new THREE.Vector3();
+  const boneWorldQuaternion = new THREE.Quaternion();
+  const dragGizmoQuaternion = new THREE.Quaternion();
+  const targetPoint = new THREE.Vector3();
+  const rigPoints = Object.fromEntries([
+    ...Object.keys(EFFECTORS), 'hips', 'chest',
+  ].map((key) => [key, new THREE.Vector3()]));
+  let dragging = null;
+  let selectedEffector = null;
+  let hovered = null;
+  let hoveredAxis = null;
+  let dragAxis = null;
+  let dragAxisSpace = 'world';
+  let axisDistance = 0;
+  let axisSnap = false;
+  let dragContext = null;
+  let referencePose = null;
+  let workingPose = null;
+  let pinnedFeet = {};
+  let secondaryTargets = {};
+  let lastResult = null;
+
+  function settings() {
+    return {
+      enabled: enabledControl.checked,
+      pinLeftFoot: pinLeftControl.checked,
+      pinRightFoot: pinRightControl.checked,
+      coupling: Number(couplingControl.value),
+      showJointHandles: jointControl.checked,
+      dragPlane: planeControl.value,
+      showAxisGizmo: axisEnabledControl.checked,
+      axisSpace: axisSpaceControl.value,
+      maxStretch: 1.05,
+    };
+  }
+
+  function setStatus(message, pending = false) {
+    status.textContent = message;
+    status.classList.toggle('pending', pending);
+  }
+
+  function readRigPoints() {
+    character.object3d.updateMatrixWorld(true);
+    Object.entries(EFFECTORS).forEach(([effector, definition]) => {
+      character.rig.bones[definition.bone].getWorldPosition(rigPoints[effector]);
+    });
+    character.rig.bones.hips.getWorldPosition(rigPoints.hips);
+    character.rig.bones.chest.getWorldPosition(rigPoints.chest);
+    return Object.fromEntries(Object.entries(rigPoints).map(([key, value]) => [
+      key,
+      { x: value.x, y: value.y, z: value.z },
+    ]));
+  }
+
+  function evaluatePose(pose) {
+    applyPoseToProceduralKayKitRig(character.rig, pose);
+    return readRigPoints();
+  }
+
+  function setPointer(event) {
+    const rect = canvas.getBoundingClientRect();
+    pointer.set(
+      ((event.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1,
+      -((event.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1,
+    );
+    raycaster.setFromCamera(pointer, camera);
+  }
+
+  function pickControl(event) {
+    if (!group.visible) return null;
+    setPointer(event);
+    const axis = selectedEffector && settings().showAxisGizmo ? axisGizmo.pick(raycaster) : null;
+    if (axis) return { axis, effector: selectedEffector, marker: null };
+    const marker = raycaster.intersectObjects(Object.values(markers).filter((entry) => entry.visible), false)[0]?.object || null;
+    return marker ? { axis: null, effector: marker.userData.poseDragEffector, marker } : null;
+  }
+
+  function solve(passes) {
+    lastResult = solveWholeBodyDragPose({
+      pose: referencePose,
+      seedPose: workingPose,
+      referencePose,
+      evaluatePose,
+      effector: dragging,
+      target: targetPoint,
+      pinnedFeet,
+      coupling: settings().coupling,
+      secondaryTargets,
+      allowWholeBody: !EFFECTORS[dragging].joint,
+      maxStretch: settings().maxStretch,
+      passes,
+    });
+    workingPose = lastResult.pose;
+    applyPose?.(workingPose, dragContext, { ...lastResult, effector: dragging, live: true });
+    const pins = Object.values(lastResult.pinErrors);
+    const pinError = pins.length ? Math.max(...pins) : 0;
+    const anchors = Object.values(lastResult.secondaryErrors || {});
+    const anchorError = anchors.length ? Math.max(...anchors) : 0;
+    const lift = Math.abs(lastResult.bodyLift) >= 0.005
+      ? ` · body ${signedCentimeters(lastResult.bodyLift)}`
+      : '';
+    const anchor = anchors.length ? ` · anchor ${centimeters(anchorError)}` : '';
+    const axis = dragAxis
+      ? ` · ${dragAxisSpace.toUpperCase()} ${dragAxis.toUpperCase()} ${signedCentimeters(axisDistance)}${axisSnap ? ' · SNAP' : ''}`
+      : '';
+    setStatus(`${EFFECTORS[dragging].label} · target ${centimeters(lastResult.targetError)} · pins ${centimeters(pinError)}${anchor}${lift}${axis}`, true);
+    axisReadout.textContent = dragAxis
+      ? `${dragAxisSpace.toUpperCase()} ${dragAxis.toUpperCase()} · ${signedCentimeters(axisDistance)}${axisSnap ? ' · Shift snap 5cm' : ''}`
+      : 'FREE · constrained by the selected drag plane';
+  }
+
+  function configureDragPlane() {
+    const mode = settings().dragPlane;
+    if (mode === 'ground') {
+      planeNormal.set(0, 1, 0);
+    } else if (mode === 'vertical') {
+      camera.getWorldDirection(planeNormal);
+      planeNormal.y = 0;
+      if (planeNormal.lengthSq() < 0.0001) planeNormal.set(0, 0, 1);
+      planeNormal.normalize();
+    } else {
+      camera.getWorldDirection(planeNormal);
+    }
+    dragPlane.setFromNormalAndCoplanarPoint(planeNormal, targetPoint);
+    targetMarker.quaternion.setFromUnitVectors(ringNormal, planeNormal);
+    return planeControl.options[planeControl.selectedIndex]?.text || mode;
+  }
+
+  function setSelectedGizmoTransform(position, locked = false) {
+    const space = locked ? dragAxisSpace : settings().axisSpace;
+    const quaternion = locked
+      ? dragGizmoQuaternion
+      : character.rig.bones[EFFECTORS[selectedEffector].bone].getWorldQuaternion(boneWorldQuaternion);
+    axisGizmo.setTransform(position, quaternion, space);
+  }
+
+  function configureAxisDrag() {
+    dragAxisSpace = settings().axisSpace;
+    character.rig.bones[EFFECTORS[dragging].bone].getWorldQuaternion(dragGizmoQuaternion);
+    setSelectedGizmoTransform(targetPoint, true);
+    axisGizmo.getWorldAxis(dragAxis, dragAxisWorld);
+    axisStartTarget.copy(targetPoint);
+    camera.getWorldDirection(planeNormal);
+    planeNormal.addScaledVector(dragAxisWorld, -planeNormal.dot(dragAxisWorld));
+    if (planeNormal.lengthSq() < 0.0001) {
+      planeNormal.set(0, 1, 0);
+      if (Math.abs(planeNormal.dot(dragAxisWorld)) > 0.92) planeNormal.set(1, 0, 0);
+      planeNormal.addScaledVector(dragAxisWorld, -planeNormal.dot(dragAxisWorld));
+    }
+    planeNormal.normalize();
+    dragPlane.setFromNormalAndCoplanarPoint(planeNormal, targetPoint);
+    axisStartPoint.copy(targetPoint);
+    raycaster.ray.intersectPlane(dragPlane, axisStartPoint);
+    targetMarker.quaternion.setFromUnitVectors(ringNormal, dragAxisWorld);
+    axisGizmo.setActive(dragAxis);
+    return `${dragAxisSpace.toUpperCase()} ${dragAxis.toUpperCase()} axis`;
+  }
+
+  function beginDrag(event, effector, axis = null) {
+    dragContext = prepareDrag?.(effector);
+    if (!dragContext?.pose) return;
+    dragging = effector;
+    selectedEffector = effector;
+    dragAxis = axis;
+    axisDistance = 0;
+    axisSnap = false;
+    referencePose = normalizePose(dragContext.pose);
+    workingPose = { ...referencePose };
+    evaluatePose(referencePose);
+    readRigPoints();
+    targetPoint.copy(rigPoints[dragging]);
+    pinnedFeet = {};
+    if (pinLeftControl.checked && dragging !== 'footL') pinnedFeet.footL = rigPoints.footL.clone();
+    if (pinRightControl.checked && dragging !== 'footR') pinnedFeet.footR = rigPoints.footR.clone();
+    secondaryTargets = {};
+    const anchorEffector = EFFECTORS[dragging].anchor;
+    if (anchorEffector) {
+      secondaryTargets[anchorEffector] = { target: rigPoints[anchorEffector].clone(), weight: 2 };
+    }
+    const planeLabel = dragAxis ? configureAxisDrag() : configureDragPlane();
+    markers[dragging].scale.setScalar(1.28);
+    targetMarker.visible = true;
+    targetMarker.position.copy(targetPoint);
+    errorLink.visible = true;
+    canvas.style.cursor = 'grabbing';
+    canvas.setPointerCapture(event.pointerId);
+    setStatus(`${EFFECTORS[dragging].label} selected · ${planeLabel} plane`, true);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
+  function moveDrag(event) {
+    setPointer(event);
+    if (!raycaster.ray.intersectPlane(dragPlane, dragPoint)) return;
+    if (dragAxis) {
+      const rawDistance = dragPoint.sub(axisStartPoint).dot(dragAxisWorld);
+      const constrained = axisConstrainedTarget(axisStartTarget, dragAxisWorld, rawDistance, {
+        snap: event.shiftKey,
+        snapStep: 0.05,
+      });
+      targetPoint.set(constrained.target.x, constrained.target.y, constrained.target.z);
+      axisDistance = constrained.distance;
+      axisSnap = event.shiftKey;
+    } else {
+      targetPoint.copy(dragPoint);
+    }
+    targetMarker.position.copy(targetPoint);
+    solve(2);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
+  function endDrag(event) {
+    if (!dragging) return;
+    solve(6);
+    if (dragging === 'footL' || dragging === 'footR') {
+      const contactKey = dragging === 'footL' ? 'lL_contact' : 'lR_contact';
+      const startPoint = evaluatePose(referencePose)[dragging];
+      workingPose[contactKey] = Math.abs(targetPoint.y - startPoint.y) < 0.05 ? 1 : 0;
+    }
+    applyPose?.(workingPose, dragContext, { ...lastResult, effector: dragging, live: false });
+    finishDrag?.(workingPose, dragContext, { ...lastResult, effector: dragging });
+    const finishedLabel = EFFECTORS[dragging].label;
+    const finishedError = lastResult?.targetError || 0;
+    const finishedAxis = dragAxis ? ` · ${dragAxisSpace.toUpperCase()} ${dragAxis.toUpperCase()} ${signedCentimeters(axisDistance)}` : '';
+    Object.values(markers).forEach((marker) => marker.scale.setScalar(1));
+    dragging = null;
+    dragAxis = null;
+    dragContext = null;
+    referencePose = null;
+    workingPose = null;
+    pinnedFeet = {};
+    secondaryTargets = {};
+    targetMarker.visible = false;
+    errorLink.visible = false;
+    axisGizmo.setActive(null);
+    canvas.style.cursor = '';
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    axisReadout.textContent = `${finishedLabel} selected · choose X / Y / Z or drag the center freely`;
+    setStatus(`${finishedLabel} baked into the selected Pose Key · error ${centimeters(finishedError)}${finishedAxis}`);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+
+  canvas.addEventListener('pointerdown', (event) => {
+    const control = pickControl(event);
+    if (control) beginDrag(event, control.effector, control.axis);
+  }, true);
+  canvas.addEventListener('pointermove', (event) => {
+    if (dragging) {
+      moveDrag(event);
+      return;
+    }
+    const control = pickControl(event);
+    hovered = control?.marker || null;
+    hoveredAxis = control?.axis || null;
+    axisGizmo.setHovered(hoveredAxis);
+    if (hoveredAxis) canvas.style.cursor = 'move';
+    else if (hovered) canvas.style.cursor = 'grab';
+    else if (canvas.style.cursor === 'grab' || canvas.style.cursor === 'move') canvas.style.cursor = '';
+  }, true);
+  canvas.addEventListener('pointerup', endDrag, true);
+  canvas.addEventListener('pointercancel', endDrag, true);
+
+  enabledControl.addEventListener('change', () => {
+    group.visible = enabledControl.checked;
+    setStatus(enabledControl.checked
+      ? 'Drag a hand or foot control in the stage.'
+      : 'Direct Pose controls hidden.');
+  });
+  axisEnabledControl.addEventListener('change', () => {
+    setStatus(axisEnabledControl.checked
+      ? 'XYZ axis gizmo enabled · select a pose node.'
+      : 'XYZ axis gizmo hidden · free drag remains available.');
+  });
+  axisSpaceControl.addEventListener('change', () => {
+    axisReadout.textContent = `${axisSpaceControl.value.toUpperCase()} axes · select X / Y / Z`;
+    setStatus(`Axis space · ${axisSpaceControl.value.toUpperCase()}`);
+  });
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || dragging) return;
+    selectedEffector = null;
+    hoveredAxis = null;
+    axisGizmo.setHovered(null);
+    axisGizmo.setVisible(false);
+    axisReadout.textContent = 'No node selected';
+    setStatus('Axis selection cleared.');
+  });
+  couplingControl.addEventListener('input', () => {
+    couplingOutput.textContent = Number(couplingControl.value).toFixed(2);
+  });
+  [pinLeftControl, pinRightControl].forEach((control) => {
+    control.addEventListener('change', () => {
+      setStatus(`Foot pins · L ${pinLeftControl.checked ? 'ON' : 'OFF'} · R ${pinRightControl.checked ? 'ON' : 'OFF'}`);
+    });
+  });
+  jointControl.addEventListener('change', () => {
+    setStatus(jointControl.checked
+      ? 'Elbow and knee bend handles visible.'
+      : 'Elbow and knee bend handles hidden.');
+  });
+  planeControl.addEventListener('change', () => {
+    setStatus(`Drag plane · ${planeControl.options[planeControl.selectedIndex].text}`);
+  });
+
+  function update() {
+    group.visible = settings().enabled;
+    if (!group.visible) return;
+    readRigPoints();
+    Object.keys(markers).forEach((effector) => {
+      markers[effector].visible = !EFFECTORS[effector].joint || settings().showJointHandles || dragging === effector;
+      markers[effector].position.copy(rigPoints[effector]);
+      const scale = dragging === effector ? 1.28 : selectedEffector === effector ? 1.17 : hovered === markers[effector] ? 1.14 : 1;
+      markers[effector].scale.setScalar(scale);
+    });
+    const selectedVisible = selectedEffector && markers[selectedEffector]?.visible;
+    axisGizmo.setVisible(Boolean(selectedVisible && settings().showAxisGizmo));
+    if (selectedVisible && settings().showAxisGizmo) {
+      if (dragAxis) setSelectedGizmoTransform(targetPoint, true);
+      else setSelectedGizmoTransform(rigPoints[selectedEffector]);
+      axisGizmo.updateScale(camera);
+    }
+    pinRings.footL.position.copy(rigPoints.footL);
+    pinRings.footR.position.copy(rigPoints.footR);
+    pinRings.footL.visible = settings().pinLeftFoot && dragging !== 'footL';
+    pinRings.footR.visible = settings().pinRightFoot && dragging !== 'footR';
+    if (dragging) {
+      setLink(errorLink, rigPoints[dragging], targetPoint);
+    }
+  }
+
+  group.visible = settings().enabled;
+  couplingOutput.textContent = settings().coupling.toFixed(2);
+  axisReadout.textContent = 'Select a hand, foot, elbow, or knee';
+  setStatus('Select a pose node, then drag X / Y / Z or drag the node freely.');
+  return {
+    group,
+    markers,
+    axisGizmo,
+    update,
+    get dragging() { return dragging; },
+    get selected() { return selectedEffector; },
+    get axis() { return dragAxis; },
+    get diagnostics() {
+      return { selectedEffector, dragAxis, axisSpace: settings().axisSpace, axisDistance, axisSnap, ...(lastResult || {}) };
+    },
+  };
+}
+return Object.freeze({ createStudioPoseDragController });
+})();
+
+// tools/action-studio/studio-blocking-workflow.js
+const __actionStudioModule42 = (() => {
+const { evaluateClip } = __actionStudioModule25;
+const { normalizePose } = __actionStudioModule9;
+const { createDefaultCharacter } = __actionStudioModule1;
+const { createDebugSword, mountDebugSword } = __actionStudioModule12;
+const { applyMountCalibration } = __actionStudioModule3;
+
+const GHOST_STYLES = Object.freeze({
+  previous: Object.freeze({ color: 0x648dff, opacity: 0.28 }),
+  next: Object.freeze({ color: 0xffad5b, opacity: 0.24 }),
+});
+
+const TRAJECTORY_STYLES = Object.freeze({
+  handL: Object.freeze({ color: 0xcaa8ff, label: 'left palm' }),
+  handR: Object.freeze({ color: 0xff3b81, label: 'weapon palm' }),
+  swordTip: Object.freeze({ color: 0x55e6c1, label: 'sword tip' }),
+});
+
+function boundedFrameStep(value) {
+  const number = Math.round(Number(value) || 4);
+  return Math.max(1, Math.min(60, number));
+}
+
+function uniqueBlockingName(clip, selectedKeyIndex, frame) {
+  const root = `block_${String(selectedKeyIndex + 1).padStart(2, '0')}_${frame}f`;
+  let name = root;
+  let suffix = 2;
+  while (clip.poses[name] || clip.timeline.some((key) => key.name === name)) name = `${root}_${suffix++}`;
+  return name;
+}
+
+function captureNextBlockingKey(clip, selectedKeyIndex, pose, options = {}) {
+  if (!clip?.timeline?.length || !clip?.poses) throw new Error('Capture requires an Action Studio clip');
+  const index = Math.max(0, Math.min(Math.round(Number(selectedKeyIndex) || 0), clip.timeline.length - 1));
+  const current = clip.timeline[index];
+  const frameStep = boundedFrameStep(options.frameStep);
+  const frame = current.frame + frameStep;
+  const next = clip.timeline[index + 1];
+  if (next && next.frame <= frame) {
+    clip.timeline.forEach((key) => {
+      if (key.frame > current.frame) key.frame += frameStep;
+    });
+  }
+  const name = uniqueBlockingName(clip, index, frame);
+  clip.timeline.splice(index + 1, 0, {
+    name,
+    frame,
+    frames: frameStep,
+    ease: options.ease || 'out',
+    tag: options.tag || 'blocking',
+    impact: false,
+    cancel: false,
+  });
+  clip.poses[name] = normalizePose(pose || clip.poses[current.name]);
+  return { name, frame, frameStep };
+}
+
+function ghostLineStyle(style) {
+  return {
+    lineColor: style.color,
+    glowColor: style.color,
+    contourColor: style.color,
+    headColor: style.color,
+    jointColor: style.color,
+    lineOpacity: style.opacity,
+    headOpacity: style.opacity,
+    glowOpacity: 0,
+    contourOpacity: style.opacity * 0.82,
+    jointOpacity: style.opacity * 0.72,
+  };
+}
+
+function ghostSwordStyle(style) {
+  return {
+    outlineColor: style.color,
+    skeletonColor: style.color,
+    glowColor: style.color,
+    jointColor: style.color,
+    outlineOpacity: style.opacity,
+    skeletonOpacity: style.opacity * 0.8,
+    glowOpacity: 0,
+    jointOpacity: style.opacity * 0.6,
+  };
+}
+
+function createGhostRig(THREE, scene, kind, mountCalibration) {
+  const style = GHOST_STYLES[kind];
+  const character = createDefaultCharacter(THREE, { lineStyle: ghostLineStyle(style) });
+  const sword = createDebugSword(THREE, { style: ghostSwordStyle(style) });
+  mountDebugSword(character, sword, mountCalibration);
+  character.object3d.name = `BLOCKING_${kind.toUpperCase()}_GHOST`;
+  character.setRigNodesVisible(false);
+  character.setRigGlowVisible(false);
+  sword.setNodesVisible(false);
+  sword.setGlowVisible(false);
+  character.object3d.visible = false;
+  scene.add(character.object3d);
+  return { character, sword, keyName: null };
+}
+
+function createTrajectory(THREE, scene, id, style) {
+  const line = new THREE.Line(
+    new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({
+      color: style.color,
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false,
+      depthTest: false,
+    }),
+  );
+  line.name = `BLOCKING_TRAJECTORY_${id.toUpperCase()}`;
+  line.frustumCulled = false;
+  line.renderOrder = 8;
+  const keys = new THREE.Points(
+    new THREE.BufferGeometry(),
+    new THREE.PointsMaterial({
+      color: style.color,
+      transparent: true,
+      opacity: 0.92,
+      size: id === 'swordTip' ? 0.07 : 0.055,
+      sizeAttenuation: true,
+      depthWrite: false,
+      depthTest: false,
+    }),
+  );
+  keys.name = `BLOCKING_TRAJECTORY_KEYS_${id.toUpperCase()}`;
+  keys.frustumCulled = false;
+  keys.renderOrder = 9;
+  scene.add(line, keys);
+  return { line, keys, sampleCount: 0, keyCount: 0 };
+}
+
+function replacePoints(object, THREE, points) {
+  object.geometry.dispose();
+  object.geometry = new THREE.BufferGeometry().setFromPoints(points);
+}
+
+function sampleFrames(clip, maximumSamples = 121) {
+  const first = clip.timeline[0].frame;
+  const duration = Math.max(first, clip.durationFrames);
+  const step = Math.max(1, Math.ceil(Math.max(1, duration - first) / maximumSamples));
+  const frames = new Set(clip.timeline.map((key) => key.frame));
+  for (let frame = first; frame <= duration; frame += step) frames.add(frame);
+  frames.add(duration);
+  return [...frames].sort((a, b) => a - b);
+}
+
+function createStudioBlockingWorkflow(THREE, options) {
+  const {
+    scene,
+    camera,
+    getClip,
+    getSelectedKeyIndex,
+    getMountCalibration,
+    onCapture,
+  } = options;
+  const mount = getMountCalibration();
+  const ghosts = {
+    previous: createGhostRig(THREE, scene, 'previous', mount),
+    next: createGhostRig(THREE, scene, 'next', mount),
+  };
+  const probe = {
+    character: createDefaultCharacter(THREE, {
+      lineStyle: { lineOpacity: 0, headOpacity: 0, glowOpacity: 0, contourOpacity: 0, jointOpacity: 0 },
+    }),
+    sword: createDebugSword(THREE, {
+      style: { outlineOpacity: 0, skeletonOpacity: 0, glowOpacity: 0, jointOpacity: 0 },
+    }),
+  };
+  mountDebugSword(probe.character, probe.sword, mount);
+  const trajectories = Object.fromEntries(Object.entries(TRAJECTORY_STYLES).map(([id, style]) => [
+    id,
+    createTrajectory(THREE, scene, id, style),
+  ]));
+  const scratch = {
+    handL: new THREE.Vector3(),
+    handR: new THREE.Vector3(),
+    swordTip: new THREE.Vector3(),
+  };
+  let trajectorySampleCount = 0;
+  let refreshQueued = false;
+
+  function enabled(id, fallback = true) {
+    const control = document.getElementById(id);
+    return control ? control.checked : fallback;
+  }
+
+  function showGhost(kind, key) {
+    const ghost = ghosts[kind];
+    const clip = getClip();
+    const visible = Boolean(key) && enabled(`blockingGhost${kind === 'previous' ? 'Previous' : 'Next'}`);
+    ghost.character.object3d.visible = visible;
+    ghost.keyName = visible ? key.name : null;
+    if (!visible) return;
+    applyMountCalibration(ghost.sword.object3d, getMountCalibration());
+    ghost.character.applyPose(clip.poses[key.name]);
+    ghost.character.object3d.updateMatrixWorld(true);
+    ghost.character.update(0, camera);
+    ghost.sword.update();
+  }
+
+  function setTrajectoryVisible(visible) {
+    Object.values(trajectories).forEach((track) => {
+      track.line.visible = visible && track.sampleCount > 1;
+      track.keys.visible = visible && track.keyCount > 0;
+    });
+  }
+
+  function rebuildTrajectories() {
+    const clip = getClip();
+    const visible = enabled('blockingTrajectories');
+    if (!clip?.timeline?.length) {
+      setTrajectoryVisible(false);
+      return;
+    }
+    applyMountCalibration(probe.sword.object3d, getMountCalibration());
+    const sampled = { handL: [], handR: [], swordTip: [] };
+    const keyPoints = { handL: [], handR: [], swordTip: [] };
+    const keyFrames = new Set(clip.timeline.map((key) => key.frame));
+    const frames = sampleFrames(clip);
+    frames.forEach((frame) => {
+      const evaluation = evaluateClip(clip, frame);
+      probe.character.applyPose(evaluation.pose);
+      probe.character.object3d.updateMatrixWorld(true);
+      probe.sword.update();
+      probe.character.rig.bones['hand.l'].getWorldPosition(scratch.handL);
+      probe.character.rig.bones['hand.r'].getWorldPosition(scratch.handR);
+      probe.sword.trailTip.getWorldPosition(scratch.swordTip);
+      Object.keys(sampled).forEach((id) => {
+        const point = scratch[id].clone();
+        sampled[id].push(point);
+        if (keyFrames.has(frame)) keyPoints[id].push(point.clone());
+      });
+    });
+    Object.keys(trajectories).forEach((id) => {
+      const track = trajectories[id];
+      replacePoints(track.line, THREE, sampled[id]);
+      replacePoints(track.keys, THREE, keyPoints[id]);
+      track.sampleCount = sampled[id].length;
+      track.keyCount = keyPoints[id].length;
+    });
+    trajectorySampleCount = frames.length;
+    setTrajectoryVisible(visible);
+  }
+
+  function refresh() {
+    const clip = getClip();
+    if (!clip?.timeline?.length) return;
+    const index = Math.max(0, Math.min(getSelectedKeyIndex(), clip.timeline.length - 1));
+    showGhost('previous', clip.timeline[index - 1]);
+    showGhost('next', clip.timeline[index + 1]);
+    rebuildTrajectories();
+    const status = document.getElementById('blockingStatus');
+    if (status) {
+      const previous = clip.timeline[index - 1]?.name || '—';
+      const next = clip.timeline[index + 1]?.name || '—';
+      status.textContent = `Selected ${clip.timeline[index].name} · ghost ${previous} ← / → ${next} · ${trajectorySampleCount} path samples`;
+    }
+  }
+
+  function scheduleRefresh() {
+    if (refreshQueued) return;
+    refreshQueued = true;
+    window.requestAnimationFrame(() => {
+      refreshQueued = false;
+      refresh();
+    });
+  }
+
+  function update() {
+    Object.values(ghosts).forEach((ghost) => {
+      if (!ghost.character.object3d.visible) return;
+      ghost.character.update(0, camera);
+      ghost.sword.update();
+    });
+  }
+
+  ['blockingGhostPrevious', 'blockingGhostNext', 'blockingTrajectories'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('change', refresh);
+  });
+  document.getElementById('captureNextKey')?.addEventListener('click', () => {
+    const step = boundedFrameStep(document.getElementById('blockingFrameStep')?.value);
+    onCapture?.(step);
+  });
+
+  return {
+    refresh,
+    scheduleRefresh,
+    update,
+    setStatus(message, error = false) {
+      const status = document.getElementById('blockingStatus');
+      if (!status) return;
+      status.textContent = message;
+      status.classList.toggle('error', error);
+    },
+    get diagnostics() {
+      return {
+        previousKey: ghosts.previous.keyName,
+        nextKey: ghosts.next.keyName,
+        trajectorySampleCount,
+        trajectories: Object.fromEntries(Object.entries(trajectories).map(([id, track]) => [id, {
+          label: TRAJECTORY_STYLES[id].label,
+          samples: track.sampleCount,
+          keys: track.keyCount,
+          visible: track.line.visible,
+        }])),
+      };
+    },
+  };
+}
+return Object.freeze({ captureNextBlockingKey, createStudioBlockingWorkflow });
+})();
+
+// src/animation/legacy-punch-import.js
+const __actionStudioModule44 = (() => {
+const { LEGACY_NON_HUMANOID_POSE_KEYS, POSE_KEYS } = __actionStudioModule10;
+const { createAnimationClip } = __actionStudioModule25;
+
+function importLegacyPunchSnapshot(snapshot = {}) {
+  const phases = snapshot.phases || snapshot.PHASES || {};
+  const ignoredKeys = new Set();
+  const poses = {};
+  for (const [name, sourcePose] of Object.entries(phases)) {
+    poses[name] = {};
+    for (const key of POSE_KEYS) {
+      if (sourcePose && sourcePose[key] !== undefined) poses[name][key] = sourcePose[key];
+    }
+    for (const key of LEGACY_NON_HUMANOID_POSE_KEYS) {
+      if (sourcePose && sourcePose[key] !== undefined) ignoredKeys.add(key);
+    }
+  }
+  return {
+    clip: createAnimationClip({
+      id: snapshot.id || snapshot.name || 'imported_punch_action',
+      name: snapshot.name || 'Imported Punch Action',
+      fps: snapshot.fps || 60,
+      timeline: snapshot.seq || snapshot.SEQ,
+      poses,
+      metadata: { importedFrom: 'punch-studio', legacyVersion: snapshot.version ?? null },
+    }),
+    report: { ignoredPoseKeys: [...ignoredKeys].sort() },
+  };
+}
+return Object.freeze({ importLegacyPunchSnapshot });
+})();
+
+// tools/action-studio/studio-project.js
+const __actionStudioModule45 = (() => {
+const { createAnimationClip } = __actionStudioModule25;
+const { ACTION_WINDOW_TYPES, createActionDefinition } = __actionStudioModule33;
+
+const ACTION_STUDIO_PROJECT_FORMAT = 'action-studio-project';
+
+function cloneSerializable(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function createStudioProject({ clip, action, weaponMount }) {
+  return {
+    format: ACTION_STUDIO_PROJECT_FORMAT,
+    version: 1,
+    clip: cloneSerializable(clip),
+    action: cloneSerializable(action),
+    weaponMount: cloneSerializable(weaponMount),
+  };
+}
+
+function serializeStudioProject(project) {
+  return JSON.stringify(project, null, 2);
+}
+
+function studioProjectFilename(project, date = new Date()) {
+  const source = project?.clip?.id || project?.clip?.name || project?.action?.id || 'action-studio-project';
+  const safeName = String(source)
+    .trim()
+    .replace(/[^a-z0-9._-]+/gi, '-')
+    .replace(/^-+|-+$/g, '') || 'action-studio-project';
+  const stamp = date instanceof Date && Number.isFinite(date.getTime())
+    ? date.toISOString().replace(/[:.]/g, '-').replace('T', '_').replace('Z', '')
+    : 'snapshot';
+  return `${safeName}_${stamp}.json`;
+}
+
+function createStudioAutosave(project, reason = 'edit', savedAt = new Date().toISOString()) {
+  return {
+    format: 'action-studio-autosave',
+    version: 1,
+    savedAt,
+    reason: String(reason || 'edit'),
+    project: cloneSerializable(project),
+  };
+}
+
+function readStoredJson(storage, key, fallback) {
+  try {
+    const stored = JSON.parse(storage.getItem(key) || 'null');
+    return stored == null ? fallback : stored;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredJson(storage, key, value) {
+  storage.setItem(key, JSON.stringify(value));
+  return value;
+}
+
+function buildComboProjectData(queue, weaponMount) {
+  const timeline = [];
+  const poses = {};
+  const windows = Object.fromEntries(ACTION_WINDOW_TYPES.map((type) => [type, []]));
+  let endFrame = 0;
+
+  queue.forEach((entry, clipIndex) => {
+    const sourceClip = createAnimationClip(entry.project.clip);
+    const sourceAction = createActionDefinition(entry.project.action, sourceClip.durationFrames);
+    const firstFrame = sourceClip.timeline[0].frame;
+    const offset = clipIndex === 0 ? -firstFrame : endFrame + 4 - firstFrame;
+    sourceClip.timeline.forEach((key) => {
+      const name = `combo_${clipIndex + 1}_${key.name}`;
+      timeline.push({ ...key, name, frame: key.frame + offset });
+      poses[name] = sourceClip.poses[key.name];
+    });
+    ACTION_WINDOW_TYPES.forEach((type) => {
+      sourceAction.windows[type].forEach((window) => windows[type].push({
+        ...window,
+        startFrame: window.startFrame + offset,
+        endFrame: window.endFrame + offset,
+      }));
+    });
+    endFrame = sourceClip.durationFrames + offset;
+  });
+
+  const comboClip = createAnimationClip({ id: 'combo_preview', name: 'Combo Preview', timeline, poses });
+  return {
+    clip: comboClip,
+    action: createActionDefinition({
+      id: comboClip.id,
+      clipId: comboClip.id,
+      category: 'combo-preview',
+      windows,
+    }, comboClip.durationFrames),
+    weaponMount: cloneSerializable(weaponMount),
+  };
+}
+return Object.freeze({ ACTION_STUDIO_PROJECT_FORMAT, cloneSerializable, createStudioProject, serializeStudioProject, studioProjectFilename, createStudioAutosave, readStoredJson, writeStoredJson, buildComboProjectData });
+})();
+
+// tools/action-studio/studio-project-io-controller.js
+const __actionStudioModule43 = (() => {
+const { importLegacyPunchSnapshot } = __actionStudioModule44;
+const { createStudioAutosave, readStoredJson, serializeStudioProject, studioProjectFilename, writeStoredJson } = __actionStudioModule45;
+
+const ACTION_STUDIO_AUTOSAVE_KEY = 'ACTION_STUDIO_AUTOSAVE_V1';
+
+function describeSavedAt(value) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString() : 'unknown time';
+}
+
+function createStudioProjectIoController(options) {
+  const {
+    getProject,
+    applyProject,
+    onStatus,
+    storage = localStorage,
+  } = options;
+  let autosaveTimer = 0;
+
+  function setStatus(message, error = false) {
+    onStatus?.(message, error);
+  }
+
+  function updateAutosaveStatus() {
+    const host = document.getElementById('autosaveStatus');
+    if (!host) return;
+    const autosave = readStoredJson(storage, ACTION_STUDIO_AUTOSAVE_KEY, null);
+    host.textContent = autosave?.project
+      ? `Auto backup · ${describeSavedAt(autosave.savedAt)} · ${autosave.reason}`
+      : 'Auto backup starts after your first edit or Capture.';
+  }
+
+  function syncText() {
+    const text = serializeStudioProject(getProject());
+    const textarea = document.getElementById('projectJson');
+    textarea.value = text;
+    return text;
+  }
+
+  function saveAutosave(reason = 'edit') {
+    const autosave = createStudioAutosave(getProject(), reason);
+    writeStoredJson(storage, ACTION_STUDIO_AUTOSAVE_KEY, autosave);
+    updateAutosaveStatus();
+    return autosave;
+  }
+
+  function scheduleAutosave(reason = 'edit', delay = 320) {
+    window.clearTimeout(autosaveTimer);
+    autosaveTimer = window.setTimeout(() => saveAutosave(reason), delay);
+  }
+
+  function importData(input, sourceLabel = 'JSON text') {
+    let data = input;
+    if (data?.format === 'action-studio-autosave' && data.project) data = data.project;
+    if (data?.format === 'action-studio-project' && data.clip) {
+      applyProject(data);
+    } else if (data?.format === 'action-studio-clip' || (data?.timeline && data?.poses)) {
+      applyProject({ clip: data });
+    } else if (data?.seq || data?.SEQ || data?.phases || data?.PHASES) {
+      const result = importLegacyPunchSnapshot(data);
+      applyProject({ clip: result.clip });
+      setStatus(`Imported legacy Punch snapshot from ${sourceLabel}. Ignored editor-only keys: ${result.report.ignoredPoseKeys.join(', ') || 'none'}.`);
+      return result;
+    } else {
+      throw new Error('Unknown project shape');
+    }
+    setStatus(`Imported Action Studio project from ${sourceLabel}.`);
+    return data;
+  }
+
+  function importText(text, sourceLabel) {
+    try {
+      return importData(JSON.parse(text), sourceLabel);
+    } catch (error) {
+      setStatus(`Import failed: ${error.message}`, true);
+      return null;
+    }
+  }
+
+  document.getElementById('exportProject')?.addEventListener('click', () => {
+    const text = syncText();
+    document.getElementById('projectJson').select();
+    navigator.clipboard?.writeText(text).catch(() => {});
+    setStatus('Project JSON copied and shown below.');
+  });
+  document.getElementById('downloadProject')?.addEventListener('click', () => {
+    const project = getProject();
+    const text = serializeStudioProject(project);
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = studioProjectFilename(project);
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    syncText();
+    saveAutosave('download JSON snapshot');
+    setStatus(`Downloaded ${anchor.download}.`);
+  });
+  document.getElementById('importProject')?.addEventListener('click', () => {
+    importText(document.getElementById('projectJson').value, 'JSON text');
+  });
+  document.getElementById('openProjectFile')?.addEventListener('click', () => {
+    document.getElementById('projectFileInput').click();
+  });
+  document.getElementById('projectFileInput')?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    importText(await file.text(), file.name);
+    event.target.value = '';
+  });
+  document.getElementById('restoreAutosave')?.addEventListener('click', () => {
+    const autosave = readStoredJson(storage, ACTION_STUDIO_AUTOSAVE_KEY, null);
+    if (!autosave?.project) {
+      setStatus('No Action Studio auto backup exists yet.', true);
+      return;
+    }
+    applyProject(autosave.project);
+    syncText();
+    setStatus(`Restored auto backup from ${describeSavedAt(autosave.savedAt)}.`);
+  });
+
+  updateAutosaveStatus();
+  return { syncText, saveAutosave, scheduleAutosave, importData, updateAutosaveStatus };
+}
+return Object.freeze({ ACTION_STUDIO_AUTOSAVE_KEY, createStudioProjectIoController });
+})();
+
+// src/animation/quaternius-animation-retarget.js
+const __actionStudioModule48 = (() => {
+const { sanitizeAnimationTargetName } = __actionStudioModule6;
+
+const QUATERNIUS_BONE_RETARGETS = Object.freeze([
+  Object.freeze({ source: 'root', target: 'root', position: true }),
+  Object.freeze({ source: 'pelvis', target: 'hips', position: true }),
+  Object.freeze({ source: 'spine_01', target: 'spine' }),
+  Object.freeze({ source: 'spine_03', target: 'chest' }),
+  Object.freeze({ source: 'Head', target: 'head' }),
+  Object.freeze({ source: 'upperarm_l', target: 'upperarm.l' }),
+  Object.freeze({ source: 'lowerarm_l', target: 'lowerarm.l' }),
+  Object.freeze({ source: 'hand_l', target: 'wrist.l' }),
+  Object.freeze({ source: 'upperarm_r', target: 'upperarm.r' }),
+  Object.freeze({ source: 'lowerarm_r', target: 'lowerarm.r' }),
+  Object.freeze({ source: 'hand_r', target: 'wrist.r' }),
+  Object.freeze({ source: 'thigh_l', target: 'upperleg.l' }),
+  Object.freeze({ source: 'calf_l', target: 'lowerleg.l' }),
+  Object.freeze({ source: 'foot_l', target: 'foot.l' }),
+  Object.freeze({ source: 'ball_l', target: 'toes.l' }),
+  Object.freeze({ source: 'thigh_r', target: 'upperleg.r' }),
+  Object.freeze({ source: 'calf_r', target: 'lowerleg.r' }),
+  Object.freeze({ source: 'foot_r', target: 'foot.r' }),
+  Object.freeze({ source: 'ball_r', target: 'toes.r' }),
+]);
+
+function loadGlb(loader, url) {
+  return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
+}
+
+function disposeScene(scene) {
+  scene?.traverse?.((object3d) => {
+    if (!object3d.isMesh) return;
+    object3d.geometry?.dispose?.();
+    const materials = Array.isArray(object3d.material) ? object3d.material : [object3d.material];
+    materials.forEach((material) => material?.dispose?.());
+  });
+}
+
+function createTargetProxy(THREE, rig) {
+  const root = new THREE.Object3D();
+  const bones = {};
+  for (const definition of rig.definition.bones) {
+    const bone = new THREE.Object3D();
+    const rest = rig.restTransforms[definition.id];
+    bone.name = sanitizeAnimationTargetName(definition.id);
+    bone.position.fromArray(rest.position);
+    bone.quaternion.fromArray(rest.quaternion);
+    bone.scale.fromArray(rest.scale);
+    (definition.parent ? bones[definition.parent] : root).add(bone);
+    bones[definition.id] = bone;
+  }
+  root.updateMatrixWorld(true);
+  return { root, bones };
+}
+
+function restoreTargetProxy(proxy, rig) {
+  for (const [boneId, rest] of Object.entries(rig.restTransforms)) {
+    const bone = proxy.bones[boneId];
+    bone.position.fromArray(rest.position);
+    bone.quaternion.fromArray(rest.quaternion);
+    bone.scale.fromArray(rest.scale);
+  }
+  proxy.root.updateMatrixWorld(true);
+}
+
+function worldSnapshot(THREE, object3d) {
+  return {
+    position: object3d.getWorldPosition(new THREE.Vector3()),
+    quaternion: object3d.getWorldQuaternion(new THREE.Quaternion()),
+  };
+}
+
+function motionScale(sourceRest, targetRest) {
+  const sourceHeight = sourceRest.Head.position.distanceTo(sourceRest.root.position);
+  const targetHeight = targetRest.head.position.distanceTo(targetRest.root.position);
+  if (sourceHeight < 0.001 || targetHeight < 0.001) return 1;
+  return Math.max(0.5, Math.min(1.5, targetHeight / sourceHeight));
+}
+
+function sampleTimes(duration, fps) {
+  const step = 1 / Math.max(1, Number(fps) || 30);
+  const times = [];
+  for (let time = 0; time < duration - step * 0.25; time += step) times.push(time);
+  if (!times.length || Math.abs(times.at(-1) - duration) > 1e-5) times.push(duration);
+  return times;
+}
+
+function retargetQuaterniusClip(THREE, gltf, rig, options = {}) {
+  if (!THREE?.AnimationMixer || !THREE?.AnimationClip) {
+    throw new Error('Quaternius retargeting requires the Three.js animation runtime');
+  }
+  const sourceScene = gltf?.scene;
+  const sourceClip = gltf?.animations?.[0];
+  if (!sourceScene || !sourceClip) throw new Error('Quaternius GLB is missing its source hierarchy or animation');
+  const retargets = options.boneRetargets || QUATERNIUS_BONE_RETARGETS;
+
+  sourceScene.updateMatrixWorld(true);
+  const sourceNodes = {};
+  retargets.forEach(({ source }) => { sourceNodes[source] = sourceScene.getObjectByName(source); });
+  const missing = retargets.filter(({ source }) => !sourceNodes[source]).map(({ source }) => source);
+  if (missing.length) throw new Error(`${sourceClip.name} is missing Quaternius bones: ${missing.join(', ')}`);
+
+  const targetProxy = createTargetProxy(THREE, rig);
+  const sourceRest = {};
+  const targetRest = {};
+  retargets.forEach(({ source, target }) => {
+    sourceRest[source] = worldSnapshot(THREE, sourceNodes[source]);
+    targetRest[target] = worldSnapshot(THREE, targetProxy.bones[target]);
+  });
+  const translationScale = motionScale(sourceRest, targetRest);
+  const times = sampleTimes(sourceClip.duration, options.fps || 30);
+  const samples = new Map(retargets.map(({ target, position }) => [target, {
+    quaternion: [],
+    position: position ? [] : null,
+  }]));
+  const mixer = new THREE.AnimationMixer(sourceScene);
+  const action = mixer.clipAction(sourceClip).reset();
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.play();
+  const sourceWorldQuaternion = new THREE.Quaternion();
+  const sourceWorldPosition = new THREE.Vector3();
+  const rotationDelta = new THREE.Quaternion();
+  const desiredWorldQuaternion = new THREE.Quaternion();
+  const parentWorldQuaternion = new THREE.Quaternion();
+  const desiredWorldPosition = new THREE.Vector3();
+
+  times.forEach((time) => {
+    mixer.setTime(time);
+    sourceScene.updateMatrixWorld(true);
+    restoreTargetProxy(targetProxy, rig);
+    retargets.forEach(({ source, target, position }) => {
+      const sourceBone = sourceNodes[source];
+      const targetBone = targetProxy.bones[target];
+      sourceBone.getWorldQuaternion(sourceWorldQuaternion);
+      rotationDelta.copy(sourceWorldQuaternion).multiply(sourceRest[source].quaternion.clone().invert());
+      desiredWorldQuaternion.copy(rotationDelta).multiply(targetRest[target].quaternion);
+      targetBone.parent.getWorldQuaternion(parentWorldQuaternion);
+      targetBone.quaternion.copy(parentWorldQuaternion.invert().multiply(desiredWorldQuaternion)).normalize();
+      if (position) {
+        sourceBone.getWorldPosition(sourceWorldPosition);
+        desiredWorldPosition.copy(sourceWorldPosition)
+          .sub(sourceRest[source].position)
+          .multiplyScalar(translationScale)
+          .add(targetRest[target].position);
+        targetBone.position.copy(targetBone.parent.worldToLocal(desiredWorldPosition));
+      }
+      targetBone.updateMatrixWorld(true);
+      samples.get(target).quaternion.push(...targetBone.quaternion.toArray());
+      if (position) samples.get(target).position.push(...targetBone.position.toArray());
+    });
+  });
+  action.stop();
+
+  const source = String(options.source || 'quaternius').toLowerCase();
+  const clipPrefix = String(options.clipPrefix || source.toUpperCase());
+  const clipName = `${clipPrefix}/${sourceClip.name || options.id || 'Action'}`;
+  const tracks = [];
+  retargets.forEach(({ target, position }) => {
+    const targetName = sanitizeAnimationTargetName(target);
+    tracks.push(new THREE.QuaternionKeyframeTrack(
+      `${targetName}.quaternion`, times, samples.get(target).quaternion,
+    ));
+    if (position) {
+      tracks.push(new THREE.VectorKeyframeTrack(
+        `${targetName}.position`, times, samples.get(target).position,
+      ));
+    }
+  });
+  const clip = new THREE.AnimationClip(clipName, sourceClip.duration, tracks);
+  clip.userData = {
+    source,
+    sourceClip: sourceClip.name,
+    retargetFps: options.fps || 30,
+    translationScale,
+  };
+  return clip;
+}
+
+const loadQuaterniusAnimationLibrary = async (loader, options = {}) => {
+  if (!loader?.load) throw new Error('loadQuaterniusAnimationLibrary requires a GLTFLoader instance');
+  const THREE = options.THREE;
+  const rig = options.rig;
+  const files = options.files || [];
+  if (!THREE || !rig?.definition || !rig?.restTransforms) {
+    throw new Error('loadQuaterniusAnimationLibrary requires THREE and the target procedural rig');
+  }
+  if (!files.length) throw new Error('loadQuaterniusAnimationLibrary requires one or more animation files');
+  const baseUrl = String(options.baseUrl || '').replace(/\/?$/, '/');
+  const loaded = await Promise.all(files.map(async (entry) => {
+    const gltf = await loadGlb(loader, `${baseUrl}${entry.file}`);
+    try {
+      return retargetQuaterniusClip(THREE, gltf, rig, {
+        id: entry.id,
+        fps: options.fps || 30,
+        source: options.source,
+        clipPrefix: options.clipPrefix,
+      });
+    } finally {
+      disposeScene(gltf.scene);
+    }
+  }));
+  return {
+    clips: new Map(loaded.map((clip) => [clip.name, clip])),
+    files,
+    duplicates: [],
+    source: String(options.source || 'quaternius').toLowerCase(),
+    retargetFps: options.fps || 30,
+  };
+};
+return Object.freeze({ QUATERNIUS_BONE_RETARGETS, retargetQuaterniusClip, loadQuaterniusAnimationLibrary });
+})();
+
+// src/animation/ual1-animation-library.js
+const __actionStudioModule47 = (() => {
+const { QUATERNIUS_BONE_RETARGETS, loadQuaterniusAnimationLibrary, retargetQuaterniusClip } = __actionStudioModule48;
+
+const UAL1_ANIMATION_FILES = Object.freeze([
+  Object.freeze({ id: 'Sword_Attack', file: 'Sword_Attack.glb' }),
+  Object.freeze({ id: 'Sword_Idle', file: 'Sword_Idle.glb' }),
+]);
+
+const UAL1_BONE_RETARGETS = QUATERNIUS_BONE_RETARGETS;
+
+const DEFAULT_BASE_URL = '../../assets/UAL1_Animation_Split_Package/Animation_Only/No_Root_Motion/';
+
+function retargetUal1Clip(THREE, gltf, rig, options = {}) {
+  return retargetQuaterniusClip(THREE, gltf, rig, {
+    ...options,
+    source: 'ual1',
+    clipPrefix: 'UAL1',
+  });
+}
+
+const loadUal1AnimationLibrary = (loader, options = {}) => loadQuaterniusAnimationLibrary(loader, {
+  ...options,
+  files: UAL1_ANIMATION_FILES,
+  baseUrl: options.baseUrl || DEFAULT_BASE_URL,
+  source: 'ual1',
+  clipPrefix: 'UAL1',
+});
+return Object.freeze({ UAL1_ANIMATION_FILES, UAL1_BONE_RETARGETS, retargetUal1Clip, loadUal1AnimationLibrary });
+})();
+
+// src/animation/ual2-animation-library.js
 const __actionStudioModule49 = (() => {
+const { sanitizeAnimationTargetName } = __actionStudioModule6;
+
+const UAL2_ANIMATION_FILES = Object.freeze([
+  Object.freeze({ id: 'Sword_Regular_A', file: 'Sword_Regular_A.glb' }),
+  Object.freeze({ id: 'Sword_Regular_B', file: 'Sword_Regular_B.glb' }),
+  Object.freeze({ id: 'Sword_Regular_C', file: 'Sword_Regular_C.glb' }),
+  Object.freeze({ id: 'Sword_Regular_Combo', file: 'Sword_Regular_Combo.glb' }),
+  Object.freeze({ id: 'Sword_Heavy_Combo', file: 'Sword_Heavy_Combo.glb' }),
+  Object.freeze({ id: 'Sword_Dash', file: 'Sword_Dash.glb' }),
+  Object.freeze({ id: 'Sword_Block', file: 'Sword_Block.glb' }),
+  Object.freeze({ id: 'Hit_Knockback', file: 'Hit_Knockback.glb' }),
+]);
+
+const UAL2_BONE_RETARGETS = Object.freeze([
+  Object.freeze({ source: 'root', target: 'root', position: true }),
+  Object.freeze({ source: 'pelvis', target: 'hips', position: true }),
+  Object.freeze({ source: 'spine_01', target: 'spine' }),
+  Object.freeze({ source: 'spine_03', target: 'chest' }),
+  Object.freeze({ source: 'Head', target: 'head' }),
+  Object.freeze({ source: 'upperarm_l', target: 'upperarm.l' }),
+  Object.freeze({ source: 'lowerarm_l', target: 'lowerarm.l' }),
+  Object.freeze({ source: 'hand_l', target: 'wrist.l' }),
+  Object.freeze({ source: 'upperarm_r', target: 'upperarm.r' }),
+  Object.freeze({ source: 'lowerarm_r', target: 'lowerarm.r' }),
+  Object.freeze({ source: 'hand_r', target: 'wrist.r' }),
+  Object.freeze({ source: 'thigh_l', target: 'upperleg.l' }),
+  Object.freeze({ source: 'calf_l', target: 'lowerleg.l' }),
+  Object.freeze({ source: 'foot_l', target: 'foot.l' }),
+  Object.freeze({ source: 'ball_l', target: 'toes.l' }),
+  Object.freeze({ source: 'thigh_r', target: 'upperleg.r' }),
+  Object.freeze({ source: 'calf_r', target: 'lowerleg.r' }),
+  Object.freeze({ source: 'foot_r', target: 'foot.r' }),
+  Object.freeze({ source: 'ball_r', target: 'toes.r' }),
+]);
+
+const DEFAULT_BASE_URL = '../../assets/UAL2_Sword_Combat_Package/Animation_Only/No_Root_Motion/';
+
+function loadGlb(loader, url) {
+  return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
+}
+
+function disposeScene(scene) {
+  scene?.traverse?.((object3d) => {
+    if (!object3d.isMesh) return;
+    object3d.geometry?.dispose?.();
+    const materials = Array.isArray(object3d.material) ? object3d.material : [object3d.material];
+    materials.forEach((material) => material?.dispose?.());
+  });
+}
+
+function createTargetProxy(THREE, rig) {
+  const root = new THREE.Object3D();
+  const bones = {};
+  for (const definition of rig.definition.bones) {
+    const bone = new THREE.Object3D();
+    const rest = rig.restTransforms[definition.id];
+    bone.name = sanitizeAnimationTargetName(definition.id);
+    bone.position.fromArray(rest.position);
+    bone.quaternion.fromArray(rest.quaternion);
+    bone.scale.fromArray(rest.scale);
+    (definition.parent ? bones[definition.parent] : root).add(bone);
+    bones[definition.id] = bone;
+  }
+  root.updateMatrixWorld(true);
+  return { root, bones };
+}
+
+function restoreTargetProxy(proxy, rig) {
+  for (const [boneId, rest] of Object.entries(rig.restTransforms)) {
+    const bone = proxy.bones[boneId];
+    bone.position.fromArray(rest.position);
+    bone.quaternion.fromArray(rest.quaternion);
+    bone.scale.fromArray(rest.scale);
+  }
+  proxy.root.updateMatrixWorld(true);
+}
+
+function worldSnapshot(THREE, object3d) {
+  return {
+    position: object3d.getWorldPosition(new THREE.Vector3()),
+    quaternion: object3d.getWorldQuaternion(new THREE.Quaternion()),
+  };
+}
+
+function motionScale(sourceRest, targetRest) {
+  const sourceHeight = sourceRest.Head.position.distanceTo(sourceRest.root.position);
+  const targetHeight = targetRest.head.position.distanceTo(targetRest.root.position);
+  if (sourceHeight < 0.001 || targetHeight < 0.001) return 1;
+  return Math.max(0.5, Math.min(1.5, targetHeight / sourceHeight));
+}
+
+function sampleTimes(duration, fps) {
+  const step = 1 / Math.max(1, Number(fps) || 30);
+  const times = [];
+  for (let time = 0; time < duration - step * 0.25; time += step) times.push(time);
+  if (!times.length || Math.abs(times.at(-1) - duration) > 1e-5) times.push(duration);
+  return times;
+}
+
+function retargetUal2Clip(THREE, gltf, rig, options = {}) {
+  if (!THREE?.AnimationMixer || !THREE?.AnimationClip) {
+    throw new Error('UAL2 retargeting requires the Three.js animation runtime');
+  }
+  const sourceScene = gltf?.scene;
+  const sourceClip = gltf?.animations?.[0];
+  if (!sourceScene || !sourceClip) throw new Error('UAL2 GLB is missing its source hierarchy or animation');
+
+  sourceScene.updateMatrixWorld(true);
+  const sourceNodes = {};
+  UAL2_BONE_RETARGETS.forEach(({ source }) => { sourceNodes[source] = sourceScene.getObjectByName(source); });
+  const missing = UAL2_BONE_RETARGETS.filter(({ source }) => !sourceNodes[source]).map(({ source }) => source);
+  if (missing.length) throw new Error(`UAL2 clip ${sourceClip.name} is missing bones: ${missing.join(', ')}`);
+
+  const targetProxy = createTargetProxy(THREE, rig);
+  const sourceRest = {};
+  const targetRest = {};
+  UAL2_BONE_RETARGETS.forEach(({ source, target }) => {
+    sourceRest[source] = worldSnapshot(THREE, sourceNodes[source]);
+    targetRest[target] = worldSnapshot(THREE, targetProxy.bones[target]);
+  });
+  const translationScale = motionScale(sourceRest, targetRest);
+  const times = sampleTimes(sourceClip.duration, options.fps || 30);
+  const samples = new Map(UAL2_BONE_RETARGETS.map(({ target, position }) => [target, {
+    quaternion: [],
+    position: position ? [] : null,
+  }]));
+  const mixer = new THREE.AnimationMixer(sourceScene);
+  const action = mixer.clipAction(sourceClip).reset();
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.play();
+  const sourceWorldQuaternion = new THREE.Quaternion();
+  const sourceWorldPosition = new THREE.Vector3();
+  const rotationDelta = new THREE.Quaternion();
+  const desiredWorldQuaternion = new THREE.Quaternion();
+  const parentWorldQuaternion = new THREE.Quaternion();
+  const desiredWorldPosition = new THREE.Vector3();
+
+  times.forEach((time) => {
+    mixer.setTime(time);
+    sourceScene.updateMatrixWorld(true);
+    restoreTargetProxy(targetProxy, rig);
+    UAL2_BONE_RETARGETS.forEach(({ source, target, position }) => {
+      const sourceBone = sourceNodes[source];
+      const targetBone = targetProxy.bones[target];
+      sourceBone.getWorldQuaternion(sourceWorldQuaternion);
+      rotationDelta.copy(sourceWorldQuaternion).multiply(sourceRest[source].quaternion.clone().invert());
+      desiredWorldQuaternion.copy(rotationDelta).multiply(targetRest[target].quaternion);
+      targetBone.parent.getWorldQuaternion(parentWorldQuaternion);
+      targetBone.quaternion.copy(parentWorldQuaternion.invert().multiply(desiredWorldQuaternion)).normalize();
+      if (position) {
+        sourceBone.getWorldPosition(sourceWorldPosition);
+        desiredWorldPosition.copy(sourceWorldPosition)
+          .sub(sourceRest[source].position)
+          .multiplyScalar(translationScale)
+          .add(targetRest[target].position);
+        targetBone.position.copy(targetBone.parent.worldToLocal(desiredWorldPosition));
+      }
+      targetBone.updateMatrixWorld(true);
+      samples.get(target).quaternion.push(...targetBone.quaternion.toArray());
+      if (position) samples.get(target).position.push(...targetBone.position.toArray());
+    });
+  });
+  action.stop();
+
+  const clipName = `UAL2/${sourceClip.name || options.id || 'Sword_Action'}`;
+  const tracks = [];
+  UAL2_BONE_RETARGETS.forEach(({ target, position }) => {
+    const targetName = sanitizeAnimationTargetName(target);
+    tracks.push(new THREE.QuaternionKeyframeTrack(
+      `${targetName}.quaternion`, times, samples.get(target).quaternion,
+    ));
+    if (position) {
+      tracks.push(new THREE.VectorKeyframeTrack(
+        `${targetName}.position`, times, samples.get(target).position,
+      ));
+    }
+  });
+  const clip = new THREE.AnimationClip(clipName, sourceClip.duration, tracks);
+  clip.userData = {
+    source: 'ual2',
+    sourceClip: sourceClip.name,
+    retargetFps: options.fps || 30,
+    translationScale,
+  };
+  return clip;
+}
+
+const loadUal2AnimationLibrary = async (loader, options = {}) => {
+  if (!loader?.load) throw new Error('loadUal2AnimationLibrary requires a GLTFLoader instance');
+  const THREE = options.THREE;
+  const rig = options.rig;
+  if (!THREE || !rig?.definition || !rig?.restTransforms) {
+    throw new Error('loadUal2AnimationLibrary requires THREE and the target procedural rig');
+  }
+  const baseUrl = String(options.baseUrl || DEFAULT_BASE_URL).replace(/\/?$/, '/');
+  // Which of the pack's clips this page needs.
+  //
+  // UAL2_ANIMATION_FILES is the CATALOGUE - what the pack contains - and stays complete, because
+  // knowing what is available is what makes a second weapon's sourcing a lookup rather than a
+  // search. What a page LOADS is a different question, and until this option existed the two were
+  // the same answer: all eight clips, 1.5MB, of which the game plays two.
+  //
+  // Ids may arrive bare ('Sword_Regular_A') or prefixed as the retargeted clip is named
+  // ('UAL2/Sword_Regular_A'), because callers hold the prefixed form - it is what a weapon's
+  // timings record names - and should not have to strip it to ask for a file.
+  const wanted = options.clipIds ? new Set(options.clipIds.map(String)) : null;
+  const requested = wanted
+    ? UAL2_ANIMATION_FILES.filter((entry) => wanted.has(entry.id) || wanted.has(`UAL2/${entry.id}`))
+    : UAL2_ANIMATION_FILES;
+  if (wanted && requested.length === 0) {
+    throw new Error(`loadUal2AnimationLibrary was asked for clips it does not have: ${[...wanted].join(', ')}`);
+  }
+  const loaded = await Promise.all(requested.map(async (entry) => {
+    const gltf = await loadGlb(loader, `${baseUrl}${entry.file}`);
+    try {
+      return retargetUal2Clip(THREE, gltf, rig, { id: entry.id, fps: options.fps || 30 });
+    } finally {
+      disposeScene(gltf.scene);
+    }
+  }));
+  return {
+    clips: new Map(loaded.map((clip) => [clip.name, clip])),
+    files: requested,
+    catalogue: UAL2_ANIMATION_FILES,
+    duplicates: [],
+    source: 'ual2',
+    retargetFps: options.fps || 30,
+  };
+};
+return Object.freeze({ UAL2_ANIMATION_FILES, UAL2_BONE_RETARGETS, retargetUal2Clip, loadUal2AnimationLibrary });
+})();
+
+// src/animation/parry-contact-deflect-runtime-clip.js
+const __actionStudioModule51 = (() => {
 const PRODUCTION_PARRY_DEFLECT_STAGE = 'G3.6.3';
 
 const PRODUCTION_PARRY_DEFLECT_VARIANTS = Object.freeze({
@@ -14514,7 +14658,7 @@ return Object.freeze({ PRODUCTION_PARRY_DEFLECT_STAGE, PRODUCTION_PARRY_DEFLECT_
 })();
 
 // src/animation/parry-rotation-continuity.js
-const __actionStudioModule50 = (() => {
+const __actionStudioModule52 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
 
 const PARRY_ROTATION_CONTINUITY_STAGE = 'G3.5.1P-T3.2';
@@ -14636,9 +14780,9 @@ return Object.freeze({ PARRY_ROTATION_CONTINUITY_STAGE, PARRY_ROTATION_CONTINUIT
 })();
 
 // src/animation/parry-upper-body-continuity.js
-const __actionStudioModule51 = (() => {
+const __actionStudioModule53 = (() => {
 const { sanitizeAnimationTargetName } = __actionStudioModule6;
-const { G36_POWER_PARRY_TORSO_SAFETY_LIMITS_DEGREES, PRODUCTION_PARRY_DEFLECT_PHASES, sampleProductionParryDeflectTimeline } = __actionStudioModule49;
+const { G36_POWER_PARRY_TORSO_SAFETY_LIMITS_DEGREES, PRODUCTION_PARRY_DEFLECT_PHASES, sampleProductionParryDeflectTimeline } = __actionStudioModule51;
 
 const PARRY_UPPER_BODY_CONTINUITY_STAGE = 'G3.6';
 
@@ -14825,12 +14969,12 @@ return Object.freeze({ PARRY_UPPER_BODY_CONTINUITY_STAGE, PARRY_UPPER_BODY_CONTI
 })();
 
 // src/animation/skyrim-converted-animation-library.js
-const __actionStudioModule46 = (() => {
-const { retargetSkyrimClip } = __actionStudioModule47;
-const { computeSkyrimWeaponBindCalibration } = __actionStudioModule48;
-const { canCreateProductionParryDeflectClips, createProductionParryDeflectClips } = __actionStudioModule49;
-const { stabilizeProductionParryDeflectClips } = __actionStudioModule50;
-const { stabilizeProductionParryUpperBodyClips } = __actionStudioModule51;
+const __actionStudioModule50 = (() => {
+const { retargetSkyrimClip } = __actionStudioModule20;
+const { computeSkyrimWeaponBindCalibration } = __actionStudioModule19;
+const { canCreateProductionParryDeflectClips, createProductionParryDeflectClips } = __actionStudioModule51;
+const { stabilizeProductionParryDeflectClips } = __actionStudioModule52;
+const { stabilizeProductionParryUpperBodyClips } = __actionStudioModule53;
 
 const SKYRIM_GUARD_HOLD_CONVERTED_FILE = Object.freeze({
   id: 'shd_blockidle',
@@ -15045,7 +15189,7 @@ return Object.freeze({ SKYRIM_GUARD_HOLD_CONVERTED_FILE, SKYRIM_GUARD_REACTION_C
 })();
 
 // src/combat/longsword-directional-metadata.js
-const __actionStudioModule52 = (() => {
+const __actionStudioModule54 = (() => {
 // @ts-check
 const LONGSWORD_DIRECTIONAL_ATTACKS = Object.freeze({
   top: Object.freeze({
@@ -15087,11 +15231,11 @@ return Object.freeze({ LONGSWORD_DIRECTIONAL_ATTACKS, LONGSWORD_MOTION_METADATA,
 })();
 
 // tools/action-studio/studio-editor-view.js
-const __actionStudioModule53 = (() => {
+const __actionStudioModule55 = (() => {
 const { POSE_KEYS } = __actionStudioModule10;
-const { normalizeAnimationBinding } = __actionStudioModule24;
-const { clipMarkerSummary } = __actionStudioModule21;
-const { ACTION_WINDOW_TYPES } = __actionStudioModule29;
+const { normalizeAnimationBinding } = __actionStudioModule28;
+const { clipMarkerSummary } = __actionStudioModule25;
+const { ACTION_WINDOW_TYPES } = __actionStudioModule33;
 
 const RAD_TO_DEG = 180 / Math.PI;
 
@@ -15313,7 +15457,7 @@ return Object.freeze({ renderTimelineView, updateTimelineReadoutView, renderKeyE
 })();
 
 // tools/action-studio/studio-skyrim-bridge-controls.js
-const __actionStudioModule54 = (() => {
+const __actionStudioModule56 = (() => {
 // The Skyrim packs the page can load. Added here rather than written into index.template.html so
 // the option list cannot drift from the sources the controller actually knows how to fetch.
 const SKYRIM_PACK_OPTIONS = Object.freeze([
@@ -15357,7 +15501,7 @@ return Object.freeze({ installStudioSkyrimBridgeControls });
 })();
 
 // src/combat/guard-states.js
-const __actionStudioModule57 = (() => {
+const __actionStudioModule59 = (() => {
 // @ts-check
 
 // S1.C2, step 3 of four — the guard's vocabulary, and the graph over it.
@@ -15452,7 +15596,7 @@ return Object.freeze({ GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, GUARD_
 })();
 
 // src/combat/guard-action-semantics.js
-const __actionStudioModule59 = (() => {
+const __actionStudioModule61 = (() => {
 const GUARD_ACTION_SEMANTIC_FIT = Object.freeze({
   MATCH: 'match',
   PROVISIONAL: 'provisional',
@@ -15513,7 +15657,7 @@ return Object.freeze({ GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, G
 })();
 
 // src/combat/parry-advantage.js
-const __actionStudioModule60 = (() => {
+const __actionStudioModule62 = (() => {
 const PARRY_ADVANTAGE_STAGE = 'G3.5.1';
 const PARRY_ADVANTAGE_FOLLOWUP_MODE = 'normal-directional-attack';
 const PARRY_ADVANTAGE_ENEMY_RESPONSE = 'authoritative-stagger';
@@ -15554,11 +15698,11 @@ return Object.freeze({ PARRY_ADVANTAGE_STAGE, PARRY_ADVANTAGE_FOLLOWUP_MODE, PAR
 })();
 
 // src/combat/guard-reaction-presentation.js
-const __actionStudioModule58 = (() => {
+const __actionStudioModule60 = (() => {
 // @ts-check
-const { GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, guardActionSemanticAssessment } = __actionStudioModule59;
-const { createParryAdvantageContract, isFreeAttackFollowupOpen } = __actionStudioModule60;
-const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE, getProductionParryDeflectProfile } = __actionStudioModule49;
+const { GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, guardActionSemanticAssessment } = __actionStudioModule61;
+const { createParryAdvantageContract, isFreeAttackFollowupOpen } = __actionStudioModule62;
+const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE, getProductionParryDeflectProfile } = __actionStudioModule51;
 
 const GUARD_REACTION_VARIANTS = Object.freeze({
   BLOCK_HIT: 'block-hit',
@@ -15799,9 +15943,9 @@ return Object.freeze({ GUARD_REACTION_VARIANTS, GUARD_REACTION_PROFILE_IDS, LONG
 })();
 
 // src/combat/guard-presentation-table.js
-const __actionStudioModule62 = (() => {
+const __actionStudioModule64 = (() => {
 // @ts-check
-const { GUARD_STATES } = __actionStudioModule57;
+const { GUARD_STATES } = __actionStudioModule59;
 
 // S1.C2, step 4 of four — how a weapon's guard states are presented, as a function of that weapon.
 //
@@ -15946,7 +16090,7 @@ return Object.freeze({ createGuardPresentationTable });
 })();
 
 // src/combat/longsword-guard-metadata.js
-const __actionStudioModule63 = (() => {
+const __actionStudioModule65 = (() => {
 // @ts-check
 const freezeRange = (range) => Object.freeze({ ...range });
 const freezeEuler = (value) => Object.freeze({ x:value.x, y:value.y, z:value.z });
@@ -16053,8 +16197,8 @@ return Object.freeze({ LONGSWORD_GUARD_BASE, LONGSWORD_TRIANGLE_GUARD_TARGETS, L
 })();
 
 // src/combat/guard-transition-presentation.js
-const __actionStudioModule64 = (() => {
-const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule63;
+const __actionStudioModule66 = (() => {
+const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule65;
 
 const GUARD_TRANSITION_PROFILE_IDS = Object.freeze({
   ENTER: 'longsword_guard_enter_v1',
@@ -16168,9 +16312,9 @@ return Object.freeze({ GUARD_TRANSITION_PROFILE_IDS, LONGSWORD_GUARD_TRANSITION_
 })();
 
 // src/combat/guard-counter-presentation.js
-const __actionStudioModule65 = (() => {
+const __actionStudioModule67 = (() => {
 // @ts-check
-const { GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, guardActionSemanticAssessment } = __actionStudioModule59;
+const { GUARD_ACTION_SEMANTIC_FIT, GUARD_ACTION_SEMANTIC_ROLES, guardActionSemanticAssessment } = __actionStudioModule61;
 
 const GUARD_COUNTER_PROFILE_IDS = Object.freeze({
   LONGSWORD: 'longsword_guard_counter_melee_block_attack_v1',
@@ -16272,13 +16416,13 @@ return Object.freeze({ GUARD_COUNTER_PROFILE_IDS, GUARD_WEAPON_MOUNT_PROFILE_IDS
 })();
 
 // src/combat/longsword-guard-presentation.js
-const __actionStudioModule61 = (() => {
+const __actionStudioModule63 = (() => {
 // @ts-check
-const { createGuardPresentationTable } = __actionStudioModule62;
-const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule63;
-const { GUARD_TRANSITION_PROFILE_IDS } = __actionStudioModule64;
-const { GUARD_REACTION_VARIANTS, LONGSWORD_GUARD_REACTION_PROFILES } = __actionStudioModule58;
-const { GUARD_WEAPON_MOUNT_PROFILE_IDS, LONGSWORD_GUARD_COUNTER_PROFILE } = __actionStudioModule65;
+const { createGuardPresentationTable } = __actionStudioModule64;
+const { LONGSWORD_GUARD_BASE, LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule65;
+const { GUARD_TRANSITION_PROFILE_IDS } = __actionStudioModule66;
+const { GUARD_REACTION_VARIANTS, LONGSWORD_GUARD_REACTION_PROFILES } = __actionStudioModule60;
+const { GUARD_WEAPON_MOUNT_PROFILE_IDS, LONGSWORD_GUARD_COUNTER_PROFILE } = __actionStudioModule67;
 
 // S1.C2, step 4 of four — the longsword's guard presentation, assembled where the longsword lives.
 //
@@ -16311,11 +16455,11 @@ return Object.freeze({ LONGSWORD_GUARD_PRESENTATION });
 })();
 
 // src/combat/guard-state-machine.js
-const __actionStudioModule56 = (() => {
+const __actionStudioModule58 = (() => {
 // @ts-check
-const { GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, GUARD_TRANSITION_GRAPH } = __actionStudioModule57;
-const { getGuardReactionProfile } = __actionStudioModule58;
-const { LONGSWORD_GUARD_PRESENTATION } = __actionStudioModule61;
+const { GUARD_STATES, GUARD_EVENTS, GUARD_EVENT_AUTHORITY, GUARD_TRANSITION_GRAPH } = __actionStudioModule59;
+const { getGuardReactionProfile } = __actionStudioModule60;
+const { LONGSWORD_GUARD_PRESENTATION } = __actionStudioModule63;
 
 // S1.C2 — what this module used to be, and what it is now.
 //
@@ -16507,7 +16651,7 @@ return Object.freeze({ GUARD_STATE_AUTHORITY_NOTE, getGuardPresentation, createG
 })();
 
 // src/combat/guard-correction-scope.js
-const __actionStudioModule68 = (() => {
+const __actionStudioModule70 = (() => {
 // @ts-check
 // Which bones a guard correction is allowed to touch, and how far it may move each one.
 //
@@ -16575,7 +16719,7 @@ return Object.freeze({ GUARD_CORRECTION_SCOPE, getGuardCorrectionBones });
 })();
 
 // src/combat/guard-quaternion-correction.js
-const __actionStudioModule67 = (() => {
+const __actionStudioModule69 = (() => {
 // @ts-check
 // Generic rig maths for a guard correction: normalise a quaternion, build one from Euler degrees,
 // scale it toward identity by a weight, and write the result onto named bones.
@@ -16585,7 +16729,7 @@ const __actionStudioModule67 = (() => {
 // contact time, or a blade; nothing here can tell a longsword from a greatsword, because nothing
 // here is ever told. It was called longsword-guard-correction.js only because the longsword was
 // the first thing to need it.
-const { GUARD_CORRECTION_SCOPE, getGuardCorrectionBones } = __actionStudioModule68;
+const { GUARD_CORRECTION_SCOPE, getGuardCorrectionBones } = __actionStudioModule70;
 
 const DEG_TO_RAD = Math.PI / 180;
 const RAD_TO_DEG = 180 / Math.PI;
@@ -16799,7 +16943,7 @@ return Object.freeze({ normalizeQuaternionArray, quaternionAngleDegrees, quatern
 })();
 
 // src/combat/guard-recovery-bridge.js
-const __actionStudioModule69 = (() => {
+const __actionStudioModule71 = (() => {
 const EPSILON = 1e-8;
 const COUNTER_CONTINUITY_HOLD_MS = 1000 / 60;
 
@@ -17089,7 +17233,7 @@ return Object.freeze({ GUARD_RECOVERY_PROFILE_IDS, GUARD_RECOVERY_PROFILES, capt
 })();
 
 // src/combat/guard-world-sword-orientation.js
-const __actionStudioModule70 = (() => {
+const __actionStudioModule72 = (() => {
 const EPSILON = 1e-8;
 
 function clamp01(value) {
@@ -17189,7 +17333,7 @@ return Object.freeze({ quaternionAngleDegrees, slerpShortestQuaternion, sampleWo
 })();
 
 // src/combat/living-guard-idle-runtime.js
-const __actionStudioModule71 = (() => {
+const __actionStudioModule73 = (() => {
 const LIVING_GUARD_PRODUCTION_STAGE = 'G3.6.5';
 const LIVING_GUARD_PRODUCTION_CLIP_ID = 'SKYRIM_GUARD/shd_blockidle';
 const LIVING_GUARD_PRODUCTION_SOURCE_RATE = 1.0;
@@ -17249,16 +17393,16 @@ return Object.freeze({ LIVING_GUARD_PRODUCTION_STAGE, LIVING_GUARD_PRODUCTION_CL
 })();
 
 // src/combat/guard-presentation-runtime.js
-const __actionStudioModule66 = (() => {
-const { GUARD_EVENTS, GUARD_STATES } = __actionStudioModule56;
-const { sampleGuardPresentationWeights, sampleGuardTransitionProfile } = __actionStudioModule64;
-const { sampleGuardReactionProfile } = __actionStudioModule58;
-const { sampleGuardCounterProfile } = __actionStudioModule65;
-const { LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule63;
-const { applyGuardQuaternionOffsetsWeighted } = __actionStudioModule67;
-const { applyObjectTransform, applyRigPose, blendRecoveryTransform, captureObjectTransform, captureRigPose, resolveGuardRecoveryProfile, samplePoseMatchedRecovery } = __actionStudioModule69;
-const { sampleWorldSwordRecoveryOrientation } = __actionStudioModule70;
-const { LIVING_GUARD_PRODUCTION_STAGE, sampleLivingGuardProductionHold } = __actionStudioModule71;
+const __actionStudioModule68 = (() => {
+const { GUARD_EVENTS, GUARD_STATES } = __actionStudioModule58;
+const { sampleGuardPresentationWeights, sampleGuardTransitionProfile } = __actionStudioModule66;
+const { sampleGuardReactionProfile } = __actionStudioModule60;
+const { sampleGuardCounterProfile } = __actionStudioModule67;
+const { LONGSWORD_GUARD_AUTHORING_STATE } = __actionStudioModule65;
+const { applyGuardQuaternionOffsetsWeighted } = __actionStudioModule69;
+const { applyObjectTransform, applyRigPose, blendRecoveryTransform, captureObjectTransform, captureRigPose, resolveGuardRecoveryProfile, samplePoseMatchedRecovery } = __actionStudioModule71;
+const { sampleWorldSwordRecoveryOrientation } = __actionStudioModule72;
+const { LIVING_GUARD_PRODUCTION_STAGE, sampleLivingGuardProductionHold } = __actionStudioModule73;
 
 const GUARD_ROOT_ROTATION_POLICY = 'lock';
 const STABLE_GUARD_HOLD_STAGE = 'G3.5.2';
@@ -17790,7 +17934,7 @@ return Object.freeze({ STABLE_GUARD_HOLD_STAGE, PRODUCTION_GUARD_HOLD_STAGE, can
 })();
 
 // src/combat/guard-weapon-mount-runtime.js
-const __actionStudioModule72 = (() => {
+const __actionStudioModule74 = (() => {
 const { applyMountCalibration } = __actionStudioModule3;
 
 function createGuardWeaponMountRuntime(options = {}) {
@@ -17830,17 +17974,17 @@ return Object.freeze({ createGuardWeaponMountRuntime });
 })();
 
 // tools/action-studio/studio-guard-runtime-controller.js
-const __actionStudioModule55 = (() => {
-const { DEFAULT_KAYKIT_SWORD_MOUNT } = __actionStudioModule20;
+const __actionStudioModule57 = (() => {
+const { DEFAULT_KAYKIT_SWORD_MOUNT } = __actionStudioModule24;
 const { applyMountCalibration } = __actionStudioModule3;
-const { loadSkyrimConvertedAnimationLibrary } = __actionStudioModule46;
-const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE } = __actionStudioModule49;
-const { composeSkyrimWeaponMountCalibration } = __actionStudioModule48;
-const { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } = __actionStudioModule56;
-const { createGuardPresentationRuntime } = __actionStudioModule66;
-const { LIVING_GUARD_PRODUCTION_STAGE } = __actionStudioModule71;
-const { GUARD_WEAPON_MOUNT_PROFILE_IDS } = __actionStudioModule65;
-const { createGuardWeaponMountRuntime } = __actionStudioModule72;
+const { loadSkyrimConvertedAnimationLibrary } = __actionStudioModule50;
+const { PRODUCTION_PARRY_DEFLECT_CLIP_IDS, PRODUCTION_PARRY_DEFLECT_STAGE } = __actionStudioModule51;
+const { composeSkyrimWeaponMountCalibration } = __actionStudioModule19;
+const { GUARD_EVENTS, GUARD_STATES, createGuardStateMachine } = __actionStudioModule58;
+const { createGuardPresentationRuntime } = __actionStudioModule68;
+const { LIVING_GUARD_PRODUCTION_STAGE } = __actionStudioModule73;
+const { GUARD_WEAPON_MOUNT_PROFILE_IDS } = __actionStudioModule67;
+const { createGuardWeaponMountRuntime } = __actionStudioModule74;
 
 const GUARD_RUNTIME_STAGE = LIVING_GUARD_PRODUCTION_STAGE;
 const MODE_LABELS = Object.freeze({
@@ -17947,7 +18091,11 @@ function createStudioGuardRuntimeController(THREE, options = {}) {
   const panel = resolveGuardPanel();
   const status = document.getElementById('guardRuntimeStatus');
   const detail = document.getElementById('guardRuntimeDetail');
-  const weaponObject3d = character.sockets?.HAND_R?.children?.[0] || null;
+  // Resolved on every use, not once. The stage weapon can be replaced while this controller lives -
+  // the stage weapon selector builds a new sword, mounts it and disposes the old one - and a
+  // pointer captured at construction would go on writing the mount onto a detached, disposed blade
+  // while the visible one kept the author's.
+  const weaponObject3d = () => character.sockets?.HAND_R?.children?.[0] || null;
   let machine = null;
   let runtime = null;
   let mountRuntime = null;
@@ -18011,7 +18159,7 @@ function createStudioGuardRuntimeController(THREE, options = {}) {
     if (loadPromise) return loadPromise;
     if (!THREE?.GLTFLoader) throw new Error('Action Studio Guard Runtime requires Three.js GLTFLoader');
     if (location.protocol === 'file:') throw new Error('Guard Runtime assets require Action Studio over HTTP / GitHub Pages');
-    if (!weaponObject3d) throw new Error('Guard Runtime could not resolve the HAND_R weapon object');
+    if (!weaponObject3d()) throw new Error('Guard Runtime could not resolve the HAND_R weapon object');
 
     setStatus(`${GUARD_RUNTIME_STAGE} · loading Skyrim Full Source Living Guard + D Power Parry…`);
     loadPromise = (async () => {
@@ -18038,7 +18186,7 @@ function createStudioGuardRuntimeController(THREE, options = {}) {
         bind,
       );
       mountRuntime = createGuardWeaponMountRuntime({
-        weaponObject3d,
+        weaponObject3d: weaponObject3d(),
         profiles: {
           [GUARD_WEAPON_MOUNT_PROFILE_IDS.SKYRIM_GUARD]: skyrimMount,
         },
@@ -18047,10 +18195,10 @@ function createStudioGuardRuntimeController(THREE, options = {}) {
       runtime = createGuardPresentationRuntime(THREE, {
         machine,
         character,
-        weaponObject3d,
+        weaponObject3d: weaponObject3d(),
         applyWeaponMountProfile(profileId) {
           const result = mountRuntime.apply(profileId);
-          if (result.applied) weaponObject3d.updateMatrixWorld?.(true);
+          if (result.applied) weaponObject3d()?.updateMatrixWorld?.(true);
         },
       });
       loaded = true;
@@ -18123,7 +18271,7 @@ function createStudioGuardRuntimeController(THREE, options = {}) {
     pausePlayer();
     clearWeaponTrail();
     character.stopAnimation?.();
-    restoreMountCalibration = captureMountCalibration(weaponObject3d);
+    restoreMountCalibration = captureMountCalibration(weaponObject3d());
     active = true;
     activeMode = mode;
     lastFrameAt = performance.now();
@@ -18142,7 +18290,7 @@ function createStudioGuardRuntimeController(THREE, options = {}) {
     pausePlayer();
     clearWeaponTrail();
     character.stopAnimation?.();
-    if (!restoreMountCalibration) restoreMountCalibration = captureMountCalibration(weaponObject3d);
+    if (!restoreMountCalibration) restoreMountCalibration = captureMountCalibration(weaponObject3d());
     active = false;
     activeMode = mode;
     setAnimationSource('guard-runtime');
@@ -18163,9 +18311,10 @@ function createStudioGuardRuntimeController(THREE, options = {}) {
     setActiveButton(null);
     if (machine && runtime) resetMachine();
     character.stopAnimation?.();
-    if (restoreMountCalibration && weaponObject3d) {
-      applyMountCalibration(weaponObject3d, restoreMountCalibration);
-      weaponObject3d.updateMatrixWorld?.(true);
+    const weapon = weaponObject3d();
+    if (restoreMountCalibration && weapon) {
+      applyMountCalibration(weapon, restoreMountCalibration);
+      weapon.updateMatrixWorld?.(true);
     }
     restoreMountCalibration = null;
     if (options.restoreEvaluation !== false) applyCurrentEvaluation();
@@ -18234,16 +18383,16 @@ return Object.freeze({ createStudioGuardRuntimeController });
 })();
 
 // tools/action-studio/studio-external-animation-controller.js
-const __actionStudioModule42 = (() => {
-const { createFittedAnimationBinding } = __actionStudioModule24;
+const __actionStudioModule46 = (() => {
+const { createFittedAnimationBinding } = __actionStudioModule28;
 const { KAYKIT_ANIMATION_PACKS, loadKayKitAnimationLibrary } = __actionStudioModule11;
-const { UAL1_ANIMATION_FILES, loadUal1AnimationLibrary } = __actionStudioModule43;
-const { UAL2_ANIMATION_FILES, loadUal2AnimationLibrary } = __actionStudioModule45;
-const { SKYRIM_GREATSWORD_BASE_URL, SKYRIM_GREATSWORD_CONVERTED_FILES, SKYRIM_GUARD_CONVERTED_FILES, importSkyrimConvertedAnimationFile, loadSkyrimConvertedAnimationLibrary } = __actionStudioModule46;
-const { getCanonicalMotionContactSeconds, getLongswordMotionMetadata } = __actionStudioModule52;
-const { readAnimationBindingView } = __actionStudioModule53;
-const { installStudioSkyrimBridgeControls } = __actionStudioModule54;
-const { createStudioGuardRuntimeController } = __actionStudioModule55;
+const { UAL1_ANIMATION_FILES, loadUal1AnimationLibrary } = __actionStudioModule47;
+const { UAL2_ANIMATION_FILES, loadUal2AnimationLibrary } = __actionStudioModule49;
+const { SKYRIM_GREATSWORD_BASE_URL, SKYRIM_GREATSWORD_CONVERTED_FILES, SKYRIM_GUARD_CONVERTED_FILES, importSkyrimConvertedAnimationFile, loadSkyrimConvertedAnimationLibrary } = __actionStudioModule50;
+const { getCanonicalMotionContactSeconds, getLongswordMotionMetadata } = __actionStudioModule54;
+const { readAnimationBindingView } = __actionStudioModule55;
+const { installStudioSkyrimBridgeControls } = __actionStudioModule56;
+const { createStudioGuardRuntimeController } = __actionStudioModule57;
 
 const SOURCE_INFO = Object.freeze({
   ual2: Object.freeze({ label: 'UAL2 Sword Combat', count: UAL2_ANIMATION_FILES.length, defaultClip: 'UAL2/Sword_Regular_A' }),
@@ -18700,26 +18849,26 @@ const { createDefaultCharacter } = __actionStudioModule1;
 const { createDebugSword, mountDebugSword } = __actionStudioModule12;
 const { V3_LONGSWORD_DEFINITION } = __actionStudioModule13;
 const { V3_GREATSWORD_DEFINITION } = __actionStudioModule15;
-const { createStudioOffHandGripController } = __actionStudioModule17;
-const { DEFAULT_KAYKIT_SWORD_MOUNT } = __actionStudioModule20;
+const { createStudioStageWeaponOverlays } = __actionStudioModule17;
+const { DEFAULT_KAYKIT_SWORD_MOUNT } = __actionStudioModule24;
 const { applyMountCalibration, normalizeMountCalibration } = __actionStudioModule3;
 const { POSE_KEYS } = __actionStudioModule10;
 const { normalizePose } = __actionStudioModule9;
-const { createAnimationClip } = __actionStudioModule21;
-const { ActionMotionPlayer } = __actionStudioModule22;
-const { ACTION_TEMPLATE_FACTORIES } = __actionStudioModule25;
-const { createActionDefinition, isFrameInWindow } = __actionStudioModule29;
-const { createStudioPreviewRuntime } = __actionStudioModule30;
-const { createStudioCombatFeelController } = __actionStudioModule31;
-const { createWholeBodyMotionGuideOverlay } = __actionStudioModule32;
-const { createStudioMotionGuideEditor } = __actionStudioModule33;
-const { bakeStudioMotionConstraints } = __actionStudioModule34;
-const { createStudioPoseDragController } = __actionStudioModule35;
-const { captureNextBlockingKey, createStudioBlockingWorkflow } = __actionStudioModule38;
-const { createStudioProjectIoController } = __actionStudioModule39;
-const { createStudioExternalAnimationController } = __actionStudioModule42;
-const { renderComboQueueView, renderAnimationBindingView, renderKeyEditorView, renderLibraryView, renderMountEditorView, renderPoseControlsView, renderTimelineView, renderWindowEditorView, updateTimelineReadoutView } = __actionStudioModule53;
-const { buildComboProjectData, cloneSerializable, createStudioProject, readStoredJson, writeStoredJson } = __actionStudioModule41;
+const { createAnimationClip } = __actionStudioModule25;
+const { ActionMotionPlayer } = __actionStudioModule26;
+const { ACTION_TEMPLATE_FACTORIES } = __actionStudioModule29;
+const { createActionDefinition, isFrameInWindow } = __actionStudioModule33;
+const { createStudioPreviewRuntime } = __actionStudioModule34;
+const { createStudioCombatFeelController } = __actionStudioModule35;
+const { createWholeBodyMotionGuideOverlay } = __actionStudioModule36;
+const { createStudioMotionGuideEditor } = __actionStudioModule37;
+const { bakeStudioMotionConstraints } = __actionStudioModule38;
+const { createStudioPoseDragController } = __actionStudioModule39;
+const { captureNextBlockingKey, createStudioBlockingWorkflow } = __actionStudioModule42;
+const { createStudioProjectIoController } = __actionStudioModule43;
+const { createStudioExternalAnimationController } = __actionStudioModule46;
+const { renderComboQueueView, renderAnimationBindingView, renderKeyEditorView, renderLibraryView, renderMountEditorView, renderPoseControlsView, renderTimelineView, renderWindowEditorView, updateTimelineReadoutView } = __actionStudioModule55;
+const { buildComboProjectData, cloneSerializable, createStudioProject, readStoredJson, writeStoredJson } = __actionStudioModule45;
 
 const THREE = window.THREE;
 if (!THREE) throw new Error('Action Studio requires Three.js r128');
@@ -18746,6 +18895,13 @@ let stageWeaponId = loadStageWeaponId();
 let sword = createDebugSword(THREE, { definition: STAGE_WEAPONS[stageWeaponId] });
 let mountCalibration = loadMountCalibration();
 mountDebugSword(character, sword, mountCalibration);
+const stageWeapon = createStudioStageWeaponOverlays(THREE, {
+  getCharacter: () => character,
+  getWeapon: () => sword,
+  getBaseMount: () => mountCalibration,
+  getBoundClip: () => character.animation.clips.get(character.animation.currentClipName),
+  stageWeaponId,
+});
 const preview = createStudioPreviewRuntime(THREE, {
   canvas,
   character,
@@ -18778,7 +18934,8 @@ let blockingWorkflow = null, projectIo = null;
 const motionGuideOverlay = createWholeBodyMotionGuideOverlay(THREE, { scene: preview.scene, camera: preview.camera, canvas, character, sword });
 const motionGuideEditor = createStudioMotionGuideEditor({
   overlay: motionGuideOverlay, applyProject: (project, options) => { setProject(project, options); projectIo?.saveAutosave('motion guide bake'); },
-  bakeProject: (project, guide) => bakeStudioMotionConstraints(project, { character, sword, guide }),
+  bakeProject: (project, guide) => stageWeapon.withBaseMount(
+    () => bakeStudioMotionConstraints(project, { character, sword, guide })),
   getFrame: () => player.frame, onStatus: (message, error) => setIoStatus(message, error),
 });
 
@@ -19136,7 +19293,7 @@ function swapStageWeapon(weaponId) {
   localStorage.setItem(STAGE_WEAPON_KEY, weaponId);
   sword = createDebugSword(THREE, { definition });
   mountDebugSword(character, sword, mountCalibration);
-  applyMountCalibration(sword.object3d, mountCalibration);
+  stageWeapon.syncToWeapon(stageWeaponId);
   // Both of these captured the old weapon; neither would draw the new one otherwise - the trail
   // reads the tip and the off-hand guide reads the secondary grip.
   preview.setSword(sword);
@@ -19149,17 +19306,10 @@ function swapStageWeapon(weaponId) {
 }
 
 const stageWeaponSelect = document.getElementById('stageWeapon');
-const offHandGrip = createStudioOffHandGripController(THREE, {
-  getCharacter: () => character,
-  getWeapon: () => sword,
-  stageWeaponId,
-});
 if (stageWeaponSelect) {
   stageWeaponSelect.value = stageWeaponId;
-  stageWeaponSelect.addEventListener('change', () => {
-    swapStageWeapon(stageWeaponSelect.value);
-    offHandGrip.syncToWeapon(stageWeaponSelect.value);
-  });
+  // swapStageWeapon syncs the overlays itself - it is also reachable without the select.
+  stageWeaponSelect.addEventListener('change', () => swapStageWeapon(stageWeaponSelect.value));
 }
 
 document.getElementById('showTPose').addEventListener('click', () => loadTemplate('t_pose'));
@@ -19319,7 +19469,7 @@ function tick(now) {
   character.update(deltaSeconds, preview.camera);
   poseDragController.update();
   sword.update();
-  offHandGrip.update();
+  stageWeapon.update();
   motionGuideOverlay.update();
   blockingWorkflow.update();
   preview.update(deltaSeconds);
@@ -19338,6 +19488,7 @@ window.__actionStudio = {
   get characterRigId() { return character.rig.definition.id; },
   get proceduralBoneCount() { return Object.keys(character.rig.bones).length; },
   get weaponRigId() { return sword.definition.id; },
+  get weaponMount() { return { applied: stageWeapon.appliedMount, rotation: sword.object3d.rotation.toArray().slice(0, 3) }; },
   get weaponBoneCount() { return Object.keys(sword.bones).length; },
   get weaponSockets() { return Object.keys(sword.sockets); },
   get weaponSweepSegment() {

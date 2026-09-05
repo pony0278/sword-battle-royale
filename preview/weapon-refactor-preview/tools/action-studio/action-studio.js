@@ -2,7 +2,7 @@ import { createDefaultCharacter } from '../../src/character/default-character.js
 import { createDebugSword, mountDebugSword } from '../../src/character/debug-sword.js';
 import { V3_LONGSWORD_DEFINITION } from '../../src/character/procedural-v3-weapon.js';
 import { V3_GREATSWORD_DEFINITION } from '../../src/character/v3-greatsword-weapon.js';
-import { createStudioOffHandGripController } from './studio-off-hand-grip-controls.js';
+import { createStudioStageWeaponOverlays } from './studio-stage-weapon-overlays.js';
 import { DEFAULT_KAYKIT_SWORD_MOUNT } from '../../src/character/default-character-mount.js';
 import { applyMountCalibration, normalizeMountCalibration } from '../../src/character/character-sockets.js';
 import { POSE_KEYS } from '../../src/animation/pose-schema.js';
@@ -64,6 +64,13 @@ let stageWeaponId = loadStageWeaponId();
 let sword = createDebugSword(THREE, { definition: STAGE_WEAPONS[stageWeaponId] });
 let mountCalibration = loadMountCalibration();
 mountDebugSword(character, sword, mountCalibration);
+const stageWeapon = createStudioStageWeaponOverlays(THREE, {
+  getCharacter: () => character,
+  getWeapon: () => sword,
+  getBaseMount: () => mountCalibration,
+  getBoundClip: () => character.animation.clips.get(character.animation.currentClipName),
+  stageWeaponId,
+});
 const preview = createStudioPreviewRuntime(THREE, {
   canvas,
   character,
@@ -96,7 +103,8 @@ let blockingWorkflow = null, projectIo = null;
 const motionGuideOverlay = createWholeBodyMotionGuideOverlay(THREE, { scene: preview.scene, camera: preview.camera, canvas, character, sword });
 const motionGuideEditor = createStudioMotionGuideEditor({
   overlay: motionGuideOverlay, applyProject: (project, options) => { setProject(project, options); projectIo?.saveAutosave('motion guide bake'); },
-  bakeProject: (project, guide) => bakeStudioMotionConstraints(project, { character, sword, guide }),
+  bakeProject: (project, guide) => stageWeapon.withBaseMount(
+    () => bakeStudioMotionConstraints(project, { character, sword, guide })),
   getFrame: () => player.frame, onStatus: (message, error) => setIoStatus(message, error),
 });
 
@@ -454,7 +462,7 @@ function swapStageWeapon(weaponId) {
   localStorage.setItem(STAGE_WEAPON_KEY, weaponId);
   sword = createDebugSword(THREE, { definition });
   mountDebugSword(character, sword, mountCalibration);
-  applyMountCalibration(sword.object3d, mountCalibration);
+  stageWeapon.syncToWeapon(stageWeaponId);
   // Both of these captured the old weapon; neither would draw the new one otherwise - the trail
   // reads the tip and the off-hand guide reads the secondary grip.
   preview.setSword(sword);
@@ -467,17 +475,10 @@ function swapStageWeapon(weaponId) {
 }
 
 const stageWeaponSelect = document.getElementById('stageWeapon');
-const offHandGrip = createStudioOffHandGripController(THREE, {
-  getCharacter: () => character,
-  getWeapon: () => sword,
-  stageWeaponId,
-});
 if (stageWeaponSelect) {
   stageWeaponSelect.value = stageWeaponId;
-  stageWeaponSelect.addEventListener('change', () => {
-    swapStageWeapon(stageWeaponSelect.value);
-    offHandGrip.syncToWeapon(stageWeaponSelect.value);
-  });
+  // swapStageWeapon syncs the overlays itself - it is also reachable without the select.
+  stageWeaponSelect.addEventListener('change', () => swapStageWeapon(stageWeaponSelect.value));
 }
 
 document.getElementById('showTPose').addEventListener('click', () => loadTemplate('t_pose'));
@@ -637,7 +638,7 @@ function tick(now) {
   character.update(deltaSeconds, preview.camera);
   poseDragController.update();
   sword.update();
-  offHandGrip.update();
+  stageWeapon.update();
   motionGuideOverlay.update();
   blockingWorkflow.update();
   preview.update(deltaSeconds);
@@ -656,6 +657,7 @@ window.__actionStudio = {
   get characterRigId() { return character.rig.definition.id; },
   get proceduralBoneCount() { return Object.keys(character.rig.bones).length; },
   get weaponRigId() { return sword.definition.id; },
+  get weaponMount() { return { applied: stageWeapon.appliedMount, rotation: sword.object3d.rotation.toArray().slice(0, 3) }; },
   get weaponBoneCount() { return Object.keys(sword.bones).length; },
   get weaponSockets() { return Object.keys(sword.sockets); },
   get weaponSweepSegment() {
